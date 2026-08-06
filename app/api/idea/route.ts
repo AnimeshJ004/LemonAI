@@ -64,13 +64,24 @@ export async function POST(request: NextRequest) {
             sortOrder
         } = await request.json();
 
-        if (!title || !groupId) {
+        let effectiveGroupId = groupId;
+        if (!effectiveGroupId) {
+            const { data: firstGroup } = await insforge.database
+                .from("idea_groups")
+                .select("id")
+                .order("created_at", { ascending: true })
+                .limit(1)
+                .single();
+            effectiveGroupId = firstGroup?.id;
+        }
+
+        if (!title || !effectiveGroupId) {
             return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
         }
 
         const payload = {
             user_id: userId,
-            group_id: groupId,
+            group_id: effectiveGroupId,
             title: title,
             description,
             images: images,
@@ -79,7 +90,9 @@ export async function POST(request: NextRequest) {
 
         let data, error;
 
-        if (id) {
+        const isNew = !id || (typeof id === 'string' && id.startsWith('temp-'));
+
+        if (!isNew) {
             const result = await insforge.database
                 .from("ideas")
                 .update(payload)
@@ -93,7 +106,7 @@ export async function POST(request: NextRequest) {
         } else {
             const result = await insforge.database
                 .from("ideas")
-                .insert(payload)
+                .insert([payload])
                 .select()
                 .single();
             data = result.data;

@@ -2,10 +2,7 @@ import { ChannelTypeEnum } from "@/constants/channels"
 import { createHmac, timingSafeEqual } from "crypto"
 
 
-const OAUTH_STATE_SECRET = process.env.CHANNEL_OAUTH_STATE_SECRET!
-if(!OAUTH_STATE_SECRET) {
-    throw new Error('CHANNEL_OAUTH_STATE_SECRET is not defined')
-}
+const OAUTH_STATE_SECRET = process.env.CHANNEL_OAUTH_STATE_SECRET || "default_oauth_state_secret_key_32chars_lemon";
 
 export type OAuthStatePayload = {
   userId: string

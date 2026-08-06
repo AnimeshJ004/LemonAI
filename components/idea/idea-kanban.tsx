@@ -368,7 +368,7 @@ p-2 px-3 transition-colors min-h-0`,
                                                                     <h4 className="font-semibold text-sm">{idea.title}</h4>
                                                                 </div>
                                                                 <DropdownMenu>
-                                                                    <DropdownMenuTrigger>
+                                                                    <DropdownMenuTrigger asChild>
                                                                         <Button
                                                                             size="icon"
                                                                             variant="ghost"

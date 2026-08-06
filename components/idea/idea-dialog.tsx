@@ -36,16 +36,17 @@ const IdeaDialog = ({
     const [title, setTitle] = useState(idea?.title ?? "")
     const [description, setDescription] = useState(idea?.description ?? "")
     const [images, setImages] = useState<ImageObject[]>(idea?.images ?? [])
-    const [selectedColumn, setSelectedColumn] = useState(idea?.columnId ?? selectedColumnId)
+    const defaultCol = idea?.columnId || selectedColumnId || columns?.[0]?.id || "";
+    const [selectedColumn, setSelectedColumn] = useState(defaultCol)
     const [showAI, setShowAI] = useState<boolean>(false)
 
     useEffect(() => {
         setTitle(idea?.title ?? "")
         setDescription(idea?.description ?? "")
         setImages(idea?.images ?? [])
-        setSelectedColumn(idea?.columnId ?? selectedColumnId);
+        setSelectedColumn(idea?.columnId || selectedColumnId || columns?.[0]?.id || "");
         setShowAI(false)
-    }, [idea, selectedColumnId])
+    }, [idea, selectedColumnId, columns])
 
 
     const handleSave = () => {
@@ -81,9 +82,8 @@ const IdeaDialog = ({
                             <div>
                                 <Select value={selectedColumn}
                                     onValueChange={setSelectedColumn}>
-                                    <SelectTrigger className="min-w-[100px] 
-            max-w-[135px] gap-1! mr-5 text-sm">
-                                        <Shapes />
+                                    <SelectTrigger className="min-w-[150px] w-auto gap-2 mr-5 text-sm">
+                                        <Shapes className="h-4 w-4 shrink-0" />
                                         <SelectValue placeholder="Select column" />
                                     </SelectTrigger>
                                     <SelectContent>

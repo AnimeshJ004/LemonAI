@@ -72,44 +72,35 @@ export async function getInsforgeServerClient(): Promise<{ insforge: InsForgeCli
   if (!BASE_URL) {
     throw new Error('Missing NEXT_PUBLIC_INSFORGE_BASE_URL or INSFORGE_BASE_URL environment variable');
   }
-  if (!ANON_KEY) {
-    throw new Error('Missing NEXT_PUBLIC_INSFORGE_ANON_KEY or INSFORGE_ANON_KEY environment variable');
-  }
 
   // Get current user from Clerk
   const { userId } = await auth();
 
-  // Recreate client if user changed or no cached client
-  if (userId !== cachedUserId || !cachedClient) {
-    // Clear existing refresh interval
-    if (refreshInterval) {
-      clearInterval(refreshInterval);
-      refreshInterval = null;
-    }
-
-    // Create new client
-    cachedClient = createClient({
-      baseUrl: BASE_URL,
-      anonKey: ANON_KEY,
-    });
-    cachedUserId = userId;
-
-    // Set auth token if user is signed in
-    if (userId) {
-      await refreshAuthToken(cachedClient);
-
-      // Start refresh interval
-      refreshInterval = setInterval(async () => {
-        if (cachedClient && cachedUserId) {
-          await refreshAuthToken(cachedClient);
-        }
-      }, TOKEN_REFRESH_MS);
-    }
-  } else if (userId) {
-    await refreshAuthToken(cachedClient);
+  // Use PROJECT_API_KEY if available for robust server-side database access, otherwise ANON_KEY
+  const apiKey = PROJECT_API_KEY || ANON_KEY;
+  if (!apiKey) {
+    throw new Error('Missing INSFORGE_PROJECT_API_KEY or NEXT_PUBLIC_INSFORGE_ANON_KEY');
   }
 
-  return { insforge: cachedClient, userId };
+  const insforge = createClient({
+    baseUrl: BASE_URL,
+    anonKey: apiKey,
+    isServerMode: true,
+  });
+
+  if (userId && !PROJECT_API_KEY) {
+    try {
+      const session = await auth();
+      const token = await session?.getToken({ template: SERVER_TOKEN_TEMPLATE });
+      if (token) {
+        insforge.getHttpClient().setAuthToken(token);
+      }
+    } catch (err) {
+      console.warn('Failed to get Clerk JWT token, using API Key', err);
+    }
+  }
+
+  return { insforge, userId };
 }
 
 export function getInsforgeAdminClient(): InsForgeClient {

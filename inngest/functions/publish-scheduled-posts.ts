@@ -4,6 +4,7 @@ import { ImageObject, PostType } from "@/types/post.type";
 import { decrypt, encrypt } from "@/lib/encryption";
 import { refreshOauthToken } from "@/lib/social-oauth";
 import { ChannelTypeEnum } from "@/constants/channels";
+import { BskyAgent } from "@atproto/api";
 
 
 type DuePost = {
@@ -18,10 +19,11 @@ export const publishScheduledPostsCron = inngest.createFunction(
         name:"Publish Scheduled Posts",
         triggers:[
             {
-                cron:"*/10 * * * *"
+                cron:"* * * * *"
             }
         ]
     },
+
     async ({step,logger}) => {
 
         const duePosts = await step.run("load-due-scheduled-posts", async () => {
@@ -66,6 +68,8 @@ export const publishScheduledPost = inngest.createFunction(
     {
         id:"publish-scheduled-post",
         name:"Publish Scheduled Post",
+        idempotency: "event.data.postId",
+        retries: 0,
         triggers:{
             event:"post/publish.requested"
         }
@@ -81,17 +85,28 @@ export const publishScheduledPost = inngest.createFunction(
             .single()
 
         logger.info("Load post", { data })
-        if(error){
-            logger.error(error)
-            throw error
+        if(error || !data){
+            if (error) logger.error(error)
+            return null
         }
-        
+
+        // Lock the post immediately so concurrent triggers cannot double post
+        await insforge.database
+            .from("scheduled_posts")
+            .update({ status: "publishing" })
+            .eq("id", event.data.postId)
+            .eq("status", "queue");
+
         return data as PostType;
        })
 
        if(!post){
-        logger.error("Post not found", { postId: event.data.postId })
-        return { skipped: true, reason: "post_not_found" }
+        logger.info("Post skipped: not found or already being published", { postId: event.data.postId })
+        return { skipped: true, reason: "post_not_found_or_already_publishing" }
+       }
+
+       if (post.scheduled_at && new Date(post.scheduled_at).getTime() > Date.now()) {
+        await step.sleepUntil("wait-for-scheduled-time", post.scheduled_at);
        }
 
        const userChannel = post.user_channels
@@ -158,6 +173,26 @@ export const publishScheduledPost = inngest.createFunction(
                         logger
                     });
                 }  
+                
+                if(providerType === ChannelTypeEnum.BLUESKY){
+                    return publishToBluesky({
+                        identifier: post.user_channels?.handle || process.env.BLUESKY_IDENTIFIER,
+                        password: currentAccessToken || process.env.BLUESKY_APP_PASSWORD,
+                        content: post.content,
+                        images: post.images,
+                        logger
+                    });
+                }
+
+                if(providerType === ChannelTypeEnum.INSTAGRAM){
+                    return publishToInstagram({
+                        accessToken: currentAccessToken,
+                        instagramAccountId: post.user_channels?.provider_account_id,
+                        content: post.content,
+                        images: post.images,
+                        logger
+                    });
+                }
                 
                 throw new Error(`Unsupported provider type: ${providerType}`)
             })
@@ -485,3 +520,135 @@ function formatLinkedInText(text: string): string {
     .trim()
     .slice(0, 3000)
 }
+
+async function publishToBluesky({
+    identifier,
+    password,
+    content,
+    images,
+    logger
+}: {
+    identifier?: string | null;
+    password?: string | null;
+    content: string;
+    images?: ImageObject[];
+    logger: any;
+}) {
+    if (!identifier || !password) {
+        throw new Error("Missing Bluesky identifier or app password");
+    }
+
+    const cleanIdentifier = identifier.replace(/^@/, "").trim();
+    const agent = new BskyAgent({ service: "https://bsky.social" });
+    await agent.login({ identifier: cleanIdentifier, password });
+
+    let embed: any = undefined;
+
+    if (images && images.length > 0) {
+        const uploadedImages = [];
+        for (const img of images) {
+            const fileResponse = await fetch(img.url);
+            if (!fileResponse.ok) throw new Error("Failed to fetch image for Bluesky upload");
+
+            const arrayBuffer = await fileResponse.arrayBuffer();
+            const contentType = fileResponse.headers.get("content-type") || "image/jpeg";
+
+            const uploadRes = await agent.uploadBlob(new Uint8Array(arrayBuffer), {
+                encoding: contentType,
+            });
+
+            uploadedImages.push({
+                image: uploadRes.data.blob,
+                alt: "",
+            });
+        }
+
+        embed = {
+            $type: "app.bsky.embed.images",
+            images: uploadedImages,
+        };
+    }
+
+    const record: any = {
+        text: content,
+        createdAt: new Date().toISOString(),
+    };
+
+    if (embed) {
+        record.embed = embed;
+    }
+
+    const result = await agent.post(record);
+    logger.info("Bluesky post published", { result });
+
+    const rkey = result.uri.split("/").pop();
+    const cleanHandle = identifier.startsWith("@") ? identifier.slice(1) : identifier;
+    return `https://bsky.app/profile/${cleanHandle}/post/${rkey}`;
+}
+
+async function publishToInstagram({
+    accessToken,
+    instagramAccountId,
+    content,
+    images,
+    logger
+}: {
+    accessToken: string;
+    instagramAccountId?: string | null;
+    content: string;
+    images?: ImageObject[];
+    logger: any;
+}) {
+    if (!instagramAccountId) {
+        throw new Error("Missing Instagram Business Account ID");
+    }
+
+    if (!images || images.length === 0) {
+        throw new Error("Instagram requires at least one image to publish a post");
+    }
+
+    const imageUrl = images[0].url;
+
+    // Step 1: Create Instagram Media Container
+    const createRes = await fetch(
+        `https://graph.facebook.com/v21.0/${instagramAccountId}/media`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                image_url: imageUrl,
+                caption: content,
+                access_token: accessToken,
+            }),
+        }
+    );
+
+    const createData = await createRes.json();
+    if (!createRes.ok || !createData.id) {
+        throw new Error(`Failed to create Instagram container: ${createData?.error?.message || JSON.stringify(createData)}`);
+    }
+
+    const containerId = createData.id;
+    logger.info("Instagram media container created", { containerId });
+
+    // Step 2: Publish Container
+    const publishRes = await fetch(
+        `https://graph.facebook.com/v21.0/${instagramAccountId}/media_publish`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                creation_id: containerId,
+                access_token: accessToken,
+            }),
+        }
+    );
+
+    const publishData = await publishRes.json();
+    if (!publishRes.ok || !publishData.id) {
+        throw new Error(`Failed to publish Instagram container: ${publishData?.error?.message || JSON.stringify(publishData)}`);
+    }
+
+    return `https://www.instagram.com/p/${publishData.id}`;
+}
+

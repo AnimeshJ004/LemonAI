@@ -10,7 +10,7 @@ import Logo from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getChannelIcon, getChannelUrl } from '@/constants/channels';
+import { getChannelIcon, getChannelUrl, getChannelProfileUrl } from '@/constants/channels';
 import { ChannelType } from '@/types/channel.type';
 import { PlusSignIcon } from '@hugeicons/core-free-icons';
 import { UserButton, useUser } from '@clerk/nextjs';
@@ -132,12 +132,12 @@ const AppSidebar = () => {
                 </div>
               ) : (
                 connectedChannels?.map((channel: ChannelType) => {
-                  const url = getChannelUrl(channel.type)
+                  const profileUrl = getChannelProfileUrl(channel.type, channel.handle)
                   return (
                     <SidebarMenuItem key={channel.id}>
                       <SidebarMenuButton asChild>
                        <a
-                         href={`${url}/${channel.handle}`}
+                         href={profileUrl}
                          target="_blank" rel="noreferrer"
                           className="w-full! relative block items-center gap-2"
                        >
@@ -159,6 +159,7 @@ const AppSidebar = () => {
           </SidebarGroupContent>
          </SidebarGroup>
          )}
+
 
 
         {/* {unconnected channels} */}

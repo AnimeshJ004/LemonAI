@@ -24,11 +24,11 @@ export const CHANNEL_TYPE_ICONS: Record<ChannelTypeEnum, any> = {
 
 export const CHANNEL_TYPE_URLS: Record<ChannelTypeEnum, string> = {
   [ChannelTypeEnum.TWITTER]: "https://x.com",
-  [ChannelTypeEnum.LINKEDIN]: "https://linkedin.com",
+  [ChannelTypeEnum.LINKEDIN]: "https://linkedin.com/in",
   [ChannelTypeEnum.INSTAGRAM]: "https://instagram.com",
-  [ChannelTypeEnum.THREADS]: "https://threads.com",
+  [ChannelTypeEnum.THREADS]: "https://threads.net",
   [ChannelTypeEnum.FACEBOOK]: "https://facebook.com",
-  [ChannelTypeEnum.BLUESKY]: "https://bluesky.com",
+  [ChannelTypeEnum.BLUESKY]: "https://bsky.app/profile",
   [ChannelTypeEnum.YOUTUBE]: "https://youtube.com",
   [ChannelTypeEnum.TIKTOK]: "https://tiktok.com",
 }
@@ -39,8 +39,15 @@ export function getChannelUrl(type: ChannelTypeEnum | undefined) {
   return CHANNEL_TYPE_URLS[type]
 }
 
+export function getChannelProfileUrl(type: ChannelTypeEnum | undefined, handle: string | null | undefined) {
+  if (!type || !handle) return ""
+  const baseUrl = CHANNEL_TYPE_URLS[type] || ""
+  const cleanHandle = handle.replace(/^@/, '')
+  return `${baseUrl}/${cleanHandle}`
+}
+
 
 export function getChannelIcon(type: ChannelTypeEnum | undefined) {
   if (!type) return null
   return CHANNEL_TYPE_ICONS[type]
-}
+}

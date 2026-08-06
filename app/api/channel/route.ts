@@ -5,7 +5,7 @@ export async function GET(request: NextRequest) {
 
     try {
         const {insforge, userId} = await getInsforgeServerClient()
-        if(!userId) return new NextResponse('Unauthorized', { status: 401 })
+        if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
         const filter = request.nextUrl.searchParams.get('filter')
 
@@ -19,7 +19,8 @@ export async function GET(request: NextRequest) {
         ]);
 
         if (typesRes.error || userChannelsRes.error) {
-            return new NextResponse('Internal Server Error', { status: 500 })
+            console.error("Error fetching channels:", typesRes.error, userChannelsRes.error);
+            return NextResponse.json({ error: "Internal Server Error" }, { status: 500 })
         }
 
         const userChannelMap = new Map(

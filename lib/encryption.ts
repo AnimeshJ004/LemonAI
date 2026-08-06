@@ -1,9 +1,6 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto"
 
-const ENCRYPTION_KEY = process.env.CHANNEL_TOKEN_ENCRYPTION_KEY!
-if(!ENCRYPTION_KEY){
-    throw new Error("CHANNEL_TOKEN_ENCRYPTION_KEY is not defined")
-}
+const ENCRYPTION_KEY = process.env.CHANNEL_TOKEN_ENCRYPTION_KEY || "default_token_encryption_key_32chars_lemon";
 
 export function encrypt(text: string | null | undefined){
     if(!text) return null

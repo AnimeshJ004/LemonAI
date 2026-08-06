@@ -1,4 +1,5 @@
 import { POST_STATUS, POST_STATUSES } from "@/constants/post";
+import { inngest } from "@/inngest/client";
 import { getInsforgeServerClient } from "@/lib/insforge-server";
 import { ImageObject } from "@/types/post.type";
 import { auth } from "@clerk/nextjs/server";
@@ -183,7 +184,22 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: "Failed to create posts" }, { status: 500 })
             }
 
+            // Send Inngest event immediately for all queued posts
+            if (postStatus === POST_STATUS.QUEUE && data && data.length > 0) {
+                try {
+                    await inngest.send(
+                        data.map((post: any) => ({
+                            name: "post/publish.requested",
+                            data: { postId: post.id }
+                        }))
+                    );
+                } catch (inngestErr) {
+                    console.error("Failed to send Inngest publish event:", inngestErr);
+                }
+            }
+
             return NextResponse.json({ posts: data }, { status: 201 })
+
 
     } catch (error) {
         console.error("Error creating post:", error)
@@ -204,8 +220,9 @@ async function checkCreatePostLimit(
     throw error;
   }
 
-  return (count ?? 0) < 4;
+  return (count ?? 0) < 100;
 }
+
 
 
 function formatDayLabel(date:Date){

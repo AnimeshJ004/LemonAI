@@ -9,11 +9,11 @@ import { Button } from "@/components/ui/button";
 import { ChannelTypeEnum, getChannelIcon } from "@/constants/channels";
 
 const navItems = [
-  "Features",
-  "Channels",
-  "Made for",
-  "Resources",
-  "Pricing",
+  { name: "Features", href: "#features" },
+  { name: "Channels", href: "#channels" },
+  { name: "Made for", href: "#stats" },
+  { name: "Resources", href: "/ideas" },
+  { name: "Pricing", href: "/billing" },
 ];
 
 const platformBadges = [
@@ -61,13 +61,13 @@ export default function LandingPage() {
 
         <nav className="hidden items-center gap-8 md:flex">
           {navItems.map((item) => (
-            <button
-              key={item}
+            <Link
+              key={item.name}
+              href={item.href}
               className="flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
             >
-              <span>{item}</span>
-              {item !== "Pricing" && <ChevronDown className="h-4 w-4" />}
-            </button>
+              <span>{item.name}</span>
+            </Link>
           ))}
         </nav>
 
@@ -106,7 +106,7 @@ export default function LandingPage() {
     </header>
 
     <main>
-      <section className="relative overflow-hidden">
+      <section id="channels" className="relative overflow-hidden">
         <div className="pointer-events-none absolute inset-0 opacity-40 dark:opacity-20 [background-image:linear-gradient(to_right,rgba(15,23,42,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,0.06)_1px,transparent_1px)] dark:[background-image:linear-gradient(to_right,rgba(248,250,252,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(248,250,252,0.08)_1px,transparent_1px)] [background-size:56px_56px]" />
         <div className="pointer-events-none absolute inset-x-0 top-0 h-28 bg-gradient-to-b from-background to-transparent" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-background to-transparent" />
@@ -190,7 +190,7 @@ export default function LandingPage() {
             </p>
           </div>
 
-          <div className="mt-10 grid gap-4 md:grid-cols-3">
+          <div id="stats" className="mt-10 grid gap-4 md:grid-cols-3">
             {stats.map((stat) => (
               <div
                 key={stat.label}
@@ -206,7 +206,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-7xl gap-5 px-6 pb-16 md:grid-cols-2">
+      <section id="features" className="mx-auto grid max-w-7xl gap-5 px-6 pb-16 md:grid-cols-2">
         {featurePanels.map((panel) => (
           <div
             key={panel.title}
