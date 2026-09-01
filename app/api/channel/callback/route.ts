@@ -29,14 +29,14 @@ export async function GET(request: NextRequest) {
     const providerError = searchParams.get('error');
 
     if (!stateParams) {
-        return buildRedirectUrl(APP_URL, '/settings', {
+        return buildRedirectUrl(APP_URL, '/settings?tab=channels', {
             connected: "false",
             error: "missing_state"
         });
     }
     try {
         const state = verifyOAuthState(stateParams);
-        const redirectTo = state?.redirectTo || `${APP_URL}/settings`;
+        const redirectTo = state?.redirectTo || `${APP_URL}/settings?tab=channels`;
         const pkceCookieName = getPkceCookieName(stateParams);
         const codeVerifier = state.channelType === ChannelTypeEnum.TWITTER ? request.cookies.get(pkceCookieName)?.value : undefined
 
@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
         return response
     } catch (error) {
         console.error('OAuth callback error:', error);
-        const response = buildRedirectUrl(APP_URL, '/settings', {
+        const response = buildRedirectUrl(APP_URL, '/settings?tab=channels', {
             connected: "false",
             error: "oauth_callback_failed"
         });

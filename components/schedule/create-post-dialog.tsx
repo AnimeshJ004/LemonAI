@@ -45,6 +45,78 @@ const rightTabs = [
     { id: "preview" as ActionTabType, label: "Preview", icon: ScanEye },
 ]
 
+function normalizeTimeSlot(timeStr?: string | null): string {
+    if (!timeStr) return "";
+    const trimmed = timeStr.trim();
+    const match = trimmed.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+    if (match) {
+        let h = parseInt(match[1], 10);
+        const m = match[2] ? parseInt(match[2], 10) : 0;
+        let meridiem = match[3] ? match[3].toUpperCase() : (h >= 12 ? "PM" : "AM");
+        let displayHour = h;
+        if (h > 12) {
+            displayHour = h - 12;
+            meridiem = "PM";
+        } else if (h === 0) {
+            displayHour = 12;
+            meridiem = "AM";
+        }
+        const roundedMin = Math.round(m / 15) * 15;
+        const displayMinute = String(roundedMin % 60).padStart(2, "0");
+        return `${displayHour}:${displayMinute} ${meridiem}`;
+    }
+    return timeStr;
+}
+
+function getValidScheduleDate(targetDate?: Date | null, timeString?: string | null): Date {
+    const baseDate = targetDate ? new Date(targetDate) : new Date();
+    if (isNaN(baseDate.getTime())) {
+        baseDate.setTime(Date.now());
+    }
+
+    let hours = 10;
+    let minutes = 0;
+
+    if (timeString && typeof timeString === "string" && timeString.trim()) {
+        const trimmed = timeString.trim();
+        const match12 = trimmed.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+        const match24 = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+
+        if (match12 && match12[3]) {
+            let h = parseInt(match12[1], 10);
+            const m = match12[2] ? parseInt(match12[2], 10) : 0;
+            const meridiem = match12[3].toUpperCase();
+            if (meridiem === "PM" && h !== 12) h += 12;
+            if (meridiem === "AM" && h === 12) h = 0;
+            hours = h;
+            minutes = m;
+        } else if (match24) {
+            hours = parseInt(match24[1], 10);
+            minutes = parseInt(match24[2], 10);
+        } else {
+            const formats = ["h:mm a", "hh:mm a", "h:mm A", "hh:mm A", "h a", "H:mm", "HH:mm"];
+            for (const fmt of formats) {
+                try {
+                    const p = parse(trimmed, fmt, new Date());
+                    if (!isNaN(p.getTime())) {
+                        hours = p.getHours();
+                        minutes = p.getMinutes();
+                        break;
+                    }
+                } catch {}
+            }
+        }
+    } else {
+        const now = new Date();
+        if (baseDate.toDateString() === now.toDateString()) {
+            hours = now.getHours() + 1;
+            minutes = 0;
+        }
+    }
+
+    baseDate.setHours(hours, minutes, 0, 0);
+    return baseDate;
+}
 
 const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
 
@@ -115,20 +187,22 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                 })
             });
             if (!response.ok) {
-                throw new Error("Failed to create posts");
+                const errData = await response.json().catch(() => ({}));
+                throw new Error(errData.error || "Failed to create posts");
             }
             return response.json();
         },
         onSuccess: (data, variables) => {
             toast.success(`${data.posts.length} post(s) ${variables.status === POST_STATUS.DRAFT ? 'saved to draft' : 'scheduled'} successfully`);
+            queryClient.invalidateQueries({ queryKey: ["posts"] });
             queryClient.invalidateQueries({
                 predicate: (query) => query.queryKey[0] === "posts",
             });
             handleOpenChange(false)
         },
         onError: (error: any) => {
-            console.log("failed to create post", error)
-            toast.error("Failed to save post")
+            console.error("failed to create post", error)
+            toast.error(error?.message || "Failed to save post")
         }
     })
 
@@ -264,17 +338,11 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
             }
         })
         if (postToCreate.some((post) => !post.content)) {
-            toast.error("Each selected channel must have content")
-            return
+            toast.error("Each selected channel must have content");
+            return;
         }
 
-        const parsedTime = parse(timeSlot, "h:mm a", new Date());
-        const scheduleAt = set(date || new Date(), {
-            hours: parsedTime.getHours(),
-            minutes: parsedTime.getMinutes(),
-            seconds: 0,
-            milliseconds: 0
-        })
+        const scheduleAt = getValidScheduleDate(date, timeSlot);
 
         createPostMutation.mutate({
             posts: postToCreate,
@@ -547,6 +615,7 @@ dark:text-amber-400">
                             onGenerate={(data: any) => {
                                 const textContent = typeof data === "string" ? data : data?.content || "";
                                 const schedule = typeof data === "object" ? data?.schedule : null;
+                                const autoSchedule = typeof data === "object" ? Boolean(data?.autoSchedule) : false;
                                 const channels = typeof data === "object" ? data?.channels : null;
 
                                 setGlobalContent((prev) => ({
@@ -554,61 +623,94 @@ dark:text-amber-400">
                                     text: textContent,
                                 }));
 
-                                // Auto-select channels if detected
-                                if (channels && Array.isArray(channels) && channels.length > 0 && connectedChannels.length > 0) {
-                                    if (channels.includes("all")) {
-                                        setSelectedChannels(connectedChannels.map((c) => c.id));
+                                // Auto-select channels if detected, or auto-select all connected channels if none were selected
+                                let channelsToSelect: string[] = [];
+                                if (connectedChannels.length > 0) {
+                                    if (channels && Array.isArray(channels) && channels.length > 0) {
+                                        if (channels.includes("all")) {
+                                            channelsToSelect = connectedChannels.map((c) => c.id);
+                                        } else {
+                                            const matchedChannelIds = connectedChannels
+                                                .filter((c) =>
+                                                    channels.some((target: string) => {
+                                                        const t = target.toLowerCase();
+                                                        const ct = c.type.toLowerCase();
+                                                        return (
+                                                            ct === t ||
+                                                            (t === "twitter" && ct === "x") ||
+                                                            (t === "x" && ct === "twitter")
+                                                        );
+                                                    })
+                                                )
+                                                .map((c) => c.id);
+                                            channelsToSelect = matchedChannelIds.length > 0 ? matchedChannelIds : connectedChannels.map((c) => c.id);
+                                        }
+                                    } else if (selectedChannels.length === 0) {
+                                        channelsToSelect = connectedChannels.map((c) => c.id);
                                     } else {
-                                        const matchedChannelIds = connectedChannels
-                                            .filter((c) =>
-                                                channels.some((target: string) => {
-                                                    const t = target.toLowerCase();
-                                                    const ct = c.type.toLowerCase();
-                                                    return (
-                                                        ct === t ||
-                                                        (t === "twitter" && ct === "x") ||
-                                                        (t === "x" && ct === "twitter")
-                                                    );
-                                                })
-                                            )
-                                            .map((c) => c.id);
+                                        channelsToSelect = selectedChannels;
+                                    }
 
-                                        if (matchedChannelIds.length > 0) {
-                                            setSelectedChannels(matchedChannelIds);
+                                    if (channelsToSelect.length > 0) {
+                                        setSelectedChannels(channelsToSelect);
+                                        if (!activeAccordion) {
+                                            setActiveAccordion(channelsToSelect[0]);
+                                            setActivePreview(channelsToSelect[0]);
                                         }
                                     }
                                 }
 
-                                setChannelContent((prev) => {
-                                    const updated = { ...prev };
-                                    if (activeAccordion) {
-                                        updated[activeAccordion] = {
-                                            ...updated[activeAccordion],
-                                            text: textContent,
-                                        };
-                                    } else {
-                                        connectedChannels.forEach((ch) => {
-                                            updated[ch.id] = {
-                                                ...(updated[ch.id] || { images: [] }),
-                                                text: textContent,
-                                            };
-                                        });
-                                    }
-                                    return updated;
+                                const updatedChannelContent: Record<string, ChannelContent> = { ...channelContent };
+                                const effectiveChannels = channelsToSelect.length > 0 ? channelsToSelect : (connectedChannels.length > 0 ? connectedChannels.map((c) => c.id) : []);
+
+                                effectiveChannels.forEach((chId) => {
+                                    updatedChannelContent[chId] = {
+                                        ...(updatedChannelContent[chId] || { images: [] }),
+                                        text: textContent,
+                                    };
                                 });
+                                setChannelContent(updatedChannelContent);
+
+                                let targetDate = date || new Date();
+                                let targetTimeSlot = timeSlot;
 
                                 // Auto-set Date & Time if detected
                                 if (schedule) {
                                     if (schedule.date) {
                                         const [y, m, d] = schedule.date.split("-").map(Number);
                                         if (y && m && d) {
-                                            const targetDate = new Date(y, m - 1, d);
+                                            targetDate = new Date(y, m - 1, d);
                                             setDate(targetDate);
                                         }
                                     }
                                     if (schedule.time) {
-                                        setTimeSlot(schedule.time);
+                                        targetTimeSlot = normalizeTimeSlot(schedule.time);
+                                        setTimeSlot(targetTimeSlot);
                                     }
+                                }
+
+                                // If user prompted to auto-schedule, directly schedule it automatically!
+                                if (autoSchedule && effectiveChannels.length > 0 && textContent.trim()) {
+                                    const scheduleAt = getValidScheduleDate(targetDate, targetTimeSlot);
+                                    const postsToCreate = effectiveChannels.map((chId) => ({
+                                        channelTypeId: chId,
+                                        content: textContent,
+                                        images: updatedChannelContent[chId]?.images || []
+                                    }));
+
+                                    toast.loading("AI is automatically scheduling your post...", { id: "ai-auto-schedule" });
+
+                                    createPostMutation.mutate({
+                                        posts: postsToCreate,
+                                        scheduledAt: scheduleAt.toISOString(),
+                                    }, {
+                                        onSuccess: () => {
+                                            toast.dismiss("ai-auto-schedule");
+                                        },
+                                        onError: () => {
+                                            toast.dismiss("ai-auto-schedule");
+                                        }
+                                    });
                                 }
                             }}
                         />

@@ -184,7 +184,7 @@ export async function POST(request: NextRequest) {
                 return NextResponse.json({ error: "Failed to create posts" }, { status: 500 })
             }
 
-            // Send Inngest event immediately for all queued posts
+            // Send Inngest event for queued posts
             if (postStatus === POST_STATUS.QUEUE && data && data.length > 0) {
                 try {
                     await inngest.send(
@@ -193,8 +193,16 @@ export async function POST(request: NextRequest) {
                             data: { postId: post.id }
                         }))
                     );
-                } catch (inngestErr) {
-                    console.error("Failed to send Inngest publish event:", inngestErr);
+                } catch (inngestErr: any) {
+                    const isConnRefused =
+                        inngestErr?.cause?.code === "ECONNREFUSED" ||
+                        inngestErr?.code === "ECONNREFUSED" ||
+                        String(inngestErr?.message || "").includes("fetch failed");
+                    if (isConnRefused) {
+                        console.warn("[Inngest] Local Inngest server not running on port 8288. Posts are saved to database queue.");
+                    } else {
+                        console.warn("[Inngest] Background dispatch error:", inngestErr?.message || inngestErr);
+                    }
                 }
             }
 

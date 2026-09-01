@@ -165,6 +165,21 @@ const PROVIDERS: Record<ChannelTypeEnum, any> = {
     [ChannelTypeEnum.TIKTOK]: createProvider(ChannelTypeEnum.TIKTOK),
 }
 
+export function isProviderConfigured(type: ChannelTypeEnum): boolean {
+  try {
+    const clientId = process.env[`${type}_CLIENT_ID`]?.replace(/^["']|["']$/g, '').trim();
+    const authUrl = process.env[`${type}_AUTH_URL`];
+    if (!clientId || !authUrl) return false;
+    const lower = clientId.toLowerCase();
+    if (lower.includes("your-") || lower.includes("placeholder") || lower.includes("todo")) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function getOAuthProvider(type:ChannelTypeEnum) {
    return PROVIDERS[type];
 }

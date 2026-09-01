@@ -17,13 +17,17 @@ import { Spinner } from '../ui/spinner';
 function ChannelTabContent() {
     const searchParams = useSearchParams()
     const queryClient = useQueryClient()
+    const [connectingId, setConnectingId] = useState<string | null>(null)
+    const [disconnectingId, setDisconnectingId] = useState<string | null>(null)
 
     const { data: channelsData, isPending } = useQuery({
         queryKey: ["channels"],
         queryFn: async () => {
             const res = await fetch("/api/channel");
-            const data = await res.json();
-            return data
+            if (!res.ok) {
+                throw new Error("Failed to fetch channels");
+            }
+            return res.json();
         }
     })
     const channels = (channelsData?.channels || []) as ChannelType[]
@@ -32,19 +36,33 @@ function ChannelTabContent() {
         const connected = searchParams.get("connected")
         const error = searchParams.get("error")
         const channelType = searchParams.get("channelType")
+        const isDemo = searchParams.get("demo") === "true"
 
         if (!connected && !error) return
         queryClient.invalidateQueries({ queryKey: ["channels"] })
-        if (connected) {
-            toast.success(`Successfully connected to ${channelType}`)
+        if (connected === "true") {
+            if (isDemo) {
+                toast.success(`Connected demo ${channelType} account (Configure API keys in .env.local for live OAuth)`)
+            } else {
+                toast.success(`Successfully connected to ${channelType}`)
+            }
         }
         if (error) {
-            toast.error(`Failed to connect to ${channelType}`)
+            toast.error(`Failed to connect to ${channelType || 'channel'}: ${error}`)
         }
+
+        // Clean up URL query parameters
+        const url = new URL(window.location.href)
+        url.searchParams.delete("connected")
+        url.searchParams.delete("error")
+        url.searchParams.delete("channelType")
+        url.searchParams.delete("demo")
+        window.history.replaceState({}, "", url.toString())
     }, [queryClient, searchParams])
 
     const connectMutation = useMutation({
         mutationFn: async (channelTypeId: string) => {
+            setConnectingId(channelTypeId)
             const res = await fetch("/api/channel/connect", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -54,16 +72,28 @@ function ChannelTabContent() {
             if (!res.ok) throw new Error(data.error || "Failed to start connection")
             return data
         },
-        onSuccess: ({ url }) => {
-            window.location.href = url
+        onSuccess: (data) => {
+            if (data.connected) {
+                queryClient.invalidateQueries({ queryKey: ["channels"] })
+                if (data.demo) {
+                    toast.success(`Connected demo ${data.channelType} account`)
+                } else {
+                    toast.success(`Connected ${data.channelType || 'channel'} successfully`)
+                }
+                setConnectingId(null)
+            } else if (data.url) {
+                window.location.assign(data.url)
+            }
         },
         onError: (error: Error) => {
+            setConnectingId(null)
             toast.error(error.message || "Failed to start connection")
         },
     })
 
     const disconnectMutation = useMutation({
         mutationFn: async (userChannelId: string) => {
+            setDisconnectingId(userChannelId)
             const res = await fetch("/api/channel/disconnect", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -74,25 +104,29 @@ function ChannelTabContent() {
             return data
         },
         onSuccess: () => {
+            setDisconnectingId(null)
             toast.success("Channel disconnected successfully")
             queryClient.invalidateQueries({ queryKey: ["channels"] })
         },
         onError: (error: Error) => {
+            setDisconnectingId(null)
             console.error("Disconnect error:", error)
             toast.error("Failed to disconnect channel")
         },
     })
 
     const handleConnect = (channelTypeId: string) => {
-        if (!channelTypeId) return
-        if (connectMutation.isPending) return
+        if (!channelTypeId || connectingId || disconnectingId) return
         connectMutation.mutate(channelTypeId)
     }
+
     const handleDisconnect = (userChannelId: string) => {
-        if (!userChannelId) return
-        if (disconnectMutation.isPending) return
+        if (!userChannelId || connectingId || disconnectingId) return
         disconnectMutation.mutate(userChannelId)
     }
+
+    const isActionRunning = Boolean(connectingId || disconnectingId)
+
     return (
         <Card>
             <CardHeader>
@@ -117,9 +151,12 @@ function ChannelTabContent() {
                     ) : (
                         channels?.map((channel) => {
                             const icon = getChannelIcon(channel.type)
+                            const isThisConnecting = connectingId === channel.id
+                            const isThisDisconnecting = disconnectingId === channel.user_channel_id
+
                             return (
                                 <div key={channel.id}
-                                    className='flex items-center justify-between rounded-xl border p-4'
+                                    className='flex items-center justify-between rounded-xl border p-4 transition-colors'
                                 >
                                     <div className='flex items-center gap-3'>
                                         <span className='relative'>
@@ -131,8 +168,7 @@ function ChannelTabContent() {
                                                 />
                                             ) : null}
 
-                                            <div className={cn(`absolute -right-1 bottom-0 p-0.5 bg-white dark:bg-background rounded-xs
-                                           `,
+                                            <div className={cn(`absolute -right-1 bottom-0 p-0.5 bg-white dark:bg-background rounded-xs`,
                                                 {
                                                     "bg-transparent p-0 rounded-full -bottom-1 -right-0.5": channel.connected
                                                 }
@@ -145,18 +181,34 @@ function ChannelTabContent() {
                                             </div>
                                         </span>
 
-                                        <span className='font-medium'>{channel.name}</span>
+                                        <div className="flex flex-col">
+                                            <span className='font-medium'>{channel.name}</span>
+                                            {channel.handle && (
+                                                <span className='text-xs text-muted-foreground'>{channel.handle}</span>
+                                            )}
+                                        </div>
                                     </div>
 
-                                    <Button variant={channel.connected ? "destructive" : "default"} size="sm"
-                                        disabled={connectMutation.isPending || disconnectMutation.isPending}
+                                    <Button 
+                                        variant={channel.connected ? "destructive" : "default"} 
+                                        size="sm"
+                                        disabled={isActionRunning}
                                         onClick={() => channel.connected ? handleDisconnect(channel.user_channel_id!) : handleConnect(channel.id!)}
+                                        className="min-w-[90px]"
                                     >
-                                        {(connectMutation.isPending && connectMutation.variables === channel.id ||
-                                          disconnectMutation.isPending && disconnectMutation.variables === channel.user_channel_id) && (
-                                            <Spinner className='size-4' />
+                                        {isThisConnecting ? (
+                                            <>
+                                                <Spinner className='size-3.5 mr-1.5' />
+                                                <span>Connecting</span>
+                                            </>
+                                        ) : isThisDisconnecting ? (
+                                            <>
+                                                <Spinner className='size-3.5 mr-1.5' />
+                                                <span>Disconnecting</span>
+                                            </>
+                                        ) : (
+                                            channel.connected ? "Disconnect" : "Connect"
                                         )}
-                                        {channel.connected ? "Disconnect" : "Connect"}
                                     </Button>
                                 </div>
                             )
@@ -168,14 +220,9 @@ function ChannelTabContent() {
     )
 }
 
-
-
-
-
-
 const ChannelsTab = () => {
     return (
-        <Suspense fallback={<div className="text-sm text-muted-foreground">Loading channels...</div>}>
+        <Suspense fallback={<div className="text-sm text-muted-foreground p-4">Loading channels...</div>}>
             <ChannelTabContent />
         </Suspense>
     )

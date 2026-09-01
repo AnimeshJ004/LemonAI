@@ -42,12 +42,16 @@ export async function POST(
                 return NextResponse.json({error:"Failed to update post"}, {status:500});
             }
             
-            await inngest.send({
-                name: "post/publish.requested",
-                data: {
-                    postId: id
-                }
-            });
+            try {
+                await inngest.send({
+                    name: "post/publish.requested",
+                    data: {
+                        postId: id
+                    }
+                });
+            } catch (inngestErr: any) {
+                console.warn("[Inngest] Post queued in database. Local inngest server not reachable:", inngestErr?.message || inngestErr);
+            }
             return NextResponse.json({success:true});
         
     } catch (error) {

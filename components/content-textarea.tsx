@@ -212,19 +212,6 @@ const ContentTextarea = ({
                 </EmojiPicker>
               </PopoverContent>
             </Popover>
-            <Separator orientation="vertical" className="mx-1 h-4" />
-            {showAIAssistant && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-8 gap-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 hover:text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-950/30"
-                onClick={onAIAssistantClick}
-                disabled={disabled}
-              >
-                <Wand2Icon className="h-3.5 w-3.5" />
-                AI Assistant
-              </Button>
-            )}
           </div>
           {renderToolbarRight && (
             <div className="flex items-center gap-2">{renderToolbarRight}</div>

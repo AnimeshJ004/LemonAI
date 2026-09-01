@@ -79,7 +79,20 @@ export function ScheduleDatePicker({
   }, [availableTimeOptions, setTime, time])
 
   const isDatePassed = date ? isBefore(date, new Date()) && !isSameDay(date, new Date()) : false
-  const isTimeNotAvailable = time ? !availableTimeOptions.includes(time) : false
+  const isTimeNotAvailable = React.useMemo(() => {
+    if (!time) return false;
+    if (!date || !isSameDay(date, new Date())) return false;
+    const match = time.trim().match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+    if (!match) return false;
+    let h = parseInt(match[1], 10);
+    const m = match[2] ? parseInt(match[2], 10) : 0;
+    const meridiem = match[3] ? match[3].toUpperCase() : (h >= 12 ? "PM" : "AM");
+    if (meridiem === "PM" && h !== 12) h += 12;
+    if (meridiem === "AM" && h === 12) h = 0;
+    const candidate = new Date(date);
+    candidate.setHours(h, m, 0, 0);
+    return isBefore(candidate, new Date());
+  }, [date, time]);
 
   const handleTimeChange = (newTime: string) => {
     setTime(newTime)

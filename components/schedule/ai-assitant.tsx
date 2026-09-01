@@ -20,6 +20,7 @@ const QUICK_ACTIONS = [
 export interface AIAssistantGeneratedData {
   content: string
   schedule?: { date: string; time: string } | null
+  autoSchedule?: boolean
   channels?: string[] | null
 }
 

@@ -1,4 +1,6 @@
 "use client"
+import { Suspense, useState, useEffect } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import Image from "next/image"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -9,9 +11,26 @@ import { useTheme } from "next-themes"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 
-const SettingsPage = () => {
+function SettingsContent() {
   const { user } = useUser()
   const { theme, setTheme } = useTheme()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+
+  const tabParam = searchParams.get("tab") || "channels"
+  const [activeTab, setActiveTab] = useState(tabParam)
+
+  useEffect(() => {
+    if (tabParam) {
+      setActiveTab(tabParam)
+    }
+  }, [tabParam])
+
+  const handleTabChange = (val: string) => {
+    setActiveTab(val)
+    router.replace(`/settings?tab=${val}`, { scroll: false })
+  }
+
   return (
     <div className="w-full">
       <div className="max-w-5xl mx-auto w-full h-full">
@@ -20,7 +39,7 @@ const SettingsPage = () => {
         </div>
 
         <div>
-          <Tabs defaultValue="channels">
+          <Tabs value={activeTab} onValueChange={handleTabChange}>
             <div className="mb-6 w-full border-b">
               <TabsList variant="line" className="w-fit space-x-4
               group-data-horizontal/tabs:h-12
@@ -43,7 +62,7 @@ const SettingsPage = () => {
                   <CardTitle>
                     Your Profile
                   </CardTitle>
-                  <CardDescription>Managr youe account information</CardDescription>
+                  <CardDescription>Manage your account information</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-4">
@@ -111,6 +130,14 @@ const SettingsPage = () => {
         </div>
       </div>
     </div>
+  )
+}
+
+const SettingsPage = () => {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading settings...</div>}>
+      <SettingsContent />
+    </Suspense>
   )
 }
 

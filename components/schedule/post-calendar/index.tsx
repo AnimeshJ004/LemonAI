@@ -118,7 +118,7 @@ export function PostCalendar({
         step={isWeekView ? 15 : 60}
         timeslots={10}
         min={new Date(2026, 0, 1, 0, 0)}
-        max={new Date(2026, 0, 1, 22, 0)}
+        max={new Date(2026, 0, 1, 23, 59)}
         onNavigate={onDateChange}
         view={view === "month" ? Views.MONTH : Views.WEEK}
         onView={(v) => onViewChange(v === Views.MONTH ? "month" : "week")}
@@ -154,6 +154,9 @@ export function PostCalendar({
             const channel = event.user_channels?.channel_types
             const Icon = getChannelIcon(channel?.type || undefined)
             const color = channel?.color || "#000000"
+            const eventDate = event.scheduled_at ? new Date(event.scheduled_at) : (event.start ? new Date(event.start) : new Date())
+            const isValidDate = !isNaN(eventDate.getTime())
+
             return (
               <>
                 <div
@@ -168,7 +171,7 @@ export function PostCalendar({
                       background: color
                     }} />}
                   <span className="text-xs truncate max-w-[100px]">{event?.title}</span>
-                  <span className="font-semibold">{format(event.scheduled_at, "h:mm a")}</span>
+                  <span className="font-semibold">{isValidDate ? format(eventDate, "h:mm a") : ""}</span>
                 </div>
               </>
             )

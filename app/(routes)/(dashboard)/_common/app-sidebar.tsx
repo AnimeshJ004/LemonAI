@@ -8,7 +8,7 @@ import { Calendar, CreditCard, Lightbulb, Plus, PlusCircleIcon, Settings } from 
 import { useSidebar } from '@/components/ui/sidebar';
 import Logo from '@/components/logo';
 import { Button } from '@/components/ui/button';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
 import { getChannelIcon, getChannelUrl, getChannelProfileUrl } from '@/constants/channels';
 import { ChannelType } from '@/types/channel.type';
@@ -18,6 +18,7 @@ import ChannelAvatar from '@/components/channel-avatar';
 import { toast } from 'sonner';
 import { useState } from 'react';
 import CreatePostDialog from '@/components/schedule/create-post-dialog';
+import { Spinner } from '@/components/ui/spinner';
 
 const mainNav = [
   { name: "Ideas", href: "/ideas", icon: Lightbulb },
@@ -31,10 +32,13 @@ const AppSidebar = () => {
   const { state } = useSidebar()
   const isCollapsed = state === "collapsed"
   const { user } = useUser()
+  const queryClient = useQueryClient()
   const [isCreatePostOpen, setIsCreatePostOpen] = useState<boolean>(false)
+  const [connectingId, setConnectingId] = useState<string | null>(null)
 
-   const connectMutation = useMutation({
+  const connectMutation = useMutation({
     mutationFn: async (channelTypeId: string) => {
+      setConnectingId(channelTypeId)
       const res = await fetch("/api/channel/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -48,11 +52,22 @@ const AppSidebar = () => {
       }
       return data
     },
-    onSuccess: ({url}) => {
-      window.location.href = url
+    onSuccess: (data) => {
+      if (data.connected) {
+        queryClient.invalidateQueries({ queryKey: ["channels"] })
+        if (data.demo) {
+          toast.success(`Connected demo ${data.channelType} account`)
+        } else {
+          toast.success(`Connected ${data.channelType || 'channel'} successfully`)
+        }
+        setConnectingId(null)
+      } else if (data.url) {
+        window.location.assign(data.url)
+      }
     },
-    onError: () => {
-      toast.error("Failed to connect channel")
+    onError: (err: any) => {
+      setConnectingId(null)
+      toast.error(err?.message || "Failed to connect channel")
     }
   })
 
@@ -60,8 +75,10 @@ const AppSidebar = () => {
     queryKey: ["channels"],
     queryFn: async () => {
       const res = await fetch("/api/channel");
-      const data = await res.json();
-      return data
+      if (!res.ok) {
+        throw new Error("Failed to fetch channels");
+      }
+      return res.json();
     }
   })
   
@@ -185,26 +202,34 @@ const AppSidebar = () => {
                       >
                        <button
                         className='w-full flex items-center gap-2'
-                        disabled={connectMutation.isPending}
+                        disabled={Boolean(connectingId)}
                         onClick={() => handleConnect(channel.id)}
                        >
                           <span>
                              <div className='relative'>
-                              {icon ? (
+                              {connectingId === channel.id ? (
+                                <div className="size-6 flex items-center justify-center">
+                                  <Spinner className="size-4" />
+                                </div>
+                              ) : icon ? (
                                 <HugeiconsIcon icon={icon} color='currentColor'
                                 className=" text-white! size-6! p-1 rounded-sm"
                                   style={{ background: channel.color}}
                                 />
                               ) : null}
 
-                              <div className={`absolute -right-1 bottom-0 p-0.5
-                                 bg-white dark:bg-background rounded-xs
-                                `}>
-                                  <HugeiconsIcon icon={PlusSignIcon} className="size-2!" />
-                                </div>
+                              {connectingId !== channel.id && (
+                                <div className={`absolute -right-1 bottom-0 p-0.5
+                                   bg-white dark:bg-background rounded-xs
+                                  `}>
+                                    <HugeiconsIcon icon={PlusSignIcon} className="size-2!" />
+                                  </div>
+                              )}
                              </div>
                           </span>
-                          <span className='truncate'>{channel.name}</span>
+                          <span className='truncate'>
+                            {connectingId === channel.id ? "Connecting..." : channel.name}
+                          </span>
                        </button>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
