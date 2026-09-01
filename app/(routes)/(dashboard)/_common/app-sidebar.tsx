@@ -20,6 +20,8 @@ import { useState } from 'react';
 import CreatePostDialog from '@/components/schedule/create-post-dialog';
 import { Spinner } from '@/components/ui/spinner';
 
+import { ConnectChannelDialog } from '@/components/settings/connect-channel-dialog';
+
 const mainNav = [
   { name: "Ideas", href: "/ideas", icon: Lightbulb },
   { name: "Schedule", href: "/schedule", icon: Calendar },
@@ -34,42 +36,8 @@ const AppSidebar = () => {
   const { user } = useUser()
   const queryClient = useQueryClient()
   const [isCreatePostOpen, setIsCreatePostOpen] = useState<boolean>(false)
-  const [connectingId, setConnectingId] = useState<string | null>(null)
-
-  const connectMutation = useMutation({
-    mutationFn: async (channelTypeId: string) => {
-      setConnectingId(channelTypeId)
-      const res = await fetch("/api/channel/connect", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          channelTypeId,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to connect channel")
-      }
-      return data
-    },
-    onSuccess: (data) => {
-      if (data.connected) {
-        queryClient.invalidateQueries({ queryKey: ["channels"] })
-        if (data.demo) {
-          toast.success(`Connected demo ${data.channelType} account`)
-        } else {
-          toast.success(`Connected ${data.channelType || 'channel'} successfully`)
-        }
-        setConnectingId(null)
-      } else if (data.url) {
-        window.location.assign(data.url)
-      }
-    },
-    onError: (err: any) => {
-      setConnectingId(null)
-      toast.error(err?.message || "Failed to connect channel")
-    }
-  })
+  const [selectedChannelForConnect, setSelectedChannelForConnect] = useState<ChannelType | null>(null)
+  const [isConnectDialogOpen, setIsConnectDialogOpen] = useState<boolean>(false)
 
   const {data:channelsData, isPending} = useQuery({
     queryKey: ["channels"],
@@ -90,10 +58,9 @@ const AppSidebar = () => {
   const totalChannels = channelsData?.totalChannels || 0;
   const limitedChannels = unconnectedChannels.slice(0, 4);
 
-
-  const handleConnect = (channelTypeId: string) => {
-    if(connectMutation.isPending) return;
-    connectMutation.mutate(channelTypeId);
+  const handleConnect = (channel: ChannelType) => {
+    setSelectedChannelForConnect(channel)
+    setIsConnectDialogOpen(true)
   }
  
 
@@ -202,33 +169,26 @@ const AppSidebar = () => {
                       >
                        <button
                         className='w-full flex items-center gap-2'
-                        disabled={Boolean(connectingId)}
-                        onClick={() => handleConnect(channel.id)}
+                        onClick={() => handleConnect(channel)}
                        >
                           <span>
                              <div className='relative'>
-                              {connectingId === channel.id ? (
-                                <div className="size-6 flex items-center justify-center">
-                                  <Spinner className="size-4" />
-                                </div>
-                              ) : icon ? (
+                              {icon ? (
                                 <HugeiconsIcon icon={icon} color='currentColor'
                                 className=" text-white! size-6! p-1 rounded-sm"
                                   style={{ background: channel.color}}
                                 />
                               ) : null}
 
-                              {connectingId !== channel.id && (
-                                <div className={`absolute -right-1 bottom-0 p-0.5
-                                   bg-white dark:bg-background rounded-xs
-                                  `}>
-                                    <HugeiconsIcon icon={PlusSignIcon} className="size-2!" />
-                                  </div>
-                              )}
+                              <div className={`absolute -right-1 bottom-0 p-0.5
+                                 bg-white dark:bg-background rounded-xs
+                                `}>
+                                  <HugeiconsIcon icon={PlusSignIcon} className="size-2!" />
+                                </div>
                              </div>
                           </span>
                           <span className='truncate'>
-                            {connectingId === channel.id ? "Connecting..." : channel.name}
+                            {channel.name}
                           </span>
                        </button>
                       </SidebarMenuButton>
@@ -270,10 +230,18 @@ const AppSidebar = () => {
         </div>
       </SidebarFooter>
     </Sidebar>
-     <CreatePostDialog
-        open={isCreatePostOpen}
-        onOpenChange={setIsCreatePostOpen}
-      />
+    <CreatePostDialog
+      open={isCreatePostOpen}
+      onOpenChange={setIsCreatePostOpen}
+    />
+    <ConnectChannelDialog
+      open={isConnectDialogOpen}
+      onOpenChange={setIsConnectDialogOpen}
+      channel={selectedChannelForConnect}
+      onSuccess={() => {
+        queryClient.invalidateQueries({ queryKey: ["channels"] })
+      }}
+    />
     </>
   )
 }
