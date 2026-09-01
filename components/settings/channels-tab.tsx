@@ -14,11 +14,15 @@ import { cn } from '@/lib/utils';
 import { Button } from '../ui/button';
 import { Spinner } from '../ui/spinner';
 
+import { ConnectChannelDialog } from './connect-channel-dialog';
+
 function ChannelTabContent() {
     const searchParams = useSearchParams()
     const queryClient = useQueryClient()
     const [connectingId, setConnectingId] = useState<string | null>(null)
     const [disconnectingId, setDisconnectingId] = useState<string | null>(null)
+    const [selectedChannelForConnect, setSelectedChannelForConnect] = useState<ChannelType | null>(null)
+    const [isConnectDialogOpen, setIsConnectDialogOpen] = useState(false)
 
     const { data: channelsData, isPending } = useQuery({
         queryKey: ["channels"],
@@ -60,37 +64,6 @@ function ChannelTabContent() {
         window.history.replaceState({}, "", url.toString())
     }, [queryClient, searchParams])
 
-    const connectMutation = useMutation({
-        mutationFn: async (channelTypeId: string) => {
-            setConnectingId(channelTypeId)
-            const res = await fetch("/api/channel/connect", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ channelTypeId }),
-            })
-            const data = await res.json()
-            if (!res.ok) throw new Error(data.error || "Failed to start connection")
-            return data
-        },
-        onSuccess: (data) => {
-            if (data.connected) {
-                queryClient.invalidateQueries({ queryKey: ["channels"] })
-                if (data.demo) {
-                    toast.success(`Connected demo ${data.channelType} account`)
-                } else {
-                    toast.success(`Connected ${data.channelType || 'channel'} successfully`)
-                }
-                setConnectingId(null)
-            } else if (data.url) {
-                window.location.assign(data.url)
-            }
-        },
-        onError: (error: Error) => {
-            setConnectingId(null)
-            toast.error(error.message || "Failed to start connection")
-        },
-    })
-
     const disconnectMutation = useMutation({
         mutationFn: async (userChannelId: string) => {
             setDisconnectingId(userChannelId)
@@ -115,9 +88,9 @@ function ChannelTabContent() {
         },
     })
 
-    const handleConnect = (channelTypeId: string) => {
-        if (!channelTypeId || connectingId || disconnectingId) return
-        connectMutation.mutate(channelTypeId)
+    const handleConnectClick = (channel: ChannelType) => {
+        setSelectedChannelForConnect(channel)
+        setIsConnectDialogOpen(true)
     }
 
     const handleDisconnect = (userChannelId: string) => {
@@ -128,95 +101,106 @@ function ChannelTabContent() {
     const isActionRunning = Boolean(connectingId || disconnectingId)
 
     return (
-        <Card>
-            <CardHeader>
-                <CardTitle>Channels</CardTitle>
-                <CardDescription>
-                    Connect your social media accounts to start scheduling
-                </CardDescription>
-            </CardHeader>
+        <>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Channels</CardTitle>
+                    <CardDescription>
+                        Connect your social media accounts directly to start scheduling posts
+                    </CardDescription>
+                </CardHeader>
 
-            <CardContent>
-                <div className='space-y-3'>
-                    {isPending ? (
-                        Array.from({ length: 6 }).map((_, index) => (
-                            <div key={index} className='flex items-center justify-between rounded-xl border p-4'>
-                                <div className='flex items-center gap-3'>
-                                    <Skeleton className='size-6 rounded-sm bg-secondary' />
-                                    <Skeleton className='h-5 w-24 bg-secondary' />
-                                </div>
-                                <Skeleton className='h-8 w-20 bg-secondary' />
-                            </div>
-                        ))
-                    ) : (
-                        channels?.map((channel) => {
-                            const icon = getChannelIcon(channel.type)
-                            const isThisConnecting = connectingId === channel.id
-                            const isThisDisconnecting = disconnectingId === channel.user_channel_id
-
-                            return (
-                                <div key={channel.id}
-                                    className='flex items-center justify-between rounded-xl border p-4 transition-colors'
-                                >
+                <CardContent>
+                    <div className='space-y-3'>
+                        {isPending ? (
+                            Array.from({ length: 6 }).map((_, index) => (
+                                <div key={index} className='flex items-center justify-between rounded-xl border p-4'>
                                     <div className='flex items-center gap-3'>
-                                        <span className='relative'>
-                                            {icon ? (
-                                                <HugeiconsIcon icon={icon}
-                                                    color='currentColor'
-                                                    className=" text-white! size-6! p-1 rounded-sm"
-                                                    style={{ background: channel.color }}
-                                                />
-                                            ) : null}
+                                        <Skeleton className='size-6 rounded-sm bg-secondary' />
+                                        <Skeleton className='h-5 w-24 bg-secondary' />
+                                    </div>
+                                    <Skeleton className='h-8 w-20 bg-secondary' />
+                                </div>
+                            ))
+                        ) : (
+                            channels?.map((channel) => {
+                                const icon = getChannelIcon(channel.type)
+                                const isThisConnecting = connectingId === channel.id
+                                const isThisDisconnecting = disconnectingId === channel.user_channel_id
 
-                                            <div className={cn(`absolute -right-1 bottom-0 p-0.5 bg-white dark:bg-background rounded-xs`,
-                                                {
-                                                    "bg-transparent p-0 rounded-full -bottom-1 -right-0.5": channel.connected
-                                                }
-                                            )}>
-                                                {channel.connected ? (
-                                                    <div className='size-2.5 bg-primary rounded-full' />
-                                                ) : (
-                                                    <HugeiconsIcon icon={PlusSignIcon} className="size-2!" />
+                                return (
+                                    <div key={channel.id}
+                                        className='flex items-center justify-between rounded-xl border p-4 transition-colors hover:border-primary/20'
+                                    >
+                                        <div className='flex items-center gap-3'>
+                                            <span className='relative'>
+                                                {icon ? (
+                                                    <HugeiconsIcon icon={icon}
+                                                        color='currentColor'
+                                                        className=" text-white! size-6! p-1 rounded-sm"
+                                                        style={{ background: channel.color }}
+                                                    />
+                                                ) : null}
+
+                                                <div className={cn(`absolute -right-1 bottom-0 p-0.5 bg-white dark:bg-background rounded-xs`,
+                                                    {
+                                                        "bg-transparent p-0 rounded-full -bottom-1 -right-0.5": channel.connected
+                                                    }
+                                                )}>
+                                                    {channel.connected ? (
+                                                        <div className='size-2.5 bg-primary rounded-full' />
+                                                    ) : (
+                                                        <HugeiconsIcon icon={PlusSignIcon} className="size-2!" />
+                                                    )}
+                                                </div>
+                                            </span>
+
+                                            <div className="flex flex-col">
+                                                <span className='font-medium'>{channel.name}</span>
+                                                {channel.handle && (
+                                                    <span className='text-xs text-muted-foreground font-mono'>{channel.handle}</span>
                                                 )}
                                             </div>
-                                        </span>
-
-                                        <div className="flex flex-col">
-                                            <span className='font-medium'>{channel.name}</span>
-                                            {channel.handle && (
-                                                <span className='text-xs text-muted-foreground'>{channel.handle}</span>
-                                            )}
                                         </div>
-                                    </div>
 
-                                    <Button 
-                                        variant={channel.connected ? "destructive" : "default"} 
-                                        size="sm"
-                                        disabled={isActionRunning}
-                                        onClick={() => channel.connected ? handleDisconnect(channel.user_channel_id!) : handleConnect(channel.id!)}
-                                        className="min-w-[90px]"
-                                    >
-                                        {isThisConnecting ? (
-                                            <>
-                                                <Spinner className='size-3.5 mr-1.5' />
-                                                <span>Connecting</span>
-                                            </>
-                                        ) : isThisDisconnecting ? (
-                                            <>
-                                                <Spinner className='size-3.5 mr-1.5' />
-                                                <span>Disconnecting</span>
-                                            </>
-                                        ) : (
-                                            channel.connected ? "Disconnect" : "Connect"
-                                        )}
-                                    </Button>
-                                </div>
-                            )
-                        })
-                    )}
-                </div>
-            </CardContent>
-        </Card>
+                                        <Button 
+                                            variant={channel.connected ? "destructive" : "default"} 
+                                            size="sm"
+                                            disabled={isActionRunning}
+                                            onClick={() => channel.connected ? handleDisconnect(channel.user_channel_id!) : handleConnectClick(channel)}
+                                            className="min-w-[90px]"
+                                        >
+                                            {isThisConnecting ? (
+                                                <>
+                                                    <Spinner className='size-3.5 mr-1.5' />
+                                                    <span>Connecting</span>
+                                                </>
+                                            ) : isThisDisconnecting ? (
+                                                <>
+                                                    <Spinner className='size-3.5 mr-1.5' />
+                                                    <span>Disconnecting</span>
+                                                </>
+                                            ) : (
+                                                channel.connected ? "Disconnect" : "Connect"
+                                            )}
+                                        </Button>
+                                    </div>
+                                )
+                            })
+                        )}
+                    </div>
+                </CardContent>
+            </Card>
+
+            <ConnectChannelDialog
+                open={isConnectDialogOpen}
+                onOpenChange={setIsConnectDialogOpen}
+                channel={selectedChannelForConnect}
+                onSuccess={() => {
+                    queryClient.invalidateQueries({ queryKey: ["channels"] })
+                }}
+            />
+        </>
     )
 }
 
