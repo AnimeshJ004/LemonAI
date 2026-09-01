@@ -1,9 +1,6 @@
 import { ChannelTypeEnum } from "@/constants/channels";
 import { encrypt } from "@/lib/encryption";
 import { getInsforgeServerClient } from "@/lib/insforge-server";
-import { getOAuthProvider, isProviderConfigured } from "@/lib/social-oauth";
-import { createPkcePair, getPkceCookieName } from "@/lib/social-oauth/pkce";
-import { createOAuthState } from "@/lib/social-oauth/state";
 import { BskyAgent } from "@atproto/api";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -15,7 +12,7 @@ export async function POST(request: NextRequest) {
         if (!userId) return NextResponse.json({ error: 'User not found' }, { status: 401 });
 
         const body = await request.json();
-        const { channelTypeId, handle, password, accessToken, providerAccountId, isManual, isDemo } = body;
+        const { channelTypeId, handle, password, accessToken, providerAccountId } = body;
         if(!channelTypeId) return NextResponse.json({ error: 'Channel type ID is required' }, { status: 400 });
 
         const {data:channelType, error} = await insforge.database
@@ -28,15 +25,15 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Channel type not found' }, { status: 404 });
         }
 
-        const redirectTo = `${APP_URL}/settings?tab=channels`;
-
-        // 1. Direct Bluesky login verification with BskyAgent
-        if (channelType.type === ChannelTypeEnum.BLUESKY && (password || (handle && password))) {
-            const rawIdentifier = (handle || process.env.BLUESKY_IDENTIFIER || "").trim();
-            const rawPassword = (password || process.env.BLUESKY_APP_PASSWORD || "").trim();
+        // 1. Bluesky Verification & Direct Connection
+        if (channelType.type === ChannelTypeEnum.BLUESKY) {
+            const rawIdentifier = (handle || "").trim();
+            const rawPassword = (password || "").trim();
 
             if (!rawIdentifier || !rawPassword) {
-                return NextResponse.json({ error: "Bluesky handle and App Password are required" }, { status: 400 });
+                return NextResponse.json({ 
+                    error: "Please enter both your Bluesky Handle (e.g. username.bsky.social) and App Password." 
+                }, { status: 400 });
             }
 
             const cleanIdentifier = rawIdentifier.replace(/^@/, '').trim();
@@ -74,7 +71,6 @@ export async function POST(request: NextRequest) {
                     channelType: channelType.type,
                     handle: formattedHandle,
                     profileImage,
-                    url: `${APP_URL}/settings?tab=channels&connected=true&channelType=${channelType.type}`
                 });
             } catch (bskyErr: any) {
                 console.error("Bluesky login failed:", bskyErr);
@@ -84,113 +80,55 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // 2. Direct manual credential connection for other platforms (Twitter, LinkedIn, Instagram, etc.)
-        if (isManual && handle) {
-            const formattedHandle = handle.trim().startsWith("@") ? handle.trim() : `@${handle.trim()}`;
-            const encryptedToken = accessToken ? encrypt(accessToken.trim()) : null;
+        // 2. Real Credentials Connection for Instagram, Facebook, Twitter, LinkedIn, Threads, YouTube, TikTok
+        const rawHandle = (handle || "").trim();
+        const rawToken = (accessToken || "").trim();
+        const rawAccountId = (providerAccountId || "").trim();
 
-            await insforge.database
-                .from("user_channels")
-                .upsert([
-                    {
-                        user_id: userId,
-                        channel_type_id: channelType.id,
-                        handle: formattedHandle,
-                        access_token: encryptedToken,
-                        provider_account_id: providerAccountId || null,
-                        is_connected: true,
-                        is_active: true,
-                        updated_at: new Date().toISOString(),
-                    }
-                ], { onConflict: "user_id,channel_type_id" });
-
-            return NextResponse.json({
-                success: true,
-                connected: true,
-                channelType: channelType.type,
-                handle: formattedHandle,
-                url: `${APP_URL}/settings?tab=channels&connected=true&channelType=${channelType.type}`
-            });
+        if (!rawHandle) {
+            return NextResponse.json({ 
+                error: `Please enter your ${channelType.name} account username, handle, or page name.` 
+            }, { status: 400 });
         }
 
-        // 3. Direct connect for Bluesky using fallback .env.local credentials
-        if (channelType.type === ChannelTypeEnum.BLUESKY && process.env.BLUESKY_IDENTIFIER && process.env.BLUESKY_APP_PASSWORD) {
-            const bskyHandle = process.env.BLUESKY_IDENTIFIER;
-            const formattedHandle = bskyHandle.startsWith("@") ? bskyHandle : `@${bskyHandle}`;
-            const encryptedPass = encrypt(process.env.BLUESKY_APP_PASSWORD);
-
-            await insforge.database
-                .from("user_channels")
-                .upsert([
-                    {
-                        user_id: userId,
-                        channel_type_id: channelType.id,
-                        handle: formattedHandle,
-                        access_token: encryptedPass,
-                        is_connected: true,
-                        is_active: true,
-                        updated_at: new Date().toISOString(),
-                    }
-                ], { onConflict: "user_id,channel_type_id" });
-
-            return NextResponse.json({
-                success: true,
-                connected: true,
-                channelType: channelType.type,
-                url: `${APP_URL}/settings?tab=channels&connected=true&channelType=${channelType.type}`
-            });
+        if (!rawToken) {
+            return NextResponse.json({ 
+                error: `Please enter your ${channelType.name} Access Token or API Key.` 
+            }, { status: 400 });
         }
 
-        // 4. Real OAuth Authorization Flow (if configured)
-        const isConfigured = isProviderConfigured(channelType.type as ChannelTypeEnum);
+        let profileImage: string | null = null;
+        let verifiedAccountId = rawAccountId || null;
 
-        if (isConfigured && !isDemo) {
+        // Try to fetch profile image / verify token if Meta or Twitter
+        if (channelType.type === ChannelTypeEnum.INSTAGRAM || channelType.type === ChannelTypeEnum.FACEBOOK) {
             try {
-                const provider = getOAuthProvider(channelType.type as ChannelTypeEnum);
-                const state = createOAuthState({
-                    userId,
-                    channelTypeId: channelType.id,
-                    channelType: channelType.type,
-                    redirectTo,
-                });
-
-                const callbackUrl = `${APP_URL}/api/channel/callback`;
-                const pkce = channelType.type === ChannelTypeEnum.TWITTER ? createPkcePair() : null;
-
-                const url = provider.getAuthorizationUrl({
-                    state,
-                    redirectUri: callbackUrl,
-                    codeChallenge: pkce?.codeChallenge,
-                    codeChallengeMethod: pkce?.codeChallengeMethod,
-                });
-
-                const response = NextResponse.json({ url, isOAuth: true });
-
-                if (pkce) {
-                    response.cookies.set(getPkceCookieName(state), pkce.codeVerifier, {
-                        httpOnly: true,
-                        secure: true,
-                        sameSite: 'lax',
-                        path: '/',
-                        maxAge: 60 * 10,
-                    });
+                const metaRes = await fetch(`https://graph.facebook.com/v19.0/me?fields=id,name,picture&access_token=${encodeURIComponent(rawToken)}`);
+                if (metaRes.ok) {
+                    const metaData = await metaRes.json();
+                    profileImage = metaData?.picture?.data?.url || null;
+                    if (!verifiedAccountId && metaData?.id) {
+                        verifiedAccountId = metaData.id;
+                    }
                 }
-
-                return response;
-            } catch (providerErr) {
-                console.error("Provider auth url generation failed:", providerErr);
+            } catch (metaErr) {
+                console.warn("Meta verification request failed:", metaErr);
             }
         }
 
-        // 5. Development Demo Fallback
-        const demoHandle = `@demo_${channelType.type.toLowerCase()}`;
+        const formattedHandle = rawHandle.startsWith("@") ? rawHandle : `@${rawHandle}`;
+        const encryptedToken = encrypt(rawToken);
+
         await insforge.database
             .from("user_channels")
             .upsert([
                 {
                     user_id: userId,
                     channel_type_id: channelType.id,
-                    handle: demoHandle,
+                    handle: formattedHandle,
+                    access_token: encryptedToken,
+                    provider_account_id: verifiedAccountId,
+                    profile_image: profileImage,
                     is_connected: true,
                     is_active: true,
                     updated_at: new Date().toISOString(),
@@ -200,9 +138,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({
             success: true,
             connected: true,
-            demo: true,
             channelType: channelType.type,
-            url: `${APP_URL}/settings?tab=channels&connected=true&channelType=${channelType.type}&demo=true`
+            handle: formattedHandle,
+            profileImage,
         });
         
     } catch (error: any) {

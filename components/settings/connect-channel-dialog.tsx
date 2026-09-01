@@ -4,13 +4,12 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ChannelType } from "@/types/channel.type"
 import { ChannelTypeEnum, getChannelIcon } from "@/constants/channels"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Spinner } from "@/components/ui/spinner"
 import { toast } from "sonner"
-import { KeyRound, Sparkles, ShieldCheck, CheckCircle2, Lock, ArrowRight, ExternalLink } from "lucide-react"
+import { KeyRound, ShieldCheck, ExternalLink, HelpCircle } from "lucide-react"
 
 interface ConnectChannelDialogProps {
     open: boolean
@@ -30,7 +29,6 @@ export function ConnectChannelDialog({
     const [accessToken, setAccessToken] = useState("")
     const [providerAccountId, setProviderAccountId] = useState("")
     const [isLoading, setIsLoading] = useState(false)
-    const [activeTab, setActiveTab] = useState("oauth")
 
     if (!channel) return null
 
@@ -40,49 +38,29 @@ export function ConnectChannelDialog({
     const isFacebook = channel.type === ChannelTypeEnum.FACEBOOK
     const isTwitter = channel.type === ChannelTypeEnum.TWITTER
     const isLinkedIn = channel.type === ChannelTypeEnum.LINKEDIN
+    const isThreads = channel.type === ChannelTypeEnum.THREADS || Boolean(channel.name?.toLowerCase().includes("thread"))
 
-    // 1-Click Official OAuth Flow (Meta Business / Twitter / LinkedIn)
-    const handleOfficialOAuthConnect = async () => {
-        setIsLoading(true)
-        try {
-            const res = await fetch("/api/channel/connect", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    channelTypeId: channel.id,
-                }),
-            })
+    const handleConnect = async (e: React.FormEvent) => {
+        e.preventDefault()
 
-            const data = await res.json()
-            if (!res.ok) {
-                throw new Error(data.error || "Failed to initiate official authorization")
+        if (isBluesky) {
+            if (!handle.trim()) {
+                toast.error("Please enter your Bluesky Handle (e.g. username.bsky.social)")
+                return
             }
-
-            if (data.isOAuth && data.url) {
-                window.location.assign(data.url)
-            } else if (data.connected) {
-                toast.success(`Connected ${channel.name} account successfully!`)
-                onSuccess?.()
-                onOpenChange(false)
+            if (!password.trim()) {
+                toast.error("Please enter your Bluesky App Password")
+                return
             }
-        } catch (err: any) {
-            console.error("OAuth error:", err)
-            toast.error(err?.message || "Failed to start official login")
-        } finally {
-            setIsLoading(false)
-        }
-    }
-
-    // Direct Credentials Verification (e.g. Bluesky App Password or Meta System User Token)
-    const handleConnectManual = async () => {
-        if (isBluesky && !password.trim()) {
-            toast.error("Please enter your Bluesky App Password")
-            return
-        }
-
-        if (!isBluesky && !handle.trim() && !accessToken.trim()) {
-            toast.error("Please provide your account handle or access token")
-            return
+        } else {
+            if (!handle.trim()) {
+                toast.error(`Please enter your ${channel.name} handle, username, or page name`)
+                return
+            }
+            if (!accessToken.trim()) {
+                toast.error(`Please enter your ${channel.name} Access Token or API Key`)
+                return
+            }
         }
 
         setIsLoading(true)
@@ -96,13 +74,12 @@ export function ConnectChannelDialog({
                     password: password.trim(),
                     accessToken: accessToken.trim(),
                     providerAccountId: providerAccountId.trim() || undefined,
-                    isManual: true,
                 }),
             })
 
             const data = await res.json()
             if (!res.ok) {
-                throw new Error(data.error || "Failed to connect channel")
+                throw new Error(data.error || `Failed to connect ${channel.name}`)
             }
 
             toast.success(`Successfully connected ${channel.name} (${data.handle || handle})!`)
@@ -114,34 +91,7 @@ export function ConnectChannelDialog({
             setProviderAccountId("")
         } catch (err: any) {
             console.error("Connect error:", err)
-            toast.error(err?.message || "Failed to connect channel")
-        } finally {
-            setIsLoading(false)
-        }
-    }
-
-    const handleQuickDemoConnect = async () => {
-        setIsLoading(true)
-        try {
-            const res = await fetch("/api/channel/connect", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    channelTypeId: channel.id,
-                    isDemo: true,
-                }),
-            })
-
-            const data = await res.json()
-            if (!res.ok) {
-                throw new Error(data.error || "Failed to connect demo channel")
-            }
-
-            toast.success(`Connected demo ${channel.name} account!`)
-            onSuccess?.()
-            onOpenChange(false)
-        } catch (err: any) {
-            toast.error(err?.message || "Failed to connect demo channel")
+            toast.error(err?.message || `Failed to connect ${channel.name}`)
         } finally {
             setIsLoading(false)
         }
@@ -149,7 +99,7 @@ export function ConnectChannelDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="sm:max-w-[500px] p-6">
+            <DialogContent className="sm:max-w-[480px] p-6">
                 <DialogHeader className="space-y-3 pb-2 border-b">
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
@@ -158,62 +108,130 @@ export function ConnectChannelDialog({
                                     icon={icon}
                                     color="currentColor"
                                     className="text-white size-9 p-2 rounded-xl shrink-0 shadow-sm"
-                                    style={{ background: channel.color || "#000" }}
+                                    style={{ background: channel.color || "#000000" }}
                                 />
                             )}
                             <div>
-                                <DialogTitle className="text-lg font-bold flex items-center gap-2">
-                                    <span>Connect {channel.name}</span>
-                                    {(isInstagram || isFacebook) && (
-                                        <span className="text-[11px] font-normal px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
-                                            Meta Business
-                                        </span>
-                                    )}
+                                <DialogTitle className="text-lg font-bold">
+                                    Connect {channel.name} Account
                                 </DialogTitle>
                                 <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                                    Enterprise security with AES-256 token encryption
+                                    Enter your credentials to enable automated publishing
                                 </DialogDescription>
                             </div>
                         </div>
 
-                        <div className="hidden sm:flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-900">
+                        <div className="flex items-center gap-1 text-[11px] text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-900">
                             <ShieldCheck className="size-3.5" />
-                            <span>Encrypted</span>
+                            <span>AES-256</span>
                         </div>
                     </div>
                 </DialogHeader>
 
-                {isBluesky ? (
-                    /* Bluesky Direct In-App Verification */
-                    <div className="space-y-4 py-3">
+                <form onSubmit={handleConnect} className="space-y-4 py-2">
+                    {/* Platform Specific Guidance */}
+                    {isBluesky && (
                         <div className="rounded-xl border border-blue-200 bg-blue-50/60 dark:border-blue-950 dark:bg-blue-950/30 p-3.5 space-y-1.5 text-xs text-blue-900 dark:text-blue-200">
                             <div className="flex items-center gap-1.5 font-semibold">
                                 <KeyRound className="size-3.5" />
-                                <span>Direct Bluesky Authentication:</span>
+                                <span>How to get your Bluesky App Password:</span>
                             </div>
                             <p className="leading-relaxed text-muted-foreground dark:text-blue-300/80">
-                                In your Bluesky app:{" "}
-                                <span className="font-medium text-foreground">Settings ➔ Privacy & Security ➔ App Passwords</span>{" "}
-                                and create an App Password.
+                                Open Bluesky ➔ <span className="font-medium text-foreground">Settings ➔ Privacy and Security ➔ App Passwords ➔ Add App Password</span>.
                             </p>
                         </div>
+                    )}
 
-                        <div className="space-y-1.5">
-                            <Label htmlFor="channel-handle" className="text-xs font-semibold">
-                                Bluesky Handle / Email
-                            </Label>
-                            <Input
-                                id="channel-handle"
-                                placeholder="e.g. username.bsky.social"
-                                value={handle}
-                                onChange={(e) => setHandle(e.target.value)}
-                                disabled={isLoading}
-                            />
+                    {(isInstagram || isFacebook) && (
+                        <div className="rounded-xl border border-purple-200 bg-purple-50/60 dark:border-purple-950 dark:bg-purple-950/30 p-3.5 space-y-1.5 text-xs text-purple-900 dark:text-purple-200">
+                            <div className="flex items-center gap-1.5 font-semibold">
+                                <KeyRound className="size-3.5" />
+                                <span>Meta Graph Access Token:</span>
+                            </div>
+                            <p className="leading-relaxed text-muted-foreground dark:text-purple-300/80">
+                                Get your Page Access Token or System User Token from <span className="font-medium text-foreground">Meta Business Suite</span> or <span className="font-medium text-foreground">Graph API Explorer</span>.
+                            </p>
                         </div>
+                    )}
 
+                    {isTwitter && (
+                        <div className="rounded-xl border border-sky-200 bg-sky-50/60 dark:border-sky-950 dark:bg-sky-950/30 p-3.5 space-y-1.5 text-xs text-sky-900 dark:text-sky-200">
+                            <div className="flex items-center gap-1.5 font-semibold">
+                                <KeyRound className="size-3.5" />
+                                <span>Twitter / X API Token:</span>
+                            </div>
+                            <p className="leading-relaxed text-muted-foreground dark:text-sky-300/80">
+                                Generate your Access Token / Bearer Token from the <span className="font-medium text-foreground">Twitter Developer Portal (developer.x.com)</span>.
+                            </p>
+                        </div>
+                    )}
+
+                    {isThreads && (
+                        <div className="rounded-xl border border-neutral-300 bg-neutral-100/80 dark:border-neutral-800 dark:bg-neutral-900/60 p-3.5 space-y-1.5 text-xs text-foreground">
+                            <div className="flex items-center gap-1.5 font-semibold">
+                                <KeyRound className="size-3.5" />
+                                <span>Threads API Token:</span>
+                            </div>
+                            <p className="leading-relaxed text-muted-foreground">
+                                Get your Threads Access Token from <span className="font-medium text-foreground">Meta for Developers (Threads API)</span>.
+                            </p>
+                        </div>
+                    )}
+
+                    {isLinkedIn && (
+                        <div className="rounded-xl border border-blue-200 bg-blue-50/60 dark:border-blue-950 dark:bg-blue-950/30 p-3.5 space-y-1.5 text-xs text-blue-900 dark:text-blue-200">
+                            <div className="flex items-center gap-1.5 font-semibold">
+                                <KeyRound className="size-3.5" />
+                                <span>LinkedIn Access Token:</span>
+                            </div>
+                            <p className="leading-relaxed text-muted-foreground dark:text-blue-300/80">
+                                Generate your OAuth Token or Member Access Token from the <span className="font-medium text-foreground">LinkedIn Developer Portal</span>.
+                            </p>
+                        </div>
+                    )}
+
+                    {/* Handle / Username Input */}
+                    <div className="space-y-1.5">
+                        <Label htmlFor="channel-handle" className="text-xs font-semibold">
+                            {isBluesky 
+                                ? "Bluesky Handle / Identifier *" 
+                                : isInstagram 
+                                ? "Instagram Username / Handle *" 
+                                : isFacebook 
+                                ? "Facebook Page Name or Handle *" 
+                                : isTwitter 
+                                ? "Twitter / X Handle *" 
+                                : isThreads
+                                ? "Threads Handle *"
+                                : `${channel.name} Account Handle / Name *`}
+                        </Label>
+                        <Input
+                            id="channel-handle"
+                            placeholder={
+                                isBluesky
+                                    ? "e.g. username.bsky.social"
+                                    : isInstagram
+                                    ? "e.g. @your_instagram"
+                                    : isTwitter
+                                    ? "e.g. @your_handle"
+                                    : isThreads
+                                    ? "e.g. @your_threads"
+                                    : isFacebook
+                                    ? "e.g. DentalClinicOfficial"
+                                    : "e.g. @your_username"
+                            }
+                            value={handle}
+                            onChange={(e) => setHandle(e.target.value)}
+                            disabled={isLoading}
+                            required
+                        />
+                    </div>
+
+                    {/* Bluesky App Password */}
+                    {isBluesky ? (
                         <div className="space-y-1.5">
                             <Label htmlFor="channel-password" className="text-xs font-semibold">
-                                App Password
+                                App Password *
                             </Label>
                             <Input
                                 id="channel-password"
@@ -222,176 +240,84 @@ export function ConnectChannelDialog({
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 disabled={isLoading}
+                                required
                             />
                         </div>
-
-                        <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-2 border-t">
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={handleQuickDemoConnect}
-                                disabled={isLoading}
-                                className="text-xs"
-                            >
-                                <Sparkles className="size-3.5 mr-1 text-amber-500" />
-                                Demo Account
-                            </Button>
-
-                            <Button
-                                type="button"
-                                size="sm"
-                                onClick={handleConnectManual}
-                                disabled={isLoading}
-                                className="text-xs font-medium"
-                            >
-                                {isLoading ? (
-                                    <>
-                                        <Spinner className="size-3.5 mr-1.5" />
-                                        <span>Verifying Credentials...</span>
-                                    </>
-                                ) : (
-                                    <span>Verify & Connect Bluesky</span>
-                                )}
-                            </Button>
-                        </DialogFooter>
-                    </div>
-                ) : (
-                    /* Enterprise Multi-Tab (OAuth vs Direct System User Token) for Instagram, Facebook, LinkedIn, Twitter */
-                    <Tabs value={activeTab} onValueChange={setActiveTab} className="pt-2">
-                        <TabsList className="grid grid-cols-2 w-full mb-3">
-                            <TabsTrigger value="oauth" className="text-xs">
-                                🔒 1-Click Business Login
-                            </TabsTrigger>
-                            <TabsTrigger value="manual" className="text-xs">
-                                🔑 Meta Token / API Key
-                            </TabsTrigger>
-                        </TabsList>
-
-                        <TabsContent value="oauth" className="space-y-4">
-                            <div className="rounded-xl border border-border bg-secondary/30 p-4 space-y-3">
-                                <div className="space-y-2">
-                                    <p className="text-xs font-semibold text-foreground">
-                                        Authorized Business & Ads Permissions:
-                                    </p>
-                                    <div className="grid grid-cols-1 gap-1.5 text-xs text-muted-foreground">
-                                        <div className="flex items-center gap-2">
-                                            <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />
-                                            <span>Organic Posts, Reels & Carousel Publishing</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />
-                                            <span>Meta Ads Management & Campaign Insights</span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />
-                                            <span>Page & Instagram Business Account Linkage</span>
-                                        </div>
+                    ) : (
+                        <>
+                            {/* Provider Account / Page ID (Optional for Instagram, Facebook, LinkedIn) */}
+                            {(isInstagram || isFacebook || isLinkedIn) && (
+                                <div className="space-y-1.5">
+                                    <div className="flex items-center justify-between">
+                                        <Label htmlFor="channel-account-id" className="text-xs font-semibold">
+                                            {isInstagram ? "Instagram Business Account ID" : isFacebook ? "Facebook Page ID" : "LinkedIn Author URN / ID"}
+                                        </Label>
+                                        <span className="text-[11px] text-muted-foreground">Optional</span>
                                     </div>
+                                    <Input
+                                        id="channel-account-id"
+                                        placeholder={isInstagram ? "e.g. 17841400000000000" : isFacebook ? "e.g. 1000854321..." : "e.g. 12345678"}
+                                        value={providerAccountId}
+                                        onChange={(e) => setProviderAccountId(e.target.value)}
+                                        disabled={isLoading}
+                                    />
                                 </div>
-                            </div>
+                            )}
 
-                            <Button
-                                type="button"
-                                size="default"
-                                onClick={handleOfficialOAuthConnect}
-                                disabled={isLoading}
-                                className="w-full text-xs font-semibold gap-2 shadow-sm"
-                                style={{ background: channel.color || "#1877F2" }}
-                            >
-                                {isLoading ? (
-                                    <>
-                                        <Spinner className="size-4 text-white" />
-                                        <span>Redirecting to {channel.name}...</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <span>Continue with Official {channel.name} Login</span>
-                                        <ArrowRight className="size-4" />
-                                    </>
-                                )}
-                            </Button>
-                        </TabsContent>
-
-                        <TabsContent value="manual" className="space-y-3.5">
+                            {/* Access Token / API Key */}
                             <div className="space-y-1.5">
-                                <Label htmlFor="business-handle" className="text-xs font-semibold">
-                                    Account Handle or Page Name
+                                <Label htmlFor="channel-token" className="text-xs font-semibold">
+                                    {channel.name} Access Token / API Key *
                                 </Label>
                                 <Input
-                                    id="business-handle"
-                                    placeholder="e.g. @yourbusiness or DentalClinicOfficial"
-                                    value={handle}
-                                    onChange={(e) => setHandle(e.target.value)}
-                                    disabled={isLoading}
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <Label htmlFor="business-account-id" className="text-xs font-semibold">
-                                    Instagram / Facebook Business ID (Optional)
-                                </Label>
-                                <Input
-                                    id="business-account-id"
-                                    placeholder="e.g. 17841400000000000"
-                                    value={providerAccountId}
-                                    onChange={(e) => setProviderAccountId(e.target.value)}
-                                    disabled={isLoading}
-                                />
-                            </div>
-
-                            <div className="space-y-1.5">
-                                <div className="flex items-center justify-between">
-                                    <Label htmlFor="business-token" className="text-xs font-semibold">
-                                        System User Access Token / API Key
-                                    </Label>
-                                    <span className="text-[11px] text-muted-foreground">Encrypted with AES-256</span>
-                                </div>
-                                <Input
-                                    id="business-token"
+                                    id="channel-token"
                                     type="password"
-                                    placeholder="Paste EAAB... Meta Graph token or Bearer token"
+                                    placeholder={`Paste your ${channel.name} Access Token`}
                                     value={accessToken}
                                     onChange={(e) => setAccessToken(e.target.value)}
                                     disabled={isLoading}
+                                    required
                                 />
                             </div>
+                        </>
+                    )}
 
-                            <div className="flex justify-end gap-2 pt-2 border-t">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={handleQuickDemoConnect}
-                                    disabled={isLoading}
-                                    className="text-xs"
-                                >
-                                    <Sparkles className="size-3.5 mr-1 text-amber-500" />
-                                    Demo Connect
-                                </Button>
+                    <DialogFooter className="pt-3 border-t">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => onOpenChange(false)}
+                            disabled={isLoading}
+                            className="text-xs"
+                        >
+                            Cancel
+                        </Button>
 
-                                <Button
-                                    type="button"
-                                    size="sm"
-                                    onClick={handleConnectManual}
-                                    disabled={isLoading}
-                                    className="text-xs font-medium"
-                                >
-                                    {isLoading ? (
-                                        <>
-                                            <Spinner className="size-3.5 mr-1.5" />
-                                            <span>Saving...</span>
-                                        </>
-                                    ) : (
-                                        <span>Save & Connect Account</span>
-                                    )}
-                                </Button>
-                            </div>
-                        </TabsContent>
-                    </Tabs>
-                )}
+                        <Button
+                            type="submit"
+                            size="sm"
+                            disabled={isLoading}
+                            className="text-xs font-semibold min-w-[150px] text-white shadow-sm hover:opacity-90"
+                            style={{ 
+                                backgroundColor: channel.color || "#000000",
+                                color: "#ffffff"
+                            }}
+                        >
+                            {isLoading ? (
+                                <>
+                                    <Spinner className="size-3.5 mr-1.5 text-white" />
+                                    <span className="text-white font-medium">Verifying...</span>
+                                </>
+                            ) : (
+                                <span className="text-white font-medium">Verify & Connect {channel.name}</span>
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </form>
             </DialogContent>
         </Dialog>
     )
 }
+
 
