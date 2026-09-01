@@ -17,8 +17,14 @@ const QUICK_ACTIONS = [
   { icon: Plus, label: "Expand" },
 ]
 
+export interface AIAssistantGeneratedData {
+  content: string
+  schedule?: { date: string; time: string } | null
+  channels?: string[] | null
+}
+
 interface AIAssistantProps {
-  onGenerate?: (content:string) => void
+  onGenerate?: (data: AIAssistantGeneratedData | string) => void
   className?: string
   content?: string 
   channelId?: string
@@ -46,13 +52,18 @@ export function AIAssistant({ className, content, channelId, onGenerate }: AIAss
         }),
       })
       if (!res.ok) {
-        throw new Error("Failed to generate post")
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || "Failed to generate post");
       }
       return res.json()
     },
     onSuccess: (data) => {
-      // setGeneratedContent(data.content)
-      onGenerate?.(data.content)
+      onGenerate?.(data)
+      if (data.schedule?.date && data.schedule?.time) {
+        toast.success(`Generated & set schedule for ${data.schedule.date} at ${data.schedule.time}`)
+      } else {
+        toast.success("Post content generated with AI!")
+      }
       setPrompt("")
     },
     onError: (error: unknown) => {
@@ -117,7 +128,7 @@ export function AIAssistant({ className, content, channelId, onGenerate }: AIAss
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="Eg. Promote my photography course to get new signups. Registration closes in 3 days."
+          placeholder="Eg. Write 3 daily heart care tips for doctors and schedule it for tomorrow at 5:00 PM on Twitter and LinkedIn."
           className="w-full min-h-[130px] resize-none"
           disabled={!canUseAI}
         />

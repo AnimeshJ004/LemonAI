@@ -544,20 +544,72 @@ dark:text-amber-400">
                                 globalContent?.text || ""
                             }
                             channelId={activeAccordion}
-                            onGenerate={(content:any) => {
-                                if(globalContent?.text){
-                                    setGlobalContent((prev) => ({
-                                        ...prev,
-                                        text: content,
-                                    }))
+                            onGenerate={(data: any) => {
+                                const textContent = typeof data === "string" ? data : data?.content || "";
+                                const schedule = typeof data === "object" ? data?.schedule : null;
+                                const channels = typeof data === "object" ? data?.channels : null;
+
+                                setGlobalContent((prev) => ({
+                                    ...prev,
+                                    text: textContent,
+                                }));
+
+                                // Auto-select channels if detected
+                                if (channels && Array.isArray(channels) && channels.length > 0 && connectedChannels.length > 0) {
+                                    if (channels.includes("all")) {
+                                        setSelectedChannels(connectedChannels.map((c) => c.id));
+                                    } else {
+                                        const matchedChannelIds = connectedChannels
+                                            .filter((c) =>
+                                                channels.some((target: string) => {
+                                                    const t = target.toLowerCase();
+                                                    const ct = c.type.toLowerCase();
+                                                    return (
+                                                        ct === t ||
+                                                        (t === "twitter" && ct === "x") ||
+                                                        (t === "x" && ct === "twitter")
+                                                    );
+                                                })
+                                            )
+                                            .map((c) => c.id);
+
+                                        if (matchedChannelIds.length > 0) {
+                                            setSelectedChannels(matchedChannelIds);
+                                        }
+                                    }
                                 }
-                                setChannelContent((prev) => ({
-                                ...prev,
-                                [activeAccordion]: {
-                                    ...prev[activeAccordion],
-                                    text: content,
+
+                                setChannelContent((prev) => {
+                                    const updated = { ...prev };
+                                    if (activeAccordion) {
+                                        updated[activeAccordion] = {
+                                            ...updated[activeAccordion],
+                                            text: textContent,
+                                        };
+                                    } else {
+                                        connectedChannels.forEach((ch) => {
+                                            updated[ch.id] = {
+                                                ...(updated[ch.id] || { images: [] }),
+                                                text: textContent,
+                                            };
+                                        });
+                                    }
+                                    return updated;
+                                });
+
+                                // Auto-set Date & Time if detected
+                                if (schedule) {
+                                    if (schedule.date) {
+                                        const [y, m, d] = schedule.date.split("-").map(Number);
+                                        if (y && m && d) {
+                                            const targetDate = new Date(y, m - 1, d);
+                                            setDate(targetDate);
+                                        }
+                                    }
+                                    if (schedule.time) {
+                                        setTimeSlot(schedule.time);
+                                    }
                                 }
-                                }))
                             }}
                         />
                                         </div>

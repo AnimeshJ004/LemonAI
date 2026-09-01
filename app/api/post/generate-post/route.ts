@@ -54,55 +54,120 @@ export async function POST(request:NextRequest){
             characterLimit = channelData.character_limit;
         }
 
+        const isGenerateAction = action === "generate";
+        const systemPrompt = isGenerateAction 
+            ? buildGenerateSystemPrompt(channelType, characterLimit)
+            : buildRefineSystemPrompt(channelType, characterLimit);
+
+        const userPrompt = buildPrompt(action, content, prompt);
+
         const result = await insforge.ai.chat.completions.create({
           model: "google/gemini-2.5-flash-lite",
             messages: [
                 {
                     role: "system",
-                    content: buildSystemPrompt(channelType, characterLimit)
+                    content: systemPrompt
                 },{
                     role: "user",
-                    content: buildPrompt(action, content, prompt),
+                    content: userPrompt,
                 }
             ]
         });
 
-        const text = result.choices[0]?.message?.content ?? "";
-        return NextResponse.json({ content: text})
-    } catch (error) {
-        return NextResponse.json({ error: "Failed to generate post"},{ status:500})
+        const rawText = result.choices[0]?.message?.content ?? "";
+
+        if (isGenerateAction) {
+            const cleanJson = rawText.replace(/```(?:json)?\s*|\s*```/g, "").trim();
+            try {
+                const parsed = JSON.parse(cleanJson);
+                return NextResponse.json({
+                    content: parsed.content || cleanJson,
+                    schedule: parsed.schedule || null,
+                    channels: Array.isArray(parsed.channels) ? parsed.channels : null,
+                });
+            } catch {
+                return NextResponse.json({
+                    content: cleanJson,
+                    schedule: null,
+                    channels: null,
+                });
+            }
+        }
+
+        return NextResponse.json({ content: rawText, schedule: null, channels: null });
+    } catch (error: any) {
+        console.error("Generate post error:", error);
+        return NextResponse.json({ error: error?.message || "Failed to generate post" }, { status: 500 });
     }
 }
 
-function buildSystemPrompt( channelType?: string, characterLimit?: number){
-      const system_prompt = [
+function buildGenerateSystemPrompt(channelType?: string, characterLimit?: number) {
+    const now = new Date();
+    const todayStr = now.toISOString().split("T")[0];
+    const todayDay = now.toLocaleDateString("en-US", { weekday: "long" });
+
+    const parts = [
+        "You are an expert AI social media assistant and auto-scheduler.",
+        `Current reference date: ${todayStr} (${todayDay}).`,
+        "",
+        "Instructions:",
+        "1. Write one high quality, engaging social media post based on the user's request. Include suitable emojis and relevant hashtags. Do NOT include scheduling commands/dates inside the post text itself.",
+        "2. Plain text only in post content. Do not use markdown tags like **, *, #, or quotes.",
+        `3. If user mentions scheduling or dates/times (e.g. 'tomorrow at 5pm', 'next Monday 10:00 AM', 'September 5th at 3 PM', 'in 2 hours', 'today at 6 PM'):`,
+        `   - Calculate the exact target date formatted as 'YYYY-MM-DD' (relative to ${todayStr}).`,
+        "   - Format the time slot in 'h:mm A' 12-hour format (e.g. '5:00 PM', '10:30 AM', '3:00 PM', '9:15 AM').",
+        "   - Set schedule object: { 'date': 'YYYY-MM-DD', 'time': '5:00 PM' }.",
+        "   - If no scheduling is mentioned, set schedule: null.",
+        "4. If user mentions target social media platforms (e.g. 'Twitter', 'X', 'LinkedIn', 'Instagram', 'Facebook', 'Bluesky', 'Threads', 'YouTube', 'TikTok', 'all channels'):",
+        "   - Set channels array: ['twitter', 'linkedin'] or ['all'].",
+        "   - If no platforms are mentioned, set channels: null.",
+        "",
+        "Return ONLY a valid JSON object matching this schema without any markdown formatting:",
+        "{",
+        '  "content": "The generated post text here",',
+        '  "schedule": { "date": "YYYY-MM-DD", "time": "5:00 PM" } | null,',
+        '  "channels": ["twitter", "linkedin"] | null',
+        "}"
+    ];
+
+    if(channelType){
+        parts.push(`Match the specific platform tone for ${channelType}.`);
+    }
+    if(characterLimit){
+        parts.push(`Must be less than the maximum character limit: ${characterLimit}.`);
+    }
+    return parts.join("\n");
+}
+
+function buildRefineSystemPrompt(channelType?: string, characterLimit?: number){
+    const system_prompt = [
         "You are a social media writing assistant.",
         "Return only the final post text.",
         "Do not add quotes, labels, bullet points, or explanations.",
         "Do not use markdown formatting like **, *, #, or backticks.",
         "Return plain text only.",
-    ]
+    ];
     if(channelType){
-        system_prompt.push(`Write for ${channelType}. Match the platform's tone, style, and expected length. and relevant hashtags. `);
+        system_prompt.push(`Write for ${channelType}. Match the platform's tone, style, and expected length and relevant hashtags.`);
     }
     if(characterLimit){
-        system_prompt.push(`Must be less than the maximum character limit: ${characterLimit}. `);
+        system_prompt.push(`Must be less than the maximum character limit: ${characterLimit}.`);
     }
     return system_prompt.join("\n");
 }
 
 function buildPrompt(action:ActionType,content:string, prompt:string){
     if (action === "generate") {
-        return `Write one clean social media post based on this request:\n${prompt}`
+        return prompt;
     }
     if (!content.trim()) {
-        throw new Error("Content is required for this action")
+        throw new Error("Content is required for this action");
     }
     if (action === "rephrase") {
-        return `Rephrase this social media post while keeping the meaning:\n${content}`
+        return `Rephrase this social media post while keeping the meaning:\n${content}`;
     }
     if (action === "shorten") {
-        return `Shorten this social media post while keeping the key message:\n${content}`
+        return `Shorten this social media post while keeping the key message:\n${content}`;
     }
-    return `Expand this social media post with more helpful detail while keeping the same tone:\n${content}`
+    return `Expand this social media post with more helpful detail while keeping the same tone:\n${content}`;
 }

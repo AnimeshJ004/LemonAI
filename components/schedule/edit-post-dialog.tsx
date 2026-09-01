@@ -236,8 +236,9 @@ export function EditPostDialog({
                                             <AIAssistant
                                                 content={content}
                                                 channelId={post?.channel?.id}
-                                                onGenerate={(generatedText) => {
-                                                    setContent(generatedText)
+                                                onGenerate={(data) => {
+                                                    const text = typeof data === "string" ? data : data?.content || ""
+                                                    setContent(text)
                                                 }}
                                             />
                                         </div>

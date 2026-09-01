@@ -140,8 +140,9 @@ const IdeaDialog = ({
                             <div className="p-4">
                                 <AIAssistant  
                                   content={`${title}\n\n${description}`}
-                                  onGenerate={(content:string) => {
-                                    setDescription(content)
+                                  onGenerate={(data) => {
+                                    const text = typeof data === "string" ? data : data?.content || ""
+                                    setDescription(text)
                                   }}
                                 />
                             </div>

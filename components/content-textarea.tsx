@@ -105,52 +105,47 @@ const ContentTextarea = ({
   }
 
   return (
-       <div className={cn("flex flex-col h-full", className)}>
-    
+    <div className={cn("flex flex-col h-full justify-between gap-3", className)}>
       {/* Editable area */}
-      <Textarea
-        ref={textareaRef}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        disabled={disabled}
-        //minHeight={minHeight}
-        className={cn(
-           "flex-[0.2] bg-transparent ring-0! border-none! resize-none! pt-0! pl-0! pr-0!",
-          "placeholder:text-muted-foreground/80 overflow-y-auto",
-          disabled && "opacity-50 cursor-not-allowed",
-          contentClass
-          // `w-full bg-transparent 
-          // text-base
-          // placeholder:text-muted-foreground/80 focus:outline-none`,
-          // //contentClass && contentClass,
-          // disabled && "opacity-50 cursor-not-allowed"
-        )}
-     style={{ minHeight: `${minHeight}px`, maxHeight: `${minHeight}px` }}
-      />
+      <div className="flex-1 w-full min-h-[160px] overflow-y-auto">
+        <Textarea
+          ref={textareaRef}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          disabled={disabled}
+          className={cn(
+            "w-full bg-transparent ring-0! border-none! shadow-none! resize-none! p-0 focus-visible:ring-0 focus-visible:outline-none focus:outline-none",
+            "placeholder:text-muted-foreground/80 leading-relaxed text-[15px]",
+            disabled && "opacity-50 cursor-not-allowed",
+            contentClass
+          )}
+          style={{ minHeight: `${Math.min(minHeight - 80, 180)}px` }}
+        />
+      </div>
 
-      <div className="shrink-0 space-y-0 -mt-4">
+      <div className="shrink-0 space-y-3 pt-3 border-t border-border/40">
         {/* Image Upload Section */}
         <div className="flex items-center gap-3">
           {/* Add Image Button */}
           <div
             onClick={() => !isUploading && !disabled && fileInputRef.current?.click()}
             className={cn(
-              `shrink-0 size-24 border-2 border-dashed border-muted-foreground/25
+              `shrink-0 h-16 w-24 border-2 border-dashed border-muted-foreground/25
                rounded-lg flex flex-col items-center 
-              justify-center cursor-pointer hover:border-muted-foreground/50
-               hover:bg-muted/50 
-              transition-colors mb-3 shadow-sm`,
+              justify-center cursor-pointer hover:border-primary/50
+               hover:bg-muted/40 
+              transition-colors shadow-sm`,
               (isUploading || disabled) && "opacity-50 cursor-not-allowed",
               disabled && "grayscale"
             )}
           >
             {isUploading ? (
-              <Spinner />
+              <Spinner className="h-4 w-4" />
             ) : (
-              <ImagePlus className="h-5 w-5 text-muted-foreground mb-1" />
+              <ImagePlus className="h-4 w-4 text-muted-foreground mb-1" />
             )}
-            <span className="text-sm text-muted-foreground">
+            <span className="text-xs font-medium text-muted-foreground">
               {isUploading ? "Uploading..." : "Select File"}
             </span>
           </div>
@@ -165,11 +160,11 @@ const ContentTextarea = ({
 
           {/* Uploaded Images - Scrollable container */}
           {images.length > 0 && (
-            <div className="flex gap-3 w-full max-w-[460px] overflow-x-auto pb-2">
+            <div className="flex gap-2.5 w-full max-w-[460px] overflow-x-auto pb-1">
               {images.map((image, index) => (
                 <div
                   key={image.key || index}
-                  className="shrink-0 relative size-24 rounded-lg overflow-hidden border"
+                  className="shrink-0 relative size-16 rounded-lg overflow-hidden border shadow-sm"
                 >
                   <img
                     src={image.url}
@@ -178,7 +173,7 @@ const ContentTextarea = ({
                   />
                   <button
                     onClick={() => handleRemoveImage(index)}
-                    className="absolute top-1 right-1 bg-black/50 hover:bg-black/70 text-white rounded-full p-1 transition-colors"
+                    className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5 transition-colors"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -189,12 +184,12 @@ const ContentTextarea = ({
         </div>
 
         {/* Toolbar */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between pt-1">
           <div className="flex items-center gap-1">
             <Popover open={emojiOpen} onOpenChange={setEmojiOpen}>
               <PopoverTrigger asChild>
-                <Button size="icon" className="cursor-pointer" variant="ghost" disabled={disabled}>
-                  <SmileIcon className="h-5 w-5" />
+                <Button size="icon" className="cursor-pointer size-8" variant="ghost" disabled={disabled}>
+                  <SmileIcon className="h-4 w-4" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="start" className="w-[300px] p-0!">
@@ -217,12 +212,12 @@ const ContentTextarea = ({
                 </EmojiPicker>
               </PopoverContent>
             </Popover>
-            <Separator orientation="vertical" className="mx-0 my-1.5" />
+            <Separator orientation="vertical" className="mx-1 h-4" />
             {showAIAssistant && (
               <Button
                 variant="ghost"
                 size="sm"
-                className="ml-1 h-7 gap-1.5 text-sm"
+                className="h-8 gap-1.5 text-xs font-medium text-purple-600 dark:text-purple-400 hover:text-purple-700 hover:bg-purple-50 dark:hover:bg-purple-950/30"
                 onClick={onAIAssistantClick}
                 disabled={disabled}
               >
