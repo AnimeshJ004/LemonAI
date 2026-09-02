@@ -101,21 +101,21 @@ export function EditPostDialog({
     const [selectedRightTab, setSeletedRightTab] = React.useState<ActionTabType | null>(null)
 
     // Sync state when post changes
-        React.useEffect(() => {
-            if (post) {
-                setContent(post.content)
-                setImages(post.images ?? [])
-                const date = new Date(post.scheduledDate)
-                setDate(date)
-                // Extract time from scheduledDate
-                const hours = date.getHours()
-                const minutes = date.getMinutes()
-                const ampm = hours >= 12 ? "PM" : "AM"
-                const h = hours % 12 || 12
-                const m = minutes.toString().padStart(2, "0")
-                setTime(`${h}:${m} ${ampm}`)
-            }
-        }, [post])
+    React.useEffect(() => {
+        if (post) {
+            setContent(post.content)
+            setImages(post.images ?? [])
+            const date = new Date(post.scheduledDate)
+            setDate(date)
+            // Extract time from scheduledDate
+            const hours = date.getHours()
+            const minutes = date.getMinutes()
+            const ampm = hours >= 12 ? "PM" : "AM"
+            const h = hours % 12 || 12
+            const m = minutes.toString().padStart(2, "0")
+            setTime(`${h}:${m} ${ampm}`)
+        }
+    }, [post])
 
     const channel = post?.channel
     const icon = channel ? getChannelIcon(channel.type) : null
@@ -152,7 +152,7 @@ export function EditPostDialog({
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className={cn(
-              "sm:w-full sm:min-w-[700px] gap-0 px-0 pt-0 pb-0!",
+                "sm:w-full sm:min-w-[700px] gap-0 px-0 pt-0 pb-0!",
                 selectedRightTab && "sm:max-w-[950px]"
             )}>
                 <div>

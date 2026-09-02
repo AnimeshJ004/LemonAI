@@ -5,7 +5,7 @@ import { getChannelIcon } from "@/constants/channels";
 import { ChannelType } from "@/types/channel.type";
 import { ImageObject } from "@/types/post.type";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { cn } from "@/lib/utils";
 import { AlertTriangle, Lightbulb, ScanEye, Wand2 } from "lucide-react";
 import { Button } from "../ui/button";
@@ -103,7 +103,7 @@ function getValidScheduleDate(targetDate?: Date | null, timeString?: string | nu
                         minutes = p.getMinutes();
                         break;
                     }
-                } catch {}
+                } catch { }
             }
         }
     } else {
@@ -152,13 +152,13 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
         })) as ChannelType[]
     }, [isPending, channelsData])
 
-     useEffect(() => {
-       if(selectedDate){
-        setDate(selectedDate)
-       }
+    useEffect(() => {
+        if (selectedDate) {
+            setDate(selectedDate)
+        }
     }, [selectedDate])
 
-   
+
     useEffect(() => {
         if (channels.length > 0 && Object.keys(channelContent).length === 0) {
             const initialContent: Record<string, ChannelContent> = {}
@@ -367,14 +367,15 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogContent className={cn(
-                "sm:w-full sm:min-w-[700px] gap-0 px-0 pt-0 pb-0",
-                selectedRightTab && "sm:max-w-[950px]"
+                "w-[95vw] sm:max-w-[850px] max-h-[90vh] gap-0 px-0 pt-0 pb-0 overflow-hidden flex flex-col rounded-2xl",
+                selectedRightTab && "sm:max-w-[1100px]"
             )}>
                 <div>
-                    <DialogHeader className="px-8 py-3 border-b">
+                    <DialogHeader className="px-8 py-3.5 border-b">
                         <div className="flex items-center justify-between">
-                            <DialogTitle className="font-semibold">Create Post</DialogTitle>
-                            <div className="flex items-center gap-px">
+                            <DialogTitle className="font-semibold text-lg">Create Post</DialogTitle>
+                            <DialogDescription className="sr-only">Create and schedule social media posts</DialogDescription>
+                            <div className="flex items-center gap-1">
                                 {rightTabs.map((tab) => (
                                     <Button
                                         key={tab.id}
@@ -394,35 +395,37 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                     <div className="w-full flex flex-1 min-w-0 overflow-hidden h-[580px]">
 
                         {/* Left — channel list */}
-                        <div className="flex flex-1 flex-col min-w-0 w-[300px] pb-5">
-                            <div className="channel--selector py-5  px-8">
-                                {channels?.length > 0 && !isPending && (
-                                    <button
-                                        className="mb-4 text-[13px] font-medium cursor-pointer"
-                                        onClick={handleSelectAll}
-                                    >
-                                        {selectedChannels.length === connectedChannels.length ? "Unselect all" : "Select all"}
-                                    </button>
-                                )}
-                                <div className="flex flex-wrap gap-4">
+                        <div className="flex flex-1 flex-col min-w-[420px] w-full pb-5">
+                            <div className="channel--selector py-4 px-8 border-b bg-muted/20">
+                                <div className="flex items-center justify-between mb-3">
+                                    <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Select Channels</span>
+                                    {channels?.length > 0 && !isPending && (
+                                        <button
+                                            className="text-xs font-medium text-primary hover:underline cursor-pointer"
+                                            onClick={handleSelectAll}
+                                        >
+                                            {selectedChannels.length === connectedChannels.length ? "Unselect all" : "Select all"}
+                                        </button>
+                                    )}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-3">
                                     {isPending ? (
                                         Array.from({ length: 6 }).map((_, index) => (
-                                            <Skeleton key={index} className="size-[50px] rounded-xl" />
+                                            <Skeleton key={index} className="size-10 rounded-xl" />
                                         ))
                                     ) : (
                                         channels?.map((channel) => {
                                             const selected = selectedChannels.includes(channel.id)
                                             const isConnected = channel.connected
                                             return (
-                                                <Tooltip>
+                                                <Tooltip key={channel.id}>
                                                     <TooltipTrigger asChild>
                                                         <button
-                                                            key={channel.id}
                                                             style={{ "--channel-color": channel.color } as React.CSSProperties}
                                                             className={cn(
-                                                                "relative shrink-0 rounded-xl p-0 transition-all",
-                                                                !isConnected ? "cursor-not-allowed" : "cursor-pointer",
-                                                                selected ? "ring-2 ring-(--channel-color) ring-offset-1" : "grayscale!"
+                                                                "relative shrink-0 rounded-xl p-0.5 transition-all duration-200",
+                                                                !isConnected ? "cursor-not-allowed opacity-40 grayscale" : "cursor-pointer hover:scale-105",
+                                                                selected ? "ring-2 ring-(--channel-color) ring-offset-2 scale-105 opacity-100" : "opacity-60 grayscale hover:opacity-100 hover:grayscale-0"
                                                             )}
                                                             onClick={() => {
                                                                 if (!isConnected) {
@@ -437,7 +440,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                                             }}>
 
                                                             <ChannelAvatar
-                                                                className=""
                                                                 type={channel.type}
                                                                 color={channel.color}
                                                                 profileImage={channel.profile_image}
@@ -445,8 +447,8 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                                         </button>
                                                     </TooltipTrigger>
                                                     <TooltipContent>
-                                                        Preview {channel.name}
-                                                        {!isConnected && <span className="text-primary"> → Connect Channel</span>}
+                                                        <p className="font-medium">{channel.name}</p>
+                                                        {!isConnected && <span className="text-xs text-amber-500 font-normal"> (Click to connect channel)</span>}
                                                     </TooltipContent>
                                                 </Tooltip>
                                             )
@@ -607,113 +609,113 @@ dark:text-amber-400">
                                 <div className="py-4 flex-1 flex flex-col h-full">
                                     {selectedRightTab === "ai" && (
                                         <div className="px-6">
-                                            <AIAssistant 
-                            content={channelContent[activeAccordion]?.text || 
-                                globalContent?.text || ""
-                            }
-                            channelId={activeAccordion}
-                            onGenerate={(data: any) => {
-                                const textContent = typeof data === "string" ? data : data?.content || "";
-                                const schedule = typeof data === "object" ? data?.schedule : null;
-                                const autoSchedule = typeof data === "object" ? Boolean(data?.autoSchedule) : false;
-                                const channels = typeof data === "object" ? data?.channels : null;
+                                            <AIAssistant
+                                                content={channelContent[activeAccordion]?.text ||
+                                                    globalContent?.text || ""
+                                                }
+                                                channelId={activeAccordion}
+                                                onGenerate={(data: any) => {
+                                                    const textContent = typeof data === "string" ? data : data?.content || "";
+                                                    const schedule = typeof data === "object" ? data?.schedule : null;
+                                                    const autoSchedule = typeof data === "object" ? Boolean(data?.autoSchedule) : false;
+                                                    const channels = typeof data === "object" ? data?.channels : null;
 
-                                setGlobalContent((prev) => ({
-                                    ...prev,
-                                    text: textContent,
-                                }));
+                                                    setGlobalContent((prev) => ({
+                                                        ...prev,
+                                                        text: textContent,
+                                                    }));
 
-                                // Auto-select channels if detected, or auto-select all connected channels if none were selected
-                                let channelsToSelect: string[] = [];
-                                if (connectedChannels.length > 0) {
-                                    if (channels && Array.isArray(channels) && channels.length > 0) {
-                                        if (channels.includes("all")) {
-                                            channelsToSelect = connectedChannels.map((c) => c.id);
-                                        } else {
-                                            const matchedChannelIds = connectedChannels
-                                                .filter((c) =>
-                                                    channels.some((target: string) => {
-                                                        const t = target.toLowerCase();
-                                                        const ct = c.type.toLowerCase();
-                                                        return (
-                                                            ct === t ||
-                                                            (t === "twitter" && ct === "x") ||
-                                                            (t === "x" && ct === "twitter")
-                                                        );
-                                                    })
-                                                )
-                                                .map((c) => c.id);
-                                            channelsToSelect = matchedChannelIds.length > 0 ? matchedChannelIds : connectedChannels.map((c) => c.id);
-                                        }
-                                    } else if (selectedChannels.length === 0) {
-                                        channelsToSelect = connectedChannels.map((c) => c.id);
-                                    } else {
-                                        channelsToSelect = selectedChannels;
-                                    }
+                                                    // Auto-select channels if detected, or auto-select all connected channels if none were selected
+                                                    let channelsToSelect: string[] = [];
+                                                    if (connectedChannels.length > 0) {
+                                                        if (channels && Array.isArray(channels) && channels.length > 0) {
+                                                            if (channels.includes("all")) {
+                                                                channelsToSelect = connectedChannels.map((c) => c.id);
+                                                            } else {
+                                                                const matchedChannelIds = connectedChannels
+                                                                    .filter((c) =>
+                                                                        channels.some((target: string) => {
+                                                                            const t = target.toLowerCase();
+                                                                            const ct = c.type.toLowerCase();
+                                                                            return (
+                                                                                ct === t ||
+                                                                                (t === "twitter" && ct === "x") ||
+                                                                                (t === "x" && ct === "twitter")
+                                                                            );
+                                                                        })
+                                                                    )
+                                                                    .map((c) => c.id);
+                                                                channelsToSelect = matchedChannelIds.length > 0 ? matchedChannelIds : connectedChannels.map((c) => c.id);
+                                                            }
+                                                        } else if (selectedChannels.length === 0) {
+                                                            channelsToSelect = connectedChannels.map((c) => c.id);
+                                                        } else {
+                                                            channelsToSelect = selectedChannels;
+                                                        }
 
-                                    if (channelsToSelect.length > 0) {
-                                        setSelectedChannels(channelsToSelect);
-                                        if (!activeAccordion) {
-                                            setActiveAccordion(channelsToSelect[0]);
-                                            setActivePreview(channelsToSelect[0]);
-                                        }
-                                    }
-                                }
+                                                        if (channelsToSelect.length > 0) {
+                                                            setSelectedChannels(channelsToSelect);
+                                                            if (!activeAccordion) {
+                                                                setActiveAccordion(channelsToSelect[0]);
+                                                                setActivePreview(channelsToSelect[0]);
+                                                            }
+                                                        }
+                                                    }
 
-                                const updatedChannelContent: Record<string, ChannelContent> = { ...channelContent };
-                                const effectiveChannels = channelsToSelect.length > 0 ? channelsToSelect : (connectedChannels.length > 0 ? connectedChannels.map((c) => c.id) : []);
+                                                    const updatedChannelContent: Record<string, ChannelContent> = { ...channelContent };
+                                                    const effectiveChannels = channelsToSelect.length > 0 ? channelsToSelect : (connectedChannels.length > 0 ? connectedChannels.map((c) => c.id) : []);
 
-                                effectiveChannels.forEach((chId) => {
-                                    updatedChannelContent[chId] = {
-                                        ...(updatedChannelContent[chId] || { images: [] }),
-                                        text: textContent,
-                                    };
-                                });
-                                setChannelContent(updatedChannelContent);
+                                                    effectiveChannels.forEach((chId) => {
+                                                        updatedChannelContent[chId] = {
+                                                            ...(updatedChannelContent[chId] || { images: [] }),
+                                                            text: textContent,
+                                                        };
+                                                    });
+                                                    setChannelContent(updatedChannelContent);
 
-                                let targetDate = date || new Date();
-                                let targetTimeSlot = timeSlot;
+                                                    let targetDate = date || new Date();
+                                                    let targetTimeSlot = timeSlot;
 
-                                // Auto-set Date & Time if detected
-                                if (schedule) {
-                                    if (schedule.date) {
-                                        const [y, m, d] = schedule.date.split("-").map(Number);
-                                        if (y && m && d) {
-                                            targetDate = new Date(y, m - 1, d);
-                                            setDate(targetDate);
-                                        }
-                                    }
-                                    if (schedule.time) {
-                                        targetTimeSlot = normalizeTimeSlot(schedule.time);
-                                        setTimeSlot(targetTimeSlot);
-                                    }
-                                }
+                                                    // Auto-set Date & Time if detected
+                                                    if (schedule) {
+                                                        if (schedule.date) {
+                                                            const [y, m, d] = schedule.date.split("-").map(Number);
+                                                            if (y && m && d) {
+                                                                targetDate = new Date(y, m - 1, d);
+                                                                setDate(targetDate);
+                                                            }
+                                                        }
+                                                        if (schedule.time) {
+                                                            targetTimeSlot = normalizeTimeSlot(schedule.time);
+                                                            setTimeSlot(targetTimeSlot);
+                                                        }
+                                                    }
 
-                                // If user prompted to auto-schedule, directly schedule it automatically!
-                                if (autoSchedule && effectiveChannels.length > 0 && textContent.trim()) {
-                                    const scheduleAt = getValidScheduleDate(targetDate, targetTimeSlot);
-                                    const postsToCreate = effectiveChannels.map((chId) => ({
-                                        channelTypeId: chId,
-                                        content: textContent,
-                                        images: updatedChannelContent[chId]?.images || []
-                                    }));
+                                                    // If user prompted to auto-schedule, directly schedule it automatically!
+                                                    if (autoSchedule && effectiveChannels.length > 0 && textContent.trim()) {
+                                                        const scheduleAt = getValidScheduleDate(targetDate, targetTimeSlot);
+                                                        const postsToCreate = effectiveChannels.map((chId) => ({
+                                                            channelTypeId: chId,
+                                                            content: textContent,
+                                                            images: updatedChannelContent[chId]?.images || []
+                                                        }));
 
-                                    toast.loading("AI is automatically scheduling your post...", { id: "ai-auto-schedule" });
+                                                        toast.loading("AI is automatically scheduling your post...", { id: "ai-auto-schedule" });
 
-                                    createPostMutation.mutate({
-                                        posts: postsToCreate,
-                                        scheduledAt: scheduleAt.toISOString(),
-                                    }, {
-                                        onSuccess: () => {
-                                            toast.dismiss("ai-auto-schedule");
-                                        },
-                                        onError: () => {
-                                            toast.dismiss("ai-auto-schedule");
-                                        }
-                                    });
-                                }
-                            }}
-                        />
+                                                        createPostMutation.mutate({
+                                                            posts: postsToCreate,
+                                                            scheduledAt: scheduleAt.toISOString(),
+                                                        }, {
+                                                            onSuccess: () => {
+                                                                toast.dismiss("ai-auto-schedule");
+                                                            },
+                                                            onError: () => {
+                                                                toast.dismiss("ai-auto-schedule");
+                                                            }
+                                                        });
+                                                    }
+                                                }}
+                                            />
                                         </div>
                                     )}
 

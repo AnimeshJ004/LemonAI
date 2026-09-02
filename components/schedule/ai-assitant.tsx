@@ -34,11 +34,8 @@ interface AIAssistantProps {
 export function AIAssistant({ className, content, channelId, onGenerate }: AIAssistantProps) {
   const [prompt, setPrompt] = React.useState("")
     const { data: subscription, isLoading } = useSubscription()
-  const canUseAI =
-    !!subscription?.subscriptionItems?.some((item) => {
-      const planSlug = item.plan.slug
-      return planSlug === "pro" || planSlug === "premium"
-    })
+  // Enabled for all users (free & pro)
+  const canUseAI = true
 
   const generateMutation = useMutation({
     mutationFn: async ({ action, promptText }: { action: string; promptText?: string }) => {

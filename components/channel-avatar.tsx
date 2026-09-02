@@ -31,36 +31,38 @@ const ChannelAvatar = ({
   return (
     <div className={cn(className)}>
       <Avatar
-        className={cn(size === "sm" ? "size-8" : "size-10", "border")}
+        className={cn(
+          size === "sm" ? "size-8" : "size-10",
+          "border border-border/60 shadow-xs overflow-hidden relative rounded-xl"
+        )}
       >
-        <AvatarFallback>LM</AvatarFallback>
-        <AvatarImage src={profileImage || "./images/avatar.webp"} className="rounded-xl!" />
+        <AvatarImage src={profileImage || "/images/avatar.webp"} className="object-cover rounded-xl" />
+        <AvatarFallback style={{ backgroundColor: color }} className="text-white text-xs font-bold rounded-xl">
+          {name ? name.slice(0, 2).toUpperCase() : type ? type.slice(0, 2) : "CH"}
+        </AvatarFallback>
         {icon ? (
           <div
             className={cn(
-              "absolute right-0 bottom-0 z-10 inline-flex items-center justify-center",
-              "right-[-3px] bottom-[-3px] rounded-sm bg-white p-[1px] ring-0",
-              size === "sm" ? "size-[15px]" : "size-[20px]"
+              "absolute right-[-2px] bottom-[-2px] z-10 inline-flex items-center justify-center",
+              "rounded-md bg-background p-[1px] shadow-xs",
+              size === "sm" ? "size-[15px]" : "size-[18px]"
             )}
           >
             <span
-              className="flex size-full items-center justify-center rounded-sm p-[4px]!"
+              className="flex size-full items-center justify-center rounded-md p-[2px]"
               style={{ backgroundColor: color }}
             >
               <HugeiconsIcon
                 icon={icon}
-                className={cn(
-                  "text-white! size-2.5!",
-                )}
+                className="text-white size-2.5"
               />
             </span>
           </div>
-
         ) : null}
       </Avatar>
 
       {name ? (
-        <span className="truncate font-medium text-[14.0px]">{name}</span>
+        <span className="truncate font-medium text-sm">{name}</span>
       ) : null}
     </div>
   )

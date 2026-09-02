@@ -32,12 +32,9 @@ export function GenerateIdeasPopover({ onGenerated }: GenerateIdeasPopoverProps)
   }[]>([])
   
   const [selectedIdea, setSelectedIdea] = useState(0)
-   const { data: subscription, isLoading } = useSubscription()
-
-   const canUseAI = !!subscription?.subscriptionItems?.some(item => {
-    const planSlug = item.plan.slug
-    return planSlug === "pro" || planSlug === "business"
-   })
+  const { data: subscription, isLoading } = useSubscription()
+  // Enabled for all users (free & pro)
+  const canUseAI = true
   
 
   const generateMutation = useMutation({

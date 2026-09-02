@@ -96,7 +96,7 @@ export async function getInsforgeServerClient(): Promise<{ insforge: InsForgeCli
         insforge.getHttpClient().setAuthToken(token);
       }
     } catch (err) {
-      console.warn('Failed to get Clerk JWT token, using API Key', err);
+      console.warn('Failed to get Clerk JWT token, falling back to API Key', err);
     }
   }
 

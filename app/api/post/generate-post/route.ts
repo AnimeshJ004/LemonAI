@@ -13,10 +13,8 @@ export async function POST(request:NextRequest){
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        const canUseAI = has({ plan: "pro" }) || has({ plan: "premium" })
-        if (!canUseAI) {
-            return NextResponse.json({ error: "AI Post generation requires Pro or Premium plan" }, { status: 403 });
-        }
+        // Allowed for all authenticated users
+        const canUseAI = true;
         
         const {
             action,

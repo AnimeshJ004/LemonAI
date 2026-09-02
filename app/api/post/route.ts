@@ -7,15 +7,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 
 type PostType = {
-  channelTypeId: string
-  content: string
-  images?: ImageObject[]
+    channelTypeId: string
+    content: string
+    images?: ImageObject[]
 }
 
 
 export async function GET(request: NextRequest) {
     try {
-        const {insforge, userId} = await getInsforgeServerClient()
+        const { insforge, userId } = await getInsforgeServerClient()
         if (!userId) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
         }
@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
         const searchParams = request.nextUrl.searchParams
         const status = searchParams.get("status")
         const channelIds = searchParams.getAll("channelIds")
-        .flatMap((channel) => channel.split(",")).filter(Boolean)
+            .flatMap((channel) => channel.split(",")).filter(Boolean)
         const groupByDate = searchParams.get("group_by_date") === "true";
 
         let postQuery = insforge.database
@@ -36,32 +36,32 @@ export async function GET(request: NextRequest) {
 
         if (status) postQuery = postQuery.eq("status", status)
         if (channelIds.length > 0) postQuery = postQuery.in("user_channel_id", channelIds)
-        
-        const {data:posts, error} = await postQuery;
-        if(error) throw error;
+
+        const { data: posts, error } = await postQuery;
+        if (error) throw error;
 
         //console.log("posts:", JSON.stringify(posts, null, 2))
 
 
-        if(!groupByDate) return NextResponse.json({ posts: posts ?? []})
+        if (!groupByDate) return NextResponse.json({ posts: posts ?? [] })
 
         // {date: {label:"", posts:[]}}
-        const groupMap = new Map<string,{label:string; posts: typeof posts}>();
+        const groupMap = new Map<string, { label: string; posts: typeof posts }>();
 
         (posts ?? []).forEach((post) => {
             const date = new Date(post.scheduled_at);
 
             const key = [
                 date.getFullYear(),
-              
+
                 String(date.getMonth() + 1).padStart(2, "0"),
                 String(date.getDate()).padStart(2, "0")
             ].join("-");
 
-           if(!groupMap.has(key)) {
-            groupMap.set(key, { label: formatDayLabel(date), posts: [] });
-           }
-           groupMap.get(key)!.posts.push(post);
+            if (!groupMap.has(key)) {
+                groupMap.set(key, { label: formatDayLabel(date), posts: [] });
+            }
+            groupMap.get(key)!.posts.push(post);
         });
 
         console.log("groupMap size:", groupMap.size)
@@ -70,9 +70,9 @@ export async function GET(request: NextRequest) {
             key,
             ...value
         }));
-        
+
         return NextResponse.json({ groupPosts })
-        
+
     } catch (error) {
         console.error("Error getting posts:", error)
         return NextResponse.json({ error: "Internal server error" }, { status: 500 })
@@ -82,12 +82,12 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
     try {
-        const {has, userId} = await auth()
+        const { has, userId } = await auth()
         if (!userId) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
         }
 
-        const {insforge} = await getInsforgeServerClient()
+        const { insforge } = await getInsforgeServerClient()
         const {
             posts,
             scheduledAt,
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Only draft status is allowed" }, { status: 400 })
         }
 
-        if(!Array.isArray(posts) || posts.length === 0) {
+        if (!Array.isArray(posts) || posts.length === 0) {
             return NextResponse.json({ error: "Posts array is required and cannot be empty" }, { status: 400 })
         }
 
@@ -107,26 +107,26 @@ export async function POST(request: NextRequest) {
             content: post.content,
             images: post.images || []
         }))
-        if(normalizedPosts.length === 0) {
+        if (normalizedPosts.length === 0) {
             return NextResponse.json({ error: "No valid posts provided" }, { status: 400 })
         }
 
-        const isPaidPlan = has({ plan:"pro"}) || has({ plan:"premium"})
-        if(!isPaidPlan){
+        const isPaidPlan = has({ plan: "pro" }) || has({ plan: "premium" })
+        if (!isPaidPlan) {
             const canCreatePost = await checkCreatePostLimit(insforge, userId)
             if (!canCreatePost) {
                 return NextResponse.json({ error: "You have reached your post limit, upgrade" }, { status: 403 })
             }
         }
-        
+
         const invalidPost = normalizedPosts.find((post) => !post.content);
         if (invalidPost) {
             return NextResponse.json({ error: "Post content is required" }, { status: 400 })
         }
 
         const channelTypeIds = [...new Set(normalizedPosts.map((post) => post.channelTypeId))];
-        
-        const {data: userChannels, error: userChannelsError} = await insforge.database
+
+        const { data: userChannels, error: userChannelsError } = await insforge.database
             .from("user_channels")
             .select("id, channel_type_id")
             .eq("user_id", userId)
@@ -134,79 +134,79 @@ export async function POST(request: NextRequest) {
             .eq("is_connected", true)
             .in("channel_type_id", channelTypeIds)
 
-            if(userChannelsError) {
-                return NextResponse.json({ error: "Failed to fetch user channels" }, { status: 500 })
-            }
+        if (userChannelsError) {
+            return NextResponse.json({ error: "Failed to fetch user channels" }, { status: 500 })
+        }
 
-            if(!userChannels || userChannels.length === 0) {
-                return NextResponse.json({ error: "No active channels found" }, { status: 404 })
-            }
-            
-            const connectedChannels = new Map(
-                userChannels.map((user_channel) => [
-                    user_channel.channel_type_id,
-                    user_channel.id
-                ])
-            )
+        if (!userChannels || userChannels.length === 0) {
+            return NextResponse.json({ error: "No active channels found" }, { status: 404 })
+        }
 
-            const missigChannel = channelTypeIds.find(
-                (channelTypeId) => !connectedChannels.has(channelTypeId)
-            )
+        const connectedChannels = new Map(
+            userChannels.map((user_channel) => [
+                user_channel.channel_type_id,
+                user_channel.id
+            ])
+        )
 
-            if(missigChannel) {
-                return NextResponse.json({ error: "No active channel found for channel type" }, { status: 404 })
-            }
+        const missigChannel = channelTypeIds.find(
+            (channelTypeId) => !connectedChannels.has(channelTypeId)
+        )
 
-            if(!scheduledAt) {
-                return NextResponse.json({ error: "Scheduled at is required" }, { status: 400 })
-            }
+        if (missigChannel) {
+            return NextResponse.json({ error: "No active channel found for channel type" }, { status: 404 })
+        }
 
-            const postStatus = status === POST_STATUS.DRAFT ? POST_STATUS.DRAFT : POST_STATUS.QUEUE;
+        if (!scheduledAt) {
+            return NextResponse.json({ error: "Scheduled at is required" }, { status: 400 })
+        }
 
-            const payload = normalizedPosts.map((post) => ({
-                user_id: userId,
-                user_channel_id: connectedChannels.get(post.channelTypeId),
-                content: post.content,
-                images: post.images,
-                scheduled_at: scheduledAt,
-                status: postStatus
-            }))
+        const postStatus = status === POST_STATUS.DRAFT ? POST_STATUS.DRAFT : POST_STATUS.QUEUE;
 
-            // console.log(payload,"payload")
+        const payload = normalizedPosts.map((post) => ({
+            user_id: userId,
+            user_channel_id: connectedChannels.get(post.channelTypeId),
+            content: post.content,
+            images: post.images,
+            scheduled_at: scheduledAt,
+            status: postStatus
+        }))
 
-            const {data, error} = await insforge.database
+        // console.log(payload,"payload")
+
+        const { data, error } = await insforge.database
             .from("scheduled_posts")
             .insert(payload)
             .select()
 
-            if(error) {
-                console.log(error,"error")
-                return NextResponse.json({ error: "Failed to create posts" }, { status: 500 })
-            }
+        if (error) {
+            console.log(error, "error")
+            return NextResponse.json({ error: "Failed to create posts" }, { status: 500 })
+        }
 
-            // Send Inngest event for queued posts
-            if (postStatus === POST_STATUS.QUEUE && data && data.length > 0) {
-                try {
-                    await inngest.send(
-                        data.map((post: any) => ({
-                            name: "post/publish.requested",
-                            data: { postId: post.id }
-                        }))
-                    );
-                } catch (inngestErr: any) {
-                    const isConnRefused =
-                        inngestErr?.cause?.code === "ECONNREFUSED" ||
-                        inngestErr?.code === "ECONNREFUSED" ||
-                        String(inngestErr?.message || "").includes("fetch failed");
-                    if (isConnRefused) {
-                        console.warn("[Inngest] Local Inngest server not running on port 8288. Posts are saved to database queue.");
-                    } else {
-                        console.warn("[Inngest] Background dispatch error:", inngestErr?.message || inngestErr);
-                    }
+        // Send Inngest event for queued posts
+        if (postStatus === POST_STATUS.QUEUE && data && data.length > 0) {
+            try {
+                await inngest.send(
+                    data.map((post: any) => ({
+                        name: "post/publish.requested",
+                        data: { postId: post.id }
+                    }))
+                );
+            } catch (inngestErr: any) {
+                const isConnRefused =
+                    inngestErr?.cause?.code === "ECONNREFUSED" ||
+                    inngestErr?.code === "ECONNREFUSED" ||
+                    String(inngestErr?.message || "").includes("fetch failed");
+                if (isConnRefused) {
+                    console.warn("[Inngest] Local Inngest server not running on port 8288. Posts are saved to database queue.");
+                } else {
+                    console.warn("[Inngest] Background dispatch error:", inngestErr?.message || inngestErr);
                 }
             }
+        }
 
-            return NextResponse.json({ posts: data }, { status: 201 })
+        return NextResponse.json({ posts: data }, { status: 201 })
 
 
     } catch (error) {
@@ -216,32 +216,32 @@ export async function POST(request: NextRequest) {
 }
 
 async function checkCreatePostLimit(
-  insforge: Awaited<ReturnType<typeof getInsforgeServerClient>>["insforge"],
-  userId: string,
+    insforge: Awaited<ReturnType<typeof getInsforgeServerClient>>["insforge"],
+    userId: string,
 ) {
-  const { count, error } = await insforge.database
-    .from("scheduled_posts")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId);
+    const { count, error } = await insforge.database
+        .from("scheduled_posts")
+        .select("id", { count: "exact", head: true })
+        .eq("user_id", userId);
 
-  if (error) {
-    throw error;
-  }
+    if (error) {
+        throw error;
+    }
 
-  return (count ?? 0) < 100;
+    return (count ?? 0) < 100;
 }
 
 
 
-function formatDayLabel(date:Date){
+function formatDayLabel(date: Date) {
     const today = new Date();
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-    
-    if(date.toDateString() === today.toDateString()) {
+
+    if (date.toDateString() === today.toDateString()) {
         return "Today";
     }
-    if(date.toDateString() === tomorrow.toDateString()) {
+    if (date.toDateString() === tomorrow.toDateString()) {
         return "Tomorrow";
     }
     return date.toLocaleDateString();
