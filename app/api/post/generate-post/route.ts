@@ -1,51 +1,50 @@
 import { getInsforgeServerClient } from "@/lib/insforge-server";
+import { generateAdCreativeImage } from "@/lib/ai-image-generator";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-
 
 const ACTIONS = ["generate", "rephrase", "shorten", "expand"] as const;
 type ActionType = (typeof ACTIONS)[number];
 
-export async function POST(request:NextRequest){
+export async function POST(request: NextRequest) {
     try {
-        const { has, userId } = await auth();
+        const { userId } = await auth();
         if (!userId) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
 
-        // Allowed for all authenticated users
-        const canUseAI = true;
-        
         const {
             action,
-            content="",
-            prompt="",
-            channelId
-        } =await request.json()
+            content = "",
+            prompt = "",
+            channelId,
+            generateImage = false,
+            aspectRatio = "1:1",
+        } = await request.json();
 
-        if(!ACTIONS.includes(action as ActionType)){
-            return NextResponse.json({ error: "Invalid action" }, { status: 400 })
+        if (!ACTIONS.includes(action as ActionType)) {
+            return NextResponse.json({ error: "Invalid action" }, { status: 400 });
         }
-        if(action === "generate" && !prompt.trim()){
-            return NextResponse.json({ error: "Prompt is required for generate action" }, { status: 400 })
+        if (action === "generate" && !prompt.trim()) {
+            return NextResponse.json({ error: "Prompt is required for generate action" }, { status: 400 });
         }
 
-        let channelType:string | undefined;
-        let characterLimit:number | undefined;
+        let channelType: string | undefined;
+        let characterLimit: number | undefined;
 
-        const {insforge} = await getInsforgeServerClient();
+        const { insforge } = await getInsforgeServerClient();
 
-        if(channelId){
-            const {data: channelData, error: channelError} = await insforge.database
+        if (channelId) {
+            const { data: channelData, error: channelError } = await insforge.database
                 .from("channel_types")
                 .select("type, character_limit")
                 .eq("id", channelId)
                 .single();
-            
-            if(channelError){
+
+            if (channelError) {
                 return NextResponse.json({ error: "Invalid channel ID" }, { status: 400 });
             }
-            if(!channelData){
+            if (!channelData) {
                 return NextResponse.json({ error: "Channel not found" }, { status: 404 });
             }
             channelType = channelData.type;
@@ -53,23 +52,32 @@ export async function POST(request:NextRequest){
         }
 
         const isGenerateAction = action === "generate";
-        const systemPrompt = isGenerateAction 
+        const systemPrompt = isGenerateAction
             ? buildGenerateSystemPrompt(channelType, characterLimit)
             : buildRefineSystemPrompt(channelType, characterLimit);
 
         const userPrompt = buildPrompt(action, content, prompt);
 
         const result = await insforge.ai.chat.completions.create({
-          model: "google/gemini-2.5-flash-lite",
+            model: "google/gemini-3.8-flash",
             messages: [
                 {
                     role: "system",
-                    content: systemPrompt
-                },{
+                    content: systemPrompt,
+                },
+                {
                     role: "user",
                     content: userPrompt,
-                }
-            ]
+                },
+            ],
+        }).catch(() => {
+            return insforge.ai.chat.completions.create({
+                model: "google/gemini-3.7-flash",
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userPrompt },
+                ],
+            });
         });
 
         const rawText = result.choices[0]?.message?.content ?? "";
@@ -78,12 +86,14 @@ export async function POST(request:NextRequest){
             const cleanJson = rawText.replace(/```(?:json)?\s*|\s*```/g, "").trim();
             try {
                 const parsed = JSON.parse(cleanJson);
+                const promptLower = prompt.toLowerCase();
                 const hasScheduleKeywords =
-                    prompt.toLowerCase().includes("schedule") ||
-                    prompt.toLowerCase().includes("bhejo") ||
-                    prompt.toLowerCase().includes("post on") ||
-                    prompt.toLowerCase().includes("tomorrow") ||
-                    prompt.toLowerCase().includes("today at");
+                    promptLower.includes("schedule") ||
+                    promptLower.includes("bhejo") ||
+                    promptLower.includes("post on") ||
+                    promptLower.includes("tomorrow") ||
+                    promptLower.includes("today at") ||
+                    promptLower.includes("todat at");
 
                 const hasExplicitSchedule = Boolean(
                     parsed.autoSchedule === true ||
@@ -91,11 +101,46 @@ export async function POST(request:NextRequest){
                     (parsed.schedule && hasScheduleKeywords)
                 );
 
+                // Check if user requested an image/visual/creative
+                const wantsImage =
+                    generateImage ||
+                    parsed.generateImage === true ||
+                    Boolean(parsed.imagePrompt) ||
+                    promptLower.includes("image") ||
+                    promptLower.includes("photo") ||
+                    promptLower.includes("picture") ||
+                    promptLower.includes("visual") ||
+                    promptLower.includes("banner") ||
+                    promptLower.includes("attach") ||
+                    promptLower.includes("reel");
+
+                let generatedImageObj: { url: string; key: string } | null = null;
+
+                if (wantsImage) {
+                    const imgPrompt = parsed.imagePrompt || prompt;
+                    try {
+                        const imgRes = await generateAdCreativeImage({
+                            prompt: imgPrompt,
+                            aspectRatio: aspectRatio || "1:1",
+                            userId,
+                        });
+                        if (imgRes.success && imgRes.imageUrl) {
+                            generatedImageObj = {
+                                url: imgRes.imageUrl,
+                                key: imgRes.storageKey || `ai-creative-${Date.now()}`,
+                            };
+                        }
+                    } catch (imgErr) {
+                        console.warn("Auto-image generation error in generate-post:", imgErr);
+                    }
+                }
+
                 return NextResponse.json({
                     content: parsed.content || cleanJson,
                     schedule: parsed.schedule || null,
                     autoSchedule: hasExplicitSchedule,
                     channels: Array.isArray(parsed.channels) ? parsed.channels : null,
+                    image: generatedImageObj,
                 });
             } catch {
                 const hasScheduleKeywords = prompt.toLowerCase().includes("schedule");
@@ -104,11 +149,12 @@ export async function POST(request:NextRequest){
                     schedule: null,
                     autoSchedule: hasScheduleKeywords,
                     channels: null,
+                    image: null,
                 });
             }
         }
 
-        return NextResponse.json({ content: rawText, schedule: null, autoSchedule: false, channels: null });
+        return NextResponse.json({ content: rawText, schedule: null, autoSchedule: false, channels: null, image: null });
     } catch (error: any) {
         console.error("Generate post error:", error);
         return NextResponse.json({ error: error?.message || "Failed to generate post" }, { status: 500 });
@@ -136,13 +182,19 @@ function buildGenerateSystemPrompt(channelType?: string, characterLimit?: number
         "4. If user mentions target social media platforms (e.g. 'Twitter', 'X', 'LinkedIn', 'Instagram', 'Facebook', 'Bluesky', 'Threads', 'YouTube', 'TikTok', 'all channels'):",
         "   - Set channels array: ['twitter', 'linkedin'] or ['all'].",
         "   - If no platforms are mentioned, set channels: null.",
+        "5. If user asks for an image, photo, banner, visual, creative, reel, or asks to attach a visual (e.g. 'generate photo', 'attach this in post', 'with doctor photo'):",
+        "   - Set 'generateImage': true.",
+        "   - Formulate a clear, highly realistic commercial visual prompt in 'imagePrompt' (e.g. 'Authentic photo of a confident medical doctor in a modern clinic with stethoscope').",
+        "   - If no image requested, set 'generateImage': false and 'imagePrompt': null.",
         "",
         "Return ONLY a valid JSON object matching this schema without any markdown formatting:",
         "{",
         '  "content": "The generated post text here",',
         '  "schedule": { "date": "YYYY-MM-DD", "time": "5:00 PM" } | null,',
         '  "autoSchedule": true,',
-        '  "channels": ["twitter", "linkedin"] | null',
+        '  "channels": ["bluesky"] | null,',
+        '  "generateImage": true,',
+        '  "imagePrompt": "Authentic professional commercial photo of doctor in modern clinic" | null',
         "}"
     ];
 

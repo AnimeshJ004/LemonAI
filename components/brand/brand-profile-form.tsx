@@ -5,13 +5,6 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -24,10 +17,10 @@ import {
   Save,
   Check,
   Loader2,
-  Dumbbell,
-  ShoppingBag,
   Sparkles,
   ChevronRight,
+  Briefcase,
+  Target,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -42,11 +35,11 @@ interface BrandProfile {
 }
 
 const BRAND_TONES = [
-  { value: "Professional", label: "🤝 Professional" },
-  { value: "Friendly", label: "😊 Friendly" },
-  { value: "Bold", label: "⚡ Bold" },
-  { value: "Luxury", label: "💎 Luxury" },
-  { value: "Energetic", label: "🔥 Energetic" },
+  { value: "Professional", label: "Professional" },
+  { value: "Friendly", label: "Friendly" },
+  { value: "Bold", label: "Bold" },
+  { value: "Luxury", label: "Luxury" },
+  { value: "Energetic", label: "Energetic" },
 ];
 
 const EMPTY_PROFILE: BrandProfile = {
@@ -57,52 +50,6 @@ const EMPTY_PROFILE: BrandProfile = {
   main_offer: "",
   competitors: "",
 };
-
-// ─── Demo Presets ─────────────────────────────────────────────────────────────
-const PRESETS = [
-  {
-    id: "dental",
-    icon: Building2,
-    label: "Dental Clinic",
-    color: "from-blue-500 to-cyan-500",
-    data: {
-      business_name: "Apex Dental Studio",
-      niche: "Cosmetic Dentistry & Clear Aligners",
-      target_audience: "Adults 24-45 looking for smile makeover in Mumbai",
-      brand_tone: "Professional",
-      main_offer: "Free 3D Smile Scan + 20% Off Aligners",
-      competitors: "@clovedental, @toothsi",
-    },
-  },
-  {
-    id: "gym",
-    icon: Dumbbell,
-    label: "Gym / Fitness",
-    color: "from-orange-500 to-red-500",
-    data: {
-      business_name: "IronForge Athletic Club",
-      niche: "High-Performance CrossFit & Body Transformation",
-      target_audience: "Fitness enthusiasts aged 20-40 seeking 30-day transformation",
-      brand_tone: "Energetic",
-      main_offer: "First Week FREE + Free Personal Training Session",
-      competitors: "@cult.fit, @fitnesspark",
-    },
-  },
-  {
-    id: "ecommerce",
-    icon: ShoppingBag,
-    label: "E-Commerce",
-    color: "from-emerald-500 to-teal-500",
-    data: {
-      business_name: "Aura Glow Skincare",
-      niche: "Organic Vegan Botanical Skincare",
-      target_audience: "Women 22-40 interested in clean beauty & natural skincare",
-      brand_tone: "Luxury",
-      main_offer: "30% Off First Order + Free Shipping Over ₹999",
-      competitors: "@mamaearth, @pilgrimbeauty",
-    },
-  },
-];
 
 // ─── Field Config ─────────────────────────────────────────────────────────────
 const FIELD_ICONS: Record<keyof BrandProfile, React.ElementType> = {
@@ -118,7 +65,6 @@ const FIELD_ICONS: Record<keyof BrandProfile, React.ElementType> = {
 // ─── Component ────────────────────────────────────────────────────────────────
 export function BrandProfileForm() {
   const queryClient = useQueryClient();
-  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [form, setForm] = useState<BrandProfile>(EMPTY_PROFILE);
   const [isInit, setIsInit] = useState(false);
 
@@ -147,96 +93,75 @@ export function BrandProfileForm() {
     }
   }, [data, isInit]);
 
-  const mutation = useMutation({
+  const set = useCallback(<K extends keyof BrandProfile>(key: K, val: BrandProfile[K]) => {
+    setForm((prev) => ({ ...prev, [key]: val }));
+  }, []);
+
+  // Save mutation
+  const saveMutation = useMutation({
     mutationFn: async (payload: BrandProfile) => {
       const res = await fetch("/api/brand", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Failed to save");
-      return json;
-    },
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: ["brand-profile"] });
-      if (result.sqlFile) {
-        toast.warning("Table not created yet!", {
-          description: `Run the SQL in ${result.sqlFile} in your InsForge dashboard first.`,
-          duration: 10000,
-        });
-      } else {
-        toast.success("Brand profile saved! 🎉", {
-          description: "Your AI will now use this to create high-converting ads.",
-        });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? "Failed to save brand profile");
       }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success("Brand profile saved successfully! AI will now use your business context.");
+      queryClient.invalidateQueries({ queryKey: ["brand-profile"] });
     },
     onError: (err: Error) => {
-      toast.error(err.message);
+      toast.error(err.message || "Failed to save. Please try again.");
     },
   });
 
-  const set = useCallback(<K extends keyof BrandProfile>(key: K, val: string) => {
-    setForm((prev) => ({ ...prev, [key]: val }));
-  }, []);
-
-  const applyPreset = (presetId: string) => {
-    const preset = PRESETS.find((p) => p.id === presetId);
-    if (!preset) return;
-    setSelectedPreset(presetId);
-    setForm(preset.data);
-    toast.info(`Preset applied: ${preset.data.business_name}`, { duration: 2000 });
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    mutation.mutate(form);
+    if (!form.business_name.trim()) {
+      toast.error("Please enter your business name");
+      return;
+    }
+    if (!form.niche.trim()) {
+      toast.error("Please enter your niche or industry");
+      return;
+    }
+    if (!form.target_audience.trim()) {
+      toast.error("Please specify your target audience");
+      return;
+    }
+    saveMutation.mutate(form);
   };
 
-  const isSaving = mutation.isPending;
-  const isSuccess = mutation.isSuccess && !mutation.isPending;
+  const isSaved = Boolean(data?.profile?.business_name);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Presets */}
-      <div>
-        <p className="text-sm font-semibold text-foreground mb-3 flex items-center gap-2">
-          <Sparkles className="size-4 text-primary" /> Quick Start with a Demo Preset
-        </p>
-        <div className="grid grid-cols-3 gap-2">
-          {PRESETS.map((preset) => {
-            const Icon = preset.icon;
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                id={`brand-preset-${preset.id}`}
-                onClick={() => applyPreset(preset.id)}
-                className={cn(
-                  "flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all",
-                  selectedPreset === preset.id
-                    ? "border-primary bg-primary/5 shadow-sm"
-                    : "border-border bg-card hover:border-primary/50 hover:bg-accent/30"
-                )}
-              >
-                <div
-                  className={cn(
-                    "size-9 rounded-full flex items-center justify-center bg-gradient-to-br text-white shrink-0",
-                    preset.color
-                  )}
-                >
-                  <Icon className="size-4" />
-                </div>
-                <span className="text-[11px] font-medium text-center leading-tight text-foreground">
-                  {preset.label}
-                </span>
-              </button>
-            );
-          })}
+      {/* Active Brand Status Banner */}
+      {isSaved && data?.profile && (
+        <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="size-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+              <Briefcase className="size-5" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-foreground">
+                Active Client Brand: <span className="text-primary font-bold">{data.profile.business_name}</span>
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {data.profile.niche} • {data.profile.brand_tone} Tone
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+            <Check className="size-3" /> Synced with AI
+          </span>
         </div>
-      </div>
-
-      <div className="border-t border-dashed border-border" />
+      )}
 
       {/* Form Fields */}
       {isLoading ? (
@@ -255,12 +180,12 @@ export function BrandProfileForm() {
             id="brand-business-name"
             label="Business Name"
             required
-            description="Your brand or company name"
+            description="Your company, practice, or brand name"
             icon={FIELD_ICONS.business_name}
           >
             <Input
               id="brand-business-name"
-              placeholder="e.g. Apex Dental Studio"
+              placeholder="e.g. Apex Health Clinic, Urban Roast Cafe, Zenith Law"
               value={form.business_name}
               onChange={(e) => set("business_name", e.target.value)}
               required
@@ -270,14 +195,14 @@ export function BrandProfileForm() {
           {/* Niche */}
           <FormField
             id="brand-niche"
-            label="Niche / Industry"
+            label="Niche / Industry & Product"
             required
-            description="What do you specialize in?"
+            description="What products or services do you provide?"
             icon={FIELD_ICONS.niche}
           >
             <Input
               id="brand-niche"
-              placeholder="e.g. Cosmetic Dentistry & Clear Aligners"
+              placeholder="e.g. Cosmetic Dentistry, Handcrafted Organic Bakery, Corporate Tax Consulting"
               value={form.niche}
               onChange={(e) => set("niche", e.target.value)}
               required
@@ -287,14 +212,14 @@ export function BrandProfileForm() {
           {/* Target Audience */}
           <FormField
             id="brand-target-audience"
-            label="Target Audience"
+            label="Target Audience & Demographics"
             required
-            description="Who are you trying to reach?"
+            description="Who are your ideal customers and where are they located?"
             icon={FIELD_ICONS.target_audience}
           >
             <Textarea
               id="brand-target-audience"
-              placeholder="e.g. Adults 24-45 looking for smile makeover in Mumbai"
+              placeholder="e.g. Working professionals aged 25-45 in urban metro cities seeking convenient dental care"
               value={form.target_audience}
               onChange={(e) => set("target_audience", e.target.value)}
               className="min-h-[70px] resize-none"
@@ -305,8 +230,8 @@ export function BrandProfileForm() {
           {/* Brand Tone */}
           <FormField
             id="brand-tone"
-            label="Brand Tone"
-            description="How should your brand communicate?"
+            label="Brand Voice & Tone"
+            description="How should the AI communicate in ad copy and posts?"
             icon={FIELD_ICONS.brand_tone}
           >
             <div className="grid grid-cols-5 gap-2">
@@ -319,12 +244,11 @@ export function BrandProfileForm() {
                   className={cn(
                     "flex flex-col items-center gap-1 py-2 px-1 rounded-lg border-2 text-[10px] font-medium transition-all",
                     form.brand_tone === tone.value
-                      ? "border-primary bg-primary/5 text-primary"
-                      : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                      ? "border-primary bg-primary/10 text-primary font-bold shadow-xs"
+                      : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-accent/40"
                   )}
                 >
-                  <span className="text-base">{tone.label.split(" ")[0]}</span>
-                  <span className="leading-tight text-center">{tone.label.split(" ")[1]}</span>
+                  <span>{tone.label}</span>
                 </button>
               ))}
             </div>
@@ -333,30 +257,28 @@ export function BrandProfileForm() {
           {/* Main Offer */}
           <FormField
             id="brand-main-offer"
-            label="Main Offer / Hook"
-            required
-            description="Your standout offer or lead magnet"
+            label="Primary Offer / Value Proposition (Optional)"
+            description="What unique discount, package, or hook should the AI emphasize?"
             icon={FIELD_ICONS.main_offer}
           >
             <Input
               id="brand-main-offer"
-              placeholder="e.g. Free 3D Smile Scan + 20% Off Aligners"
+              placeholder="e.g. Free Consultation + 20% Off First Visit, Free 7-Day Trial"
               value={form.main_offer}
               onChange={(e) => set("main_offer", e.target.value)}
-              required
             />
           </FormField>
 
-          {/* Competitors */}
+          {/* Competitor Handles */}
           <FormField
             id="brand-competitors"
-            label="Competitor Handles / URLs"
-            description="Know your competition (optional)"
+            label="Competitor Social Handles / Market References (Optional)"
+            description="Handles or brands in your space for AI competitive intelligence (comma separated)"
             icon={FIELD_ICONS.competitors}
           >
             <Input
               id="brand-competitors"
-              placeholder="e.g. @clovedental, @toothsi, competitor.com"
+              placeholder="e.g. @competitor1, @competitor2, BrandName"
               value={form.competitors}
               onChange={(e) => set("competitors", e.target.value)}
             />
@@ -364,65 +286,32 @@ export function BrandProfileForm() {
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex gap-3 pt-2">
+      {/* Save Button */}
+      <div className="pt-2">
         <Button
-          id="brand-save-btn"
           type="submit"
-          disabled={isSaving || isLoading}
-          className={cn(
-            "flex-1 gap-2 transition-all",
-            isSuccess && "bg-emerald-600 hover:bg-emerald-700"
-          )}
+          id="save-brand-profile-btn"
+          disabled={saveMutation.isPending || isLoading}
+          className="w-full gap-2 h-11 text-sm font-semibold"
         >
-          {isSaving ? (
+          {saveMutation.isPending ? (
             <>
-              <Loader2 className="size-4 animate-spin" /> Saving…
-            </>
-          ) : isSuccess ? (
-            <>
-              <Check className="size-4" /> Saved!
+              <Loader2 className="size-4 animate-spin" />
+              Saving Business Profile...
             </>
           ) : (
             <>
-              <Save className="size-4" /> Save Brand Profile
+              <Save className="size-4" />
+              Save Brand Profile & Configure AI
             </>
           )}
         </Button>
-
-        {data?.profile && (
-          <Button
-            id="brand-go-to-ads"
-            type="button"
-            variant="outline"
-            className="gap-2"
-            onClick={() => (window.location.href = "/meta-ads")}
-          >
-            Create Ads <ChevronRight className="size-4" />
-          </Button>
-        )}
       </div>
-
-      {/* Table warning */}
-      {!isLoading && data && !data.tableExists && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 p-4">
-          <p className="text-sm font-semibold text-amber-700 dark:text-amber-400 mb-1">
-            ⚠️ Database Table Not Created Yet
-          </p>
-          <p className="text-xs text-amber-600 dark:text-amber-500">
-            Run{" "}
-            <code className="font-mono bg-amber-100 dark:bg-amber-900/30 px-1 py-0.5 rounded">
-              lib/db/create-brand-profiles-and-meta-ads-tables.sql
-            </code>{" "}
-            in your InsForge dashboard SQL editor to create the required tables.
-          </p>
-        </div>
-      )}
     </form>
   );
 }
 
-// ─── FormField helper ─────────────────────────────────────────────────────────
+// ─── Sub-Component: FormField ──────────────────────────────────────────────────
 function FormField({
   id,
   label,
@@ -435,21 +324,19 @@ function FormField({
   label: string;
   required?: boolean;
   description?: string;
-  icon: React.ElementType;
+  icon?: React.ElementType;
   children: React.ReactNode;
 }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="flex items-center gap-2">
-        <Icon className="size-3.5 text-primary shrink-0" />
-        <span className="text-xs font-semibold text-foreground">
+      <div className="flex items-center justify-between">
+        <label htmlFor={id} className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+          {Icon && <Icon className="size-3.5 text-muted-foreground" />}
           {label}
-          {required && <span className="text-destructive ml-0.5">*</span>}
-        </span>
-        {description && (
-          <span className="text-[10px] text-muted-foreground ml-1">— {description}</span>
-        )}
-      </label>
+          {required && <span className="text-destructive font-bold">*</span>}
+        </label>
+      </div>
+      {description && <p className="text-[11px] text-muted-foreground">{description}</p>}
       {children}
     </div>
   );

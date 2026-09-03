@@ -58,57 +58,7 @@ interface DeployResult {
   sandbox?: boolean;
 }
 
-// ─── Demo Presets ─────────────────────────────────────────────────────────────
-const DEMO_PRESETS = [
-  {
-    id: "real-estate",
-    label: "Real Estate",
-    icon: Building2,
-    color: "from-blue-500 to-indigo-600",
-    data: {
-      businessName: "Skyline Luxury Penthouses",
-      niche: "Luxury Real Estate & High-End Living",
-      targetAudience: "HNI professionals aged 30-55 seeking premium homes in Mumbai / Delhi NCR",
-      objective: "OUTCOME_LEADS",
-      adHeadline: "Mumbai's Most Exclusive Penthouses — Yours Today",
-      adPrimaryText:
-        "Experience sky-high living with panoramic city views, private pools, and concierge services 24/7. Limited inventory available. Schedule a private tour today. 🏙️✨",
-      callToAction: "BOOK_NOW",
-    },
-  },
-  {
-    id: "gym",
-    label: "Gym / Fitness",
-    icon: Dumbbell,
-    color: "from-orange-500 to-red-600",
-    data: {
-      businessName: "IronForge Athletic Club",
-      niche: "High-Performance CrossFit & Body Transformation",
-      targetAudience: "Fitness enthusiasts aged 20-45 looking for 30-day body transformation programs",
-      objective: "OUTCOME_LEADS",
-      adHeadline: "30 Days. Real Results. Guaranteed.",
-      adPrimaryText:
-        "Join IronForge's elite 30-Day Body Transformation Challenge. Science-backed programming, expert coaching & nutrition plans. First week FREE 🔥💪 Limited spots — don't miss out!",
-      callToAction: "SIGN_UP",
-    },
-  },
-  {
-    id: "ecommerce",
-    label: "E-Commerce",
-    icon: ShoppingBag,
-    color: "from-emerald-500 to-teal-600",
-    data: {
-      businessName: "Aura Glow Skincare",
-      niche: "Organic Vegan Botanical Skincare & Clear Complexion",
-      targetAudience: "Women aged 22-40 interested in clean beauty and natural skincare solutions",
-      objective: "OUTCOME_SALES",
-      adHeadline: "Glow Up Naturally — 30% Off Your First Order",
-      adPrimaryText:
-        "Discover the power of pure botanicals. Our vegan, cruelty-free serums are clinically proven to reduce dark spots in 14 days. 🌿✨ Free shipping over ₹999. Shop now!",
-      callToAction: "SHOP_NOW",
-    },
-  },
-];
+
 
 const OBJECTIVES = [
   { value: "OUTCOME_LEADS", label: "Lead Generation" },
@@ -130,17 +80,9 @@ const CTAS = [
 
 const CTA_LABELS: Record<string, string> = Object.fromEntries(CTAS.map((c) => [c.value, c.label]));
 
-const SAMPLE_AD_IMAGES: Record<string, string> = {
-  "real-estate":
-    "https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=800&q=80",
-  gym: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=800&q=80",
-  ecommerce: "https://images.unsplash.com/photo-1556228720-195a672e8a03?w=800&q=80",
-};
-
 // ─── Component ────────────────────────────────────────────────────────────────
 export function CampaignCreationWizard() {
   const [step, setStep] = useState(1);
-  const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
@@ -178,24 +120,23 @@ export function CampaignCreationWizard() {
         }
       })
       .catch(() => {});
-  }, [set]);
 
-  const applyPreset = (presetId: string) => {
-    const preset = DEMO_PRESETS.find((p) => p.id === presetId);
-    if (!preset) return;
-    setSelectedPreset(presetId);
-    setData((prev) => ({
-      ...prev,
-      businessName: preset.data.businessName,
-      niche: preset.data.niche,
-      targetAudience: preset.data.targetAudience,
-      objective: preset.data.objective,
-      adHeadline: preset.data.adHeadline,
-      adPrimaryText: preset.data.adPrimaryText,
-      callToAction: preset.data.callToAction,
-      adImageUrl: SAMPLE_AD_IMAGES[presetId] ?? "",
-    }));
-  };
+    // Auto-populate from user's actual saved Brand Profile
+    fetch("/api/brand")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.profile?.business_name) {
+          setData((prev) => ({
+            ...prev,
+            businessName: d.profile.business_name,
+            niche: d.profile.niche || prev.niche,
+            targetAudience: d.profile.target_audience || prev.targetAudience,
+            adHeadline: d.profile.main_offer ? d.profile.main_offer : prev.adHeadline,
+          }));
+        }
+      })
+      .catch(() => {});
+  }, [set]);
 
   const generateCopy = async () => {
     if (!data.businessName || !data.niche) {
@@ -230,7 +171,7 @@ export function CampaignCreationWizard() {
             callToAction: firstVariant.callToAction?.toUpperCase()?.replace(/ /g, "_") || prev.callToAction,
             adImageUrl: firstVariant.bannerImageUrl || prev.adImageUrl,
           }));
-          toast.success("AI full-funnel copy & creative generated! 🚀");
+          toast.success("Campaign copy and visual creative generated successfully.");
           setIsGenerating(false);
           return;
         }
@@ -247,8 +188,8 @@ export function CampaignCreationWizard() {
       `Join Thousands Who Trust ${data.businessName}`,
     ];
     const texts = [
-      `Discover why thousands choose ${data.businessName} for ${data.niche.toLowerCase()}. ${data.targetAudience ? `Specially designed for ${data.targetAudience}.` : ""} Act now — limited time offer! 🚀`,
-      `Stop settling. Start thriving. ${data.businessName} delivers ${data.niche} results that speak for themselves. Book your free consultation today.`,
+      `Discover why thousands choose ${data.businessName} for ${data.niche.toLowerCase()}. ${data.targetAudience ? `Specially designed for ${data.targetAudience}.` : ""} Act now — limited time offer.`,
+      `Stop settling. Start thriving. ${data.businessName} delivers ${data.niche} results that speak for themselves. Book your consultation today.`,
     ];
     setData((prev) => ({
       ...prev,
@@ -256,7 +197,7 @@ export function CampaignCreationWizard() {
       adPrimaryText: texts[Math.floor(Math.random() * texts.length)],
     }));
     setIsGenerating(false);
-    toast.success("AI copy generated! Customize it further if needed.");
+    toast.success("Ad copy generated successfully.");
   };
 
   const handleDeploy = async () => {
@@ -354,42 +295,36 @@ export function CampaignCreationWizard() {
       {/* ─── Step 1: Brand & Target ─────────────────────────────────────────── */}
       {step === 1 && (
         <div className="flex flex-col gap-5">
-          {/* Demo Presets */}
-          <div>
-            <p className="text-sm font-semibold mb-2 text-foreground">
-              ⚡ 1-Click Demo Presets
-            </p>
-            <div className="grid grid-cols-3 gap-2">
-              {DEMO_PRESETS.map((preset) => {
-                const Icon = preset.icon;
-                return (
-                  <button
-                    key={preset.id}
-                    id={`preset-${preset.id}`}
-                    onClick={() => applyPreset(preset.id)}
-                    className={cn(
-                      "flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 transition-all text-center",
-                      selectedPreset === preset.id
-                        ? "border-primary bg-primary/5"
-                        : "border-border bg-card hover:border-primary/50 hover:bg-accent/50"
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "size-8 rounded-full flex items-center justify-center bg-gradient-to-br text-white",
-                        preset.color
-                      )}
-                    >
-                      <Icon className="size-4" />
-                    </div>
-                    <span className="text-[11px] font-medium text-foreground leading-tight">
-                      {preset.label}
-                    </span>
-                  </button>
-                );
-              })}
+          {/* Client Brand Profile Status */}
+          {data.businessName ? (
+            <div className="p-3.5 rounded-xl border border-primary/20 bg-primary/5 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                  <Building2 className="size-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-foreground">
+                    Active Client Brand: <span className="text-primary font-bold">{data.businessName}</span>
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {data.niche || "Custom Industry"} • Context loaded from your Brand Profile
+                  </p>
+                </div>
+              </div>
+              <span className="text-[10px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                <Check className="size-3" /> Auto-Synced
+              </span>
             </div>
-          </div>
+          ) : (
+            <div className="p-3.5 rounded-xl border bg-muted/40 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Building2 className="size-4 text-muted-foreground" />
+                <p className="text-xs text-muted-foreground">
+                  Enter your client or company details below to target and generate ads.
+                </p>
+              </div>
+            </div>
+          )}
 
           <div className="space-y-3">
             <div className="space-y-1.5">
@@ -760,7 +695,6 @@ export function CampaignCreationWizard() {
             onClick={() => {
               setStep(1);
               setDeployResult(null);
-              setSelectedPreset(null);
               setData((prev) => ({ ...prev, adHeadline: "", adPrimaryText: "", adImageUrl: "" }));
             }}
           >

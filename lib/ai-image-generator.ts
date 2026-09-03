@@ -28,8 +28,19 @@ export async function generateAdCreativeImage(options: GenerateImageOptions): Pr
   const aspectRatio = options.aspectRatio || "1:1";
   const replicateToken = process.env.REPLICATE_API_TOKEN?.trim();
 
-  // Enhance prompt for maximum CTR and aesthetic polish
-  const polishedPrompt = `${options.prompt.trim()}, commercial advertising photography, 8k resolution, professional studio lighting, hyperrealistic, award winning marketing visual, highly detailed`;
+  // Clean user intent words and command phrases from image prompt
+  const cleanPrompt = options.prompt
+    .replace(/generate\s+(a\s+)?(post|image|picture|photo|ad|creative|banner|reel|video)\s+(for|about|of|related\s+to)?/gi, "")
+    .replace(/attach\s+(this|image|it|photo)\s+(in|to)?\s+(the\s+)?(post)?/gi, "")
+    .replace(/with\s+best\s+caption.*/gi, "")
+    .replace(/schedule\s+(in|for|at|on)?\s+.*/gi, "")
+    .replace(/todat\s+at\s+.*/gi, "")
+    .replace(/today\s+at\s+.*/gi, "")
+    .replace(/tomorrow\s+at\s+.*/gi, "")
+    .trim() || options.prompt.trim();
+
+  // Strict photorealism prompt engineering: authentic commercial photography, no anime, no gaming CGI
+  const polishedPrompt = `Professional commercial editorial photograph of ${cleanPrompt}, realistic authentic human features, natural ambient workplace lighting, 8k resolution, shot on 35mm Hasselblad lens, photorealistic documentary realism, sharp focus, rich authentic color grading, strictly photorealistic, no cartoon, no anime, no CGI, no 3D render, no gaming character, highly detailed`;
 
   let rawImageUrl: string | null = null;
   let providerUsed: "REPLICATE_FLUX" | "DIRECT_AI_FALLBACK" = "DIRECT_AI_FALLBACK";

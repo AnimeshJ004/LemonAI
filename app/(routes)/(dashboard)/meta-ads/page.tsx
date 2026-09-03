@@ -102,7 +102,7 @@ export default function MetaAdsPage() {
           </div>
           <div>
             <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">
-              🧪 Sandbox Mode Active
+              Sandbox Environment Active
             </p>
             <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">
               Meta API credentials are not configured. Campaigns will be created in demo mode with

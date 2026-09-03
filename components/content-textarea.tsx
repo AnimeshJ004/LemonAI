@@ -1,13 +1,12 @@
-"use client"
-
 import * as React from "react"
 import { EmojiPicker } from "@ferrucc-io/emoji-picker"
-import { X, Wand2Icon, ImagePlus, SmileIcon } from "lucide-react"
+import { X, Wand2Icon, ImagePlus, SmileIcon, Eye, ZoomIn, ExternalLink, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { Separator } from "./ui/separator"
 import { Spinner } from "./ui/spinner"
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog"
 import { Textarea } from "./ui/textarea"
 import { ImageObject } from "@/types/post.type"
 
@@ -48,6 +47,7 @@ const ContentTextarea = ({
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const [isUploading, setIsUploading] = React.useState(false)
   const [emojiOpen, setEmojiOpen] = React.useState(false)
+  const [previewImage, setPreviewImage] = React.useState<ImageObject | null>(null)
 
   const insertEmoji = (emoji: string) => {
     if (disabled) return
@@ -164,16 +164,25 @@ const ContentTextarea = ({
               {images.map((image, index) => (
                 <div
                   key={image.key || index}
-                  className="shrink-0 relative size-16 rounded-lg overflow-hidden border shadow-sm"
+                  className="shrink-0 relative size-16 rounded-lg overflow-hidden border shadow-sm group cursor-pointer"
+                  onClick={() => setPreviewImage(image)}
                 >
                   <img
                     src={image.url}
                     alt={`Upload ${index + 1}`}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover transition-transform group-hover:scale-105"
                   />
+                  {/* Hover Overlay with View Icon */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <ZoomIn className="size-4 text-white drop-shadow" />
+                  </div>
                   <button
-                    onClick={() => handleRemoveImage(index)}
-                    className="absolute top-1 right-1 bg-black/60 hover:bg-black/80 text-white rounded-full p-0.5 transition-colors"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveImage(index);
+                    }}
+                    className="absolute top-1 right-1 z-10 bg-black/70 hover:bg-black text-white rounded-full p-0.5 transition-colors"
+                    title="Remove media"
                   >
                     <X className="h-3 w-3" />
                   </button>
@@ -182,6 +191,41 @@ const ContentTextarea = ({
             </div>
           )}
         </div>
+
+        {/* Media Preview Lightbox Dialog */}
+        <Dialog open={Boolean(previewImage)} onOpenChange={(open) => !open && setPreviewImage(null)}>
+          <DialogContent className="max-w-2xl p-0 overflow-hidden bg-background border shadow-2xl">
+            <DialogHeader className="p-4 pb-2 border-b flex flex-row items-center justify-between">
+              <DialogTitle className="text-sm font-semibold flex items-center gap-2">
+                <Eye className="size-4 text-primary" /> Full Media Preview
+              </DialogTitle>
+              {previewImage && (
+                <a
+                  href={previewImage.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1 border rounded-md px-2 py-1 bg-muted/40 transition-colors mr-6"
+                >
+                  <ExternalLink className="size-3" /> Open Fullscreen
+                </a>
+              )}
+            </DialogHeader>
+            {previewImage && (
+              <div className="p-4 flex flex-col items-center justify-center bg-muted/20">
+                <div className="relative max-h-[70vh] max-w-full rounded-lg overflow-hidden border shadow-md bg-black/5 flex items-center justify-center">
+                  <img
+                    src={previewImage.url}
+                    alt="Media preview"
+                    className="max-h-[65vh] w-auto object-contain rounded-md"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-2 text-center break-all">
+                  {previewImage.key || previewImage.url}
+                </p>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Toolbar */}
         <div className="flex items-center justify-between pt-1">

@@ -27,36 +27,36 @@ export interface AIModelConfig {
   maxTokens: number;
 }
 
-// Model registry optimized for low-cost SaaS operation
+// Model registry optimized for low-cost SaaS operation with InsForge Latest Gemini 3+ models
 export const MODEL_REGISTRY: Record<string, AIModelConfig> = {
-  // Tier 1: Ultra-Low Cost / Fast (~₹0.01 - ₹0.02 per request)
-  "google/gemini-2.5-flash-lite": {
-    name: "google/gemini-2.5-flash-lite",
+  // Tier 1: Ultra Budget-Friendly / Fast Gemini 3.8 & 3.7 (~$0.38/1M tokens -> ~₹0.01 - ₹0.02 per request)
+  "google/gemini-3.8-flash": {
+    name: "google/gemini-3.8-flash",
     tier: "TIER_1_FAST",
-    inputCostPer1M: 0.075,
-    outputCostPer1M: 0.30,
-    maxTokens: 4096,
+    inputCostPer1M: 0.38,
+    outputCostPer1M: 0.76,
+    maxTokens: 8192,
   },
-  // Tier 2: High Intelligence / Gemini 3.7 Flash & 2.5 Flash (~₹0.04 - ₹0.08 per request)
+  "google/gemini-3.7-flash:beta": {
+    name: "google/gemini-3.7-flash:beta",
+    tier: "TIER_1_FAST",
+    inputCostPer1M: 0.38,
+    outputCostPer1M: 0.76,
+    maxTokens: 8192,
+  },
+  // Tier 2: High Intelligence / Gemini 3.7 Flash & 3.6 Flash (~₹0.03 - ₹0.05 per request)
   "google/gemini-3.7-flash": {
     name: "google/gemini-3.7-flash",
     tier: "TIER_2_SMART",
-    inputCostPer1M: 0.15,
-    outputCostPer1M: 0.60,
+    inputCostPer1M: 0.75,
+    outputCostPer1M: 1.50,
     maxTokens: 8192,
   },
-  "google/gemini-3.7-flash-thinking": {
-    name: "google/gemini-3.7-flash-thinking",
+  "google/gemini-3.6-flash": {
+    name: "google/gemini-3.6-flash",
     tier: "TIER_2_SMART",
-    inputCostPer1M: 0.15,
-    outputCostPer1M: 0.60,
-    maxTokens: 8192,
-  },
-  "google/gemini-2.5-flash": {
-    name: "google/gemini-2.5-flash",
-    tier: "TIER_2_SMART",
-    inputCostPer1M: 0.15,
-    outputCostPer1M: 0.60,
+    inputCostPer1M: 0.75,
+    outputCostPer1M: 1.50,
     maxTokens: 8192,
   },
   "deepseek/deepseek-chat": {
@@ -149,10 +149,10 @@ export async function routeAICall<T = any>(req: AICallRequest): Promise<AICallRe
   const startTime = Date.now();
   const tier = req.preferredTier || TASK_TIER_MAPPING[req.task] || "TIER_1_FAST";
   
-  // Select optimal model: Gemini 3.7 / 2.5 Flash for Smart Tier, Gemini 2.5 Flash Lite for Fast Tier
+  // Select optimal model: Gemini 3.8 / 3.7 Flash for Fast & Smart Tiers from InsForge
   const candidateModels = tier === "TIER_1_FAST" 
-    ? ["google/gemini-2.5-flash-lite"] 
-    : ["google/gemini-3.7-flash", "google/gemini-2.5-flash", "deepseek/deepseek-chat"];
+    ? ["google/gemini-3.8-flash", "google/gemini-3.7-flash:beta", "google/gemini-2.5-flash-lite"] 
+    : ["google/gemini-3.8-flash", "google/gemini-3.7-flash", "google/gemini-3.6-flash", "deepseek/deepseek-chat", "google/gemini-2.5-flash"];
 
   const { insforge } = await getInsforgeServerClient().catch(() => ({
     insforge: getInsforgeAdminClient()

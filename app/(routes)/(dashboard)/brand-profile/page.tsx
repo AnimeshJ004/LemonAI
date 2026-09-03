@@ -74,35 +74,39 @@ export default function BrandProfilePage() {
         <BrandProfileForm />
       </div>
 
-      {/* Tips */}
+      {/* Guidance Cards */}
       <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
           {
-            emoji: "🎯",
-            title: "Be Specific",
-            desc: 'Instead of "Adults", say "Adults 28-40 in Mumbai seeking smile makeover"',
+            icon: Building2,
+            title: "Audience Definition",
+            desc: "Specify exact demographics and location (e.g. Adults 28-40 seeking premium services in urban centers).",
           },
           {
-            emoji: "✨",
-            title: "Strong Hook",
-            desc: "Your Main Offer is the first thing people see in your ad. Make it irresistible.",
+            icon: ChevronRight,
+            title: "Value Proposition",
+            desc: "Define your primary customer offer clearly to maximize ad click-through rates.",
           },
           {
-            emoji: "🚀",
-            title: "Know Competitors",
-            desc: "Adding competitor handles helps AI craft messaging that stands out from the market.",
+            icon: Building2,
+            title: "Market Positioning",
+            desc: "Including key competitor handles enables the AI to position your brand distinctly in ad copy.",
           },
-        ].map((tip) => (
-          <div
-            key={tip.title}
-            className="p-3.5 rounded-xl border bg-card/50 space-y-1"
-          >
-            <p className="text-sm font-semibold text-foreground">
-              {tip.emoji} {tip.title}
-            </p>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">{tip.desc}</p>
-          </div>
-        ))}
+        ].map((tip) => {
+          const Icon = tip.icon;
+          return (
+            <div
+              key={tip.title}
+              className="p-3.5 rounded-xl border bg-card/50 space-y-1.5"
+            >
+              <div className="flex items-center gap-2">
+                <Icon className="size-4 text-primary" />
+                <p className="text-xs font-semibold text-foreground">{tip.title}</p>
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">{tip.desc}</p>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

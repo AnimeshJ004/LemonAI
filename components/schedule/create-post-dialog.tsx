@@ -7,7 +7,7 @@ import { ImageObject } from "@/types/post.type";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, Lightbulb, ScanEye, Wand2 } from "lucide-react";
+import { AlertTriangle, Lightbulb, ScanEye, Wand2, Sparkles } from "lucide-react";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
@@ -25,6 +25,7 @@ import { ScheduleDatePicker } from "./schedule-date-picker";
 import Link from "next/link";
 import { Spinner } from "../ui/spinner";
 import { AIAssistant } from "./ai-assitant";
+import { AIVisualGenerator } from "./ai-visual-generator";
 
 type PropsType = {
     open: boolean
@@ -613,50 +614,53 @@ dark:text-amber-400">
                                                 }
                                                 channelId={activeAccordion}
                                                 onGenerate={(data: any) => {
-                                                    const textContent = typeof data === "string" ? data : data?.content || "";
+                                                    const textContent = typeof data === "string" ? data : (data?.content || "");
                                                     const schedule = typeof data === "object" ? data?.schedule : null;
                                                     const autoSchedule = typeof data === "object" ? Boolean(data?.autoSchedule) : false;
                                                     const channels = typeof data === "object" ? data?.channels : null;
+                                                    const generatedImage = typeof data === "object" ? data?.image : null;
 
-                                                    setGlobalContent((prev) => ({
-                                                        ...prev,
-                                                        text: textContent,
-                                                    }));
+                                                    if (generatedImage) {
+                                                        setGlobalContent((prev) => ({
+                                                            ...prev,
+                                                            text: textContent,
+                                                            images: [...prev.images, generatedImage],
+                                                        }));
+                                                    } else {
+                                                        handleGlobalContentChange(textContent);
+                                                    }
 
-                                                    // Auto-select channels if detected, or auto-select all connected channels if none were selected
                                                     let channelsToSelect: string[] = [];
-                                                    if (connectedChannels.length > 0) {
-                                                        if (channels && Array.isArray(channels) && channels.length > 0) {
-                                                            if (channels.includes("all")) {
-                                                                channelsToSelect = connectedChannels.map((c) => c.id);
-                                                            } else {
-                                                                const matchedChannelIds = connectedChannels
-                                                                    .filter((c) =>
-                                                                        channels.some((target: string) => {
-                                                                            const t = target.toLowerCase();
-                                                                            const ct = c.type.toLowerCase();
-                                                                            return (
-                                                                                ct === t ||
-                                                                                (t === "twitter" && ct === "x") ||
-                                                                                (t === "x" && ct === "twitter")
-                                                                            );
-                                                                        })
-                                                                    )
-                                                                    .map((c) => c.id);
-                                                                channelsToSelect = matchedChannelIds.length > 0 ? matchedChannelIds : connectedChannels.map((c) => c.id);
-                                                            }
-                                                        } else if (selectedChannels.length === 0) {
+                                                    if (channels && Array.isArray(channels)) {
+                                                        if (channels.includes("all")) {
                                                             channelsToSelect = connectedChannels.map((c) => c.id);
                                                         } else {
-                                                            channelsToSelect = selectedChannels;
+                                                            const matchedChannelIds = connectedChannels
+                                                                .filter((c) =>
+                                                                    channels.some((target: string) => {
+                                                                        const t = target.toLowerCase();
+                                                                        const ct = c.type.toLowerCase();
+                                                                        return (
+                                                                            ct === t ||
+                                                                            (t === "twitter" && ct === "x") ||
+                                                                            (t === "x" && ct === "twitter")
+                                                                        );
+                                                                    })
+                                                                )
+                                                                .map((c) => c.id);
+                                                            channelsToSelect = matchedChannelIds.length > 0 ? matchedChannelIds : connectedChannels.map((c) => c.id);
                                                         }
+                                                    } else if (selectedChannels.length === 0) {
+                                                        channelsToSelect = connectedChannels.map((c) => c.id);
+                                                    } else {
+                                                        channelsToSelect = selectedChannels;
+                                                    }
 
-                                                        if (channelsToSelect.length > 0) {
-                                                            setSelectedChannels(channelsToSelect);
-                                                            if (!activeAccordion) {
-                                                                setActiveAccordion(channelsToSelect[0]);
-                                                                setActivePreview(channelsToSelect[0]);
-                                                            }
+                                                    if (channelsToSelect.length > 0) {
+                                                        setSelectedChannels(channelsToSelect);
+                                                        if (!activeAccordion) {
+                                                            setActiveAccordion(channelsToSelect[0]);
+                                                            setActivePreview(channelsToSelect[0]);
                                                         }
                                                     }
 
@@ -664,9 +668,11 @@ dark:text-amber-400">
                                                     const effectiveChannels = channelsToSelect.length > 0 ? channelsToSelect : (connectedChannels.length > 0 ? connectedChannels.map((c) => c.id) : []);
 
                                                     effectiveChannels.forEach((chId) => {
+                                                        const existingImgs = updatedChannelContent[chId]?.images || [];
+                                                        const newImgs = generatedImage ? [...existingImgs, generatedImage] : existingImgs;
                                                         updatedChannelContent[chId] = {
-                                                            ...(updatedChannelContent[chId] || { images: [] }),
                                                             text: textContent,
+                                                            images: newImgs,
                                                         };
                                                     });
                                                     setChannelContent(updatedChannelContent);
