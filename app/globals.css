@@ -136,3 +136,30 @@ button[data-slot="button"] {
     @apply font-sans;
   }
 }
+
+/* ── Shimmer / Glowing Loader for AI states ─────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--muted) 25%,
+    color-mix(in oklch, var(--primary) 18%, var(--muted)) 50%,
+    var(--muted) 75%
+  );
+  background-size: 200% auto;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* ── Futuristic Glow Pulse ───────────────────────────────────────────── */
+@keyframes glow-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklch, var(--primary) 40%, transparent); }
+  50%       { box-shadow: 0 0 16px 4px color-mix(in oklch, var(--primary) 30%, transparent); }
+}
+
+.glow-pulse {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
