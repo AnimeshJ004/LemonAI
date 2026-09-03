@@ -203,8 +203,44 @@ export function CampaignCreationWizard() {
       return;
     }
     setIsGenerating(true);
-    // Simulate AI generation with realistic copy (replace with real AI call)
-    await new Promise((r) => setTimeout(r, 2000));
+
+    try {
+      // Call Dev 1's Full Funnel AI generation pipeline
+      const res = await fetch("/api/ai/full-funnel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          businessName: data.businessName,
+          niche: data.niche,
+          targetAudience: data.targetAudience || "Target consumers and professionals",
+          productOffer: data.adHeadline || `Exclusive offer for ${data.niche}`,
+          goal: data.objective === "OUTCOME_SALES" ? "SALES" : "LEADS",
+          generateImages: true,
+        }),
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        const firstVariant = json.funnel?.metaAdCampaignPackage?.adVariants?.[0];
+        if (firstVariant) {
+          setData((prev) => ({
+            ...prev,
+            adHeadline: firstVariant.headline || prev.adHeadline,
+            adPrimaryText: firstVariant.primaryText || prev.adPrimaryText,
+            callToAction: firstVariant.callToAction?.toUpperCase()?.replace(/ /g, "_") || prev.callToAction,
+            adImageUrl: firstVariant.bannerImageUrl || prev.adImageUrl,
+          }));
+          toast.success("AI full-funnel copy & creative generated! 🚀");
+          setIsGenerating(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Full funnel API error, using intelligent fallback:", err);
+    }
+
+    // High-converting smart fallback if AI API is offline or unauthenticated
+    await new Promise((r) => setTimeout(r, 1200));
     const headlines = [
       `Transform Your Life with ${data.businessName}`,
       `${data.niche} — Exclusive Offer Inside`,
