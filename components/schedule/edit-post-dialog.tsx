@@ -152,11 +152,11 @@ export function EditPostDialog({
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className={cn(
-                "sm:w-full sm:min-w-[700px] gap-0 px-0 pt-0 pb-0!",
+                "w-[95vw] sm:max-w-[700px] max-h-[92vh] sm:max-h-[90vh] gap-0 px-0 pt-0 pb-0 overflow-hidden flex flex-col rounded-2xl",
                 selectedRightTab && "sm:max-w-[950px]"
             )}>
-                <div>
-                    <DialogHeader className="px-8 py-4 border-b">
+                <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                    <DialogHeader className="px-6 sm:px-8 py-3.5 border-b shrink-0">
                         <div className="flex items-center justify-between">
                             <DialogTitle className="text-lg font-semibold">Edit Post</DialogTitle>
                             <div className="flex items-center gap-px">
@@ -174,19 +174,22 @@ export function EditPostDialog({
                             </div>
                         </div>
                     </DialogHeader>
-                    <DialogDescription />
+                    <DialogDescription className="sr-only">Edit scheduled post details</DialogDescription>
 
                     {/* ── Main panel ── */}
-                    <div className="w-full flex flex-1 h-full min-h-[550px] max-h-[570px] ">
+                    <div className="w-full flex flex-1 min-w-0 min-h-0 overflow-y-auto max-h-[calc(90vh-130px)]">
 
                         {/* Left panel */}
-                        <div className="flex flex-1 flex-col min-w-0 w-[300px] pb-5">
+                        <div className="flex flex-1 flex-col min-w-0 w-[300px] pb-5 overflow-y-auto">
 
                             <section className="channel--composer relative 
-                    flex flex-col px-8 mt-5 min-h-[300px] 
-                    h-auto">
-                                <div className="bg-background rounded-2xl border shadow-sm overflow-hidden min-h-[400px] flex flex-col p-4">
-                                    <div className="flex-1 relative">
+                                            flex-1 flex flex-col 
+                                            border-b 
+                                            px-8 pt-6 pb-2
+                                            bg-muted/10
+                                            ">
+                                <div className="space-y-4">
+                                    <div className="relative">
                                         {icon && (
                                             <div className="absolute top-0 left-0">
                                                 <HugeiconsIcon
@@ -228,9 +231,8 @@ export function EditPostDialog({
 
                         {/* Right Side Panel */}
                         {selectedRightTab && (
-                            <aside className="w-[350px] shrink-0 border-l border-border 
-                                  bg-muted/30 h-full flex flex-col">
-                                <div className="py-4 flex-1 h-full flex flex-col">
+                            <aside className="w-[350px] shrink-0 border-l border-border bg-muted/30 min-h-0 flex flex-col overflow-y-auto">
+                                <div className="py-4 flex-1 min-h-0 flex flex-col">
                                     {selectedRightTab === "ai" && (
                                         <div className="px-6 flex flex-col">
                                             <AIAssistant
@@ -262,7 +264,7 @@ export function EditPostDialog({
 
                 </div>
 
-                <DialogFooter className="px-8 pt-4 pb-4 m-0!">
+                <DialogFooter className="px-6 sm:px-8 py-3.5 border-t shrink-0 bg-background/95 backdrop-blur-xs z-20 m-0!">
                     <div className="w-full flex items-center justify-between gap-2">
                         <Button
                             variant="ghost"

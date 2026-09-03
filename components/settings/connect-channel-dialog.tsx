@@ -39,6 +39,8 @@ export function ConnectChannelDialog({
     const isTwitter = channel.type === ChannelTypeEnum.TWITTER
     const isLinkedIn = channel.type === ChannelTypeEnum.LINKEDIN
     const isThreads = channel.type === ChannelTypeEnum.THREADS || Boolean(channel.name?.toLowerCase().includes("thread"))
+    const isYouTube = channel.type === ChannelTypeEnum.YOUTUBE
+    const isTikTok = channel.type === ChannelTypeEnum.TIKTOK
 
     const handleConnect = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -178,6 +180,18 @@ export function ConnectChannelDialog({
                         </div>
                     )}
 
+                    {isYouTube && (
+                        <div className="rounded-xl border border-red-200 bg-red-50/60 dark:border-red-950 dark:bg-red-950/30 p-3.5 space-y-1.5 text-xs text-red-900 dark:text-red-200">
+                            <div className="flex items-center gap-1.5 font-semibold">
+                                <KeyRound className="size-3.5" />
+                                <span>YouTube Access Token:</span>
+                            </div>
+                            <p className="leading-relaxed text-muted-foreground dark:text-red-300/80">
+                                Get your Access Token from <span className="font-medium text-foreground">Google OAuth Playground</span> (select YouTube Data API v3) or Google Cloud Console.
+                            </p>
+                        </div>
+                    )}
+
                     {isLinkedIn && (
                         <div className="rounded-xl border border-blue-200 bg-blue-50/60 dark:border-blue-950 dark:bg-blue-950/30 p-3.5 space-y-1.5 text-xs text-blue-900 dark:text-blue-200">
                             <div className="flex items-center gap-1.5 font-semibold">
@@ -186,6 +200,18 @@ export function ConnectChannelDialog({
                             </div>
                             <p className="leading-relaxed text-muted-foreground dark:text-blue-300/80">
                                 Generate your OAuth Token or Member Access Token from the <span className="font-medium text-foreground">LinkedIn Developer Portal</span>.
+                            </p>
+                        </div>
+                    )}
+
+                    {isTikTok && (
+                        <div className="rounded-xl border border-pink-200 bg-pink-50/60 dark:border-pink-950 dark:bg-pink-950/30 p-3.5 space-y-1.5 text-xs text-pink-900 dark:text-pink-200">
+                            <div className="flex items-center gap-1.5 font-semibold">
+                                <KeyRound className="size-3.5" />
+                                <span>TikTok API Token:</span>
+                            </div>
+                            <p className="leading-relaxed text-muted-foreground dark:text-pink-300/80">
+                                Generate your Access Token from the <span className="font-medium text-foreground">TikTok for Developers Portal</span>.
                             </p>
                         </div>
                     )}

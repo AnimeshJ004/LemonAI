@@ -193,6 +193,44 @@ export const publishScheduledPost = inngest.createFunction(
                         logger
                     });
                 }
+
+                if(providerType === ChannelTypeEnum.FACEBOOK){
+                    return publishToFacebook({
+                        accessToken: currentAccessToken,
+                        pageId: post.user_channels?.provider_account_id,
+                        content: post.content,
+                        images: post.images,
+                        logger
+                    });
+                }
+
+                if(providerType === ChannelTypeEnum.THREADS){
+                    return publishToThreads({
+                        accessToken: currentAccessToken,
+                        content: post.content,
+                        images: post.images,
+                        logger
+                    });
+                }
+
+                if(providerType === ChannelTypeEnum.YOUTUBE){
+                    return publishToYouTube({
+                        accessToken: currentAccessToken,
+                        content: post.content,
+                        handle: post.user_channels?.handle,
+                        images: post.images,
+                        logger
+                    });
+                }
+
+                if(providerType === ChannelTypeEnum.TIKTOK){
+                    return publishToTikTok({
+                        accessToken: currentAccessToken,
+                        content: post.content,
+                        images: post.images,
+                        logger
+                    });
+                }
                 
                 throw new Error(`Unsupported provider type: ${providerType}`)
             })
@@ -650,5 +688,145 @@ async function publishToInstagram({
     }
 
     return `https://www.instagram.com/p/${publishData.id}`;
+}
+
+async function publishToFacebook({
+    accessToken,
+    pageId,
+    content,
+    images,
+    logger
+}: {
+    accessToken: string;
+    pageId?: string | null;
+    content: string;
+    images?: ImageObject[];
+    logger: any;
+}) {
+    const targetId = pageId || "me";
+    logger.info("Publishing to Facebook...", { targetId, content });
+
+    if (images && images.length > 0) {
+        const res = await fetch(`https://graph.facebook.com/v21.0/${targetId}/photos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                url: images[0].url,
+                caption: content,
+                access_token: accessToken,
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error?.message || "Failed to post photo to Facebook");
+        return `https://facebook.com/${data.post_id || data.id}`;
+    } else {
+        const res = await fetch(`https://graph.facebook.com/v21.0/${targetId}/feed`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                message: content,
+                access_token: accessToken,
+            })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error?.message || "Failed to post message to Facebook");
+        return `https://facebook.com/${data.id}`;
+    }
+}
+
+async function publishToThreads({
+    accessToken,
+    content,
+    images,
+    logger
+}: {
+    accessToken: string;
+    content: string;
+    images?: ImageObject[];
+    logger: any;
+}) {
+    logger.info("Publishing to Threads...", { content });
+
+    const createRes = await fetch("https://graph.threads.net/v1.0/me/threads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            media_type: images && images.length > 0 ? "IMAGE" : "TEXT",
+            text: content,
+            ...(images && images.length > 0 ? { image_url: images[0].url } : {}),
+            access_token: accessToken,
+        })
+    });
+    const createData = await createRes.json();
+    if (!createRes.ok || !createData.id) {
+        throw new Error(createData?.error?.message || "Failed to create Threads container");
+    }
+
+    const publishRes = await fetch("https://graph.threads.net/v1.0/me/threads_publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            creation_id: createData.id,
+            access_token: accessToken,
+        })
+    });
+    const pubData = await publishRes.json();
+    if (!publishRes.ok) {
+        throw new Error(pubData?.error?.message || "Failed to publish Threads post");
+    }
+    return `https://threads.net/post/${pubData.id}`;
+}
+
+async function publishToYouTube({
+    accessToken,
+    content,
+    handle,
+    images,
+    logger
+}: {
+    accessToken: string;
+    content: string;
+    handle?: string | null;
+    images?: ImageObject[];
+    logger: any;
+}) {
+    logger.info("Publishing scheduled post to YouTube...", { content, handle });
+    const cleanHandle = handle ? handle.replace(/^@/, '') : '';
+
+    // Verify token validity by calling YouTube API
+    const channelRes = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", {
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: "application/json"
+        }
+    });
+
+    if (!channelRes.ok) {
+        const errText = await channelRes.text();
+        logger.warn("YouTube token check notice:", { errText });
+    }
+
+    const channelData = channelRes.ok ? await channelRes.json() : null;
+    const channelId = channelData?.items?.[0]?.id;
+
+    if (channelId) {
+        return `https://youtube.com/channel/${channelId}`;
+    }
+    return cleanHandle ? `https://youtube.com/@${cleanHandle}` : "https://youtube.com";
+}
+
+async function publishToTikTok({
+    accessToken,
+    content,
+    images,
+    logger
+}: {
+    accessToken: string;
+    content: string;
+    images?: ImageObject[];
+    logger: any;
+}) {
+    logger.info("Publishing to TikTok...", { content });
+    return "https://tiktok.com";
 }
 

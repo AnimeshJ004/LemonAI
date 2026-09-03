@@ -42,7 +42,31 @@ export function getChannelUrl(type: ChannelTypeEnum | undefined) {
 export function getChannelProfileUrl(type: ChannelTypeEnum | undefined, handle: string | null | undefined) {
   if (!type || !handle) return ""
   const baseUrl = CHANNEL_TYPE_URLS[type] || ""
-  const cleanHandle = handle.replace(/^@/, '')
+  const cleanHandle = handle.replace(/^@/, '').trim()
+  if (!cleanHandle) return ""
+
+  if (type === ChannelTypeEnum.YOUTUBE) {
+    if (cleanHandle.startsWith("UC") && cleanHandle.length === 24) {
+      return `${baseUrl}/channel/${cleanHandle}`
+    }
+    return `${baseUrl}/@${cleanHandle}`
+  }
+
+  if (type === ChannelTypeEnum.TIKTOK || type === ChannelTypeEnum.THREADS) {
+    return `${baseUrl}/@${cleanHandle}`
+  }
+
+  if (type === ChannelTypeEnum.LINKEDIN) {
+    if (cleanHandle.startsWith("company/") || cleanHandle.startsWith("school/") || cleanHandle.startsWith("in/")) {
+      return `https://linkedin.com/${cleanHandle}`
+    }
+    return `https://linkedin.com/in/${cleanHandle}`
+  }
+
+  if (type === ChannelTypeEnum.BLUESKY) {
+    return `${baseUrl}/${cleanHandle}`
+  }
+
   return `${baseUrl}/${cleanHandle}`
 }
 

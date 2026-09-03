@@ -367,11 +367,11 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogContent className={cn(
-                "w-[95vw] sm:max-w-[850px] max-h-[90vh] gap-0 px-0 pt-0 pb-0 overflow-hidden flex flex-col rounded-2xl",
+                "w-[95vw] sm:max-w-[850px] max-h-[92vh] sm:max-h-[90vh] gap-0 px-0 pt-0 pb-0 overflow-hidden flex flex-col rounded-2xl",
                 selectedRightTab && "sm:max-w-[1100px]"
             )}>
-                <div>
-                    <DialogHeader className="px-8 py-3.5 border-b">
+                <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                    <DialogHeader className="px-6 sm:px-8 py-3.5 border-b shrink-0">
                         <div className="flex items-center justify-between">
                             <DialogTitle className="font-semibold text-lg">Create Post</DialogTitle>
                             <DialogDescription className="sr-only">Create and schedule social media posts</DialogDescription>
@@ -392,10 +392,10 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                     </DialogHeader>
 
 
-                    <div className="w-full flex flex-1 min-w-0 overflow-hidden h-[580px]">
+                    <div className="w-full flex flex-1 min-w-0 min-h-0 overflow-y-auto max-h-[calc(90vh-130px)]">
 
                         {/* Left — channel list */}
-                        <div className="flex flex-1 flex-col min-w-[420px] w-full pb-5">
+                        <div className="flex flex-1 flex-col min-w-[320px] sm:min-w-[420px] w-full pb-5 overflow-y-auto">
                             <div className="channel--selector py-4 px-8 border-b bg-muted/20">
                                 <div className="flex items-center justify-between mb-3">
                                     <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Select Channels</span>
@@ -603,10 +603,8 @@ dark:text-amber-400">
 
                         {/* Right — channel preview */}
                         {selectedRightTab && (
-                            <div className="w-[350px] flex flex-col shrink-0 border-l border-border
-            bg-muted/30 h-full
-            ">
-                                <div className="py-4 flex-1 flex flex-col h-full">
+                            <div className="w-[350px] flex flex-col shrink-0 border-l border-border bg-muted/30 min-h-0 overflow-y-auto">
+                                <div className="py-4 flex-1 flex flex-col min-h-0">
                                     {selectedRightTab === "ai" && (
                                         <div className="px-6">
                                             <AIAssistant
@@ -739,7 +737,7 @@ dark:text-amber-400">
                     </div>
                 </div>
 
-                <DialogFooter className="px-8 pt-5 pb-4 m-0!">
+                <DialogFooter className="px-6 sm:px-8 py-3.5 border-t shrink-0 bg-background/95 backdrop-blur-xs z-20 m-0!">
                     {hasConnectedChannel ? (
                         <div className="w-full flex items-center justify-between
                         gap-2

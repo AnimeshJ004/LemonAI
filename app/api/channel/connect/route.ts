@@ -99,24 +99,232 @@ export async function POST(request: NextRequest) {
 
         let profileImage: string | null = null;
         let verifiedAccountId = rawAccountId || null;
+        let formattedHandle = rawHandle.startsWith("@") ? rawHandle : `@${rawHandle}`;
 
-        // Try to fetch profile image / verify token if Meta or Twitter
-        if (channelType.type === ChannelTypeEnum.INSTAGRAM || channelType.type === ChannelTypeEnum.FACEBOOK) {
+        // 1. YouTube Verification & Real Channel Info Fetching
+        if (channelType.type === ChannelTypeEnum.YOUTUBE) {
+            const cleanYtHandle = rawHandle.replace(/^@/, '').trim();
             try {
-                const metaRes = await fetch(`https://graph.facebook.com/v19.0/me?fields=id,name,picture&access_token=${encodeURIComponent(rawToken)}`);
+                // Try 1: Direct YouTube API with mine=true
+                const ytRes = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails&mine=true", {
+                    headers: {
+                        Authorization: `Bearer ${rawToken}`,
+                        Accept: "application/json"
+                    }
+                });
+                if (ytRes.ok) {
+                    const ytData = await ytRes.json();
+                    const channelItem = ytData?.items?.[0];
+                    if (channelItem) {
+                        verifiedAccountId = channelItem.id;
+                        profileImage = channelItem?.snippet?.thumbnails?.high?.url || channelItem?.snippet?.thumbnails?.medium?.url || channelItem?.snippet?.thumbnails?.default?.url || null;
+                        if (channelItem?.snippet?.customUrl) {
+                            const cleanCustom = channelItem.snippet.customUrl.replace(/^@/, '');
+                            formattedHandle = `@${cleanCustom}`;
+                        } else if (channelItem?.snippet?.title) {
+                            formattedHandle = `@${channelItem.snippet.title.replace(/\s+/g, '')}`;
+                        }
+                    }
+                }
+
+                // Try 2: If mine=true yielded no image, query by forHandle
+                if (!profileImage && cleanYtHandle) {
+                    const handleRes = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet,contentDetails&forHandle=${encodeURIComponent(cleanYtHandle)}`, {
+                        headers: {
+                            Authorization: `Bearer ${rawToken}`,
+                            Accept: "application/json"
+                        }
+                    });
+                    if (handleRes.ok) {
+                        const handleData = await handleRes.json();
+                        const channelItem = handleData?.items?.[0];
+                        if (channelItem) {
+                            verifiedAccountId = channelItem.id;
+                            profileImage = channelItem?.snippet?.thumbnails?.high?.url || channelItem?.snippet?.thumbnails?.medium?.url || channelItem?.snippet?.thumbnails?.default?.url || null;
+                        }
+                    }
+                }
+
+                // Try 3: Google Userinfo API (User's Google Account Avatar)
+                if (!profileImage) {
+                    const gUserRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+                        headers: {
+                            Authorization: `Bearer ${rawToken}`,
+                            Accept: "application/json"
+                        }
+                    });
+                    if (gUserRes.ok) {
+                        const gUserData = await gUserRes.json();
+                        if (gUserData?.picture) {
+                            profileImage = gUserData.picture;
+                        }
+                        if (!verifiedAccountId && gUserData?.sub) {
+                            verifiedAccountId = gUserData.sub;
+                        }
+                    }
+                }
+
+                // Try 4: Public Unavatar fallback
+                if (!profileImage && cleanYtHandle) {
+                    profileImage = `https://unavatar.io/youtube/${cleanYtHandle}`;
+                }
+            } catch (ytErr) {
+                console.warn("YouTube verification request failed:", ytErr);
+                if (cleanYtHandle) {
+                    profileImage = `https://unavatar.io/youtube/${cleanYtHandle}`;
+                }
+            }
+        }
+
+        // 2. Meta (Instagram & Facebook) Profile Fetching
+        if (channelType.type === ChannelTypeEnum.INSTAGRAM || channelType.type === ChannelTypeEnum.FACEBOOK) {
+            const cleanMetaHandle = rawHandle.replace(/^@/, '').trim();
+            try {
+                // Try Graph API
+                const metaRes = await fetch(`https://graph.facebook.com/v19.0/me?fields=id,name,picture,username&access_token=${encodeURIComponent(rawToken)}`);
                 if (metaRes.ok) {
                     const metaData = await metaRes.json();
                     profileImage = metaData?.picture?.data?.url || null;
                     if (!verifiedAccountId && metaData?.id) {
                         verifiedAccountId = metaData.id;
                     }
+                    if (metaData?.username) {
+                        formattedHandle = `@${metaData.username.replace(/^@/, '')}`;
+                    }
+                } else if (channelType.type === ChannelTypeEnum.INSTAGRAM) {
+                    // Fallback to Instagram Basic Display API
+                    const igRes = await fetch(`https://graph.instagram.com/me?fields=id,username,profile_picture_url&access_token=${encodeURIComponent(rawToken)}`);
+                    if (igRes.ok) {
+                        const igData = await igRes.json();
+                        profileImage = igData?.profile_picture_url || null;
+                        if (!verifiedAccountId && igData?.id) {
+                            verifiedAccountId = igData.id;
+                        }
+                        if (igData?.username) {
+                            formattedHandle = `@${igData.username.replace(/^@/, '')}`;
+                        }
+                    }
+                }
+
+                if (!profileImage && channelType.type === ChannelTypeEnum.INSTAGRAM && cleanMetaHandle) {
+                    profileImage = `https://unavatar.io/instagram/${cleanMetaHandle}`;
                 }
             } catch (metaErr) {
                 console.warn("Meta verification request failed:", metaErr);
+                if (channelType.type === ChannelTypeEnum.INSTAGRAM && cleanMetaHandle) {
+                    profileImage = `https://unavatar.io/instagram/${cleanMetaHandle}`;
+                }
             }
         }
 
-        const formattedHandle = rawHandle.startsWith("@") ? rawHandle : `@${rawHandle}`;
+        // 3. Twitter / X Profile Fetching
+        if (channelType.type === ChannelTypeEnum.TWITTER) {
+            const cleanTwHandle = rawHandle.replace(/^@/, '').trim();
+            try {
+                const twRes = await fetch("https://api.twitter.com/2/users/me?user.fields=profile_image_url,username,name", {
+                    headers: {
+                        Authorization: `Bearer ${rawToken}`,
+                        Accept: "application/json"
+                    }
+                });
+                if (twRes.ok) {
+                    const twData = await twRes.json();
+                    const twUser = twData?.data;
+                    if (twUser) {
+                        verifiedAccountId = twUser.id;
+                        profileImage = twUser.profile_image_url ? twUser.profile_image_url.replace("_normal", "_400x400") : null;
+                        if (twUser.username) {
+                            formattedHandle = `@${twUser.username.replace(/^@/, '')}`;
+                        }
+                    }
+                }
+
+                if (!profileImage && cleanTwHandle) {
+                    profileImage = `https://unavatar.io/x/${cleanTwHandle}`;
+                }
+            } catch (twErr) {
+                console.warn("Twitter verification request failed:", twErr);
+                if (cleanTwHandle) {
+                    profileImage = `https://unavatar.io/x/${cleanTwHandle}`;
+                }
+            }
+        }
+
+        // 4. LinkedIn Profile Fetching
+        if (channelType.type === ChannelTypeEnum.LINKEDIN) {
+            try {
+                const liRes = await fetch("https://api.linkedin.com/v2/userinfo", {
+                    headers: {
+                        Authorization: `Bearer ${rawToken}`,
+                        Accept: "application/json"
+                    }
+                });
+                if (liRes.ok) {
+                    const liData = await liRes.json();
+                    if (liData) {
+                        verifiedAccountId = liData.sub || null;
+                        profileImage = liData.picture || null;
+                        if (liData.name && !rawHandle) {
+                            formattedHandle = liData.name;
+                        }
+                    }
+                }
+            } catch (liErr) {
+                console.warn("LinkedIn verification request failed:", liErr);
+            }
+        }
+
+        // 5. Threads Profile Fetching
+        if (channelType.type === ChannelTypeEnum.THREADS) {
+            try {
+                const thRes = await fetch(`https://graph.threads.net/v1.0/me?fields=id,username,threads_profile_picture_url&access_token=${encodeURIComponent(rawToken)}`);
+                if (thRes.ok) {
+                    const thData = await thRes.json();
+                    if (thData) {
+                        verifiedAccountId = thData.id || null;
+                        profileImage = thData.threads_profile_picture_url || null;
+                        if (thData.username) {
+                            formattedHandle = `@${thData.username.replace(/^@/, '')}`;
+                        }
+                    }
+                }
+            } catch (thErr) {
+                console.warn("Threads verification request failed:", thErr);
+            }
+        }
+
+        // 6. TikTok Profile Fetching
+        if (channelType.type === ChannelTypeEnum.TIKTOK) {
+            const cleanTtHandle = rawHandle.replace(/^@/, '').trim();
+            try {
+                const ttRes = await fetch("https://open.tiktokapis.com/v2/user/info/?fields=avatar_url,display_name,username", {
+                    headers: {
+                        Authorization: `Bearer ${rawToken}`,
+                        Accept: "application/json"
+                    }
+                });
+                if (ttRes.ok) {
+                    const ttData = await ttRes.json();
+                    const ttUser = ttData?.data?.user;
+                    if (ttUser) {
+                        profileImage = ttUser.avatar_url || null;
+                        if (ttUser.username) {
+                            formattedHandle = `@${ttUser.username.replace(/^@/, '')}`;
+                        }
+                    }
+                }
+
+                if (!profileImage && cleanTtHandle) {
+                    profileImage = `https://unavatar.io/tiktok/${cleanTtHandle}`;
+                }
+            } catch (ttErr) {
+                console.warn("TikTok verification request failed:", ttErr);
+                if (cleanTtHandle) {
+                    profileImage = `https://unavatar.io/tiktok/${cleanTtHandle}`;
+                }
+            }
+        }
+
         const encryptedToken = encrypt(rawToken);
 
         await insforge.database
