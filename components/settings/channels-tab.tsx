@@ -125,8 +125,8 @@ function ChannelTabContent() {
                         ) : (
                             channels?.map((channel) => {
                                 const icon = getChannelIcon(channel.type)
-                                const isThisConnecting = connectingId === channel.id
-                                const isThisDisconnecting = disconnectingId === channel.user_channel_id
+                                const isThisConnecting = Boolean(connectingId && connectingId === channel.id)
+                                const isThisDisconnecting = Boolean(disconnectingId && disconnectingId === channel.user_channel_id)
 
                                 return (
                                     <div key={channel.id}

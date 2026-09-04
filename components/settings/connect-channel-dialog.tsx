@@ -28,6 +28,7 @@ export function ConnectChannelDialog({
     const [password, setPassword] = useState("")
     const [accessToken, setAccessToken] = useState("")
     const [providerAccountId, setProviderAccountId] = useState("")
+    const [metaMode, setMetaMode] = useState<"organic" | "meta_ads">("organic")
     const [isLoading, setIsLoading] = useState(false)
 
     if (!channel) return null
@@ -41,6 +42,7 @@ export function ConnectChannelDialog({
     const isThreads = channel.type === ChannelTypeEnum.THREADS || Boolean(channel.name?.toLowerCase().includes("thread"))
     const isYouTube = channel.type === ChannelTypeEnum.YOUTUBE
     const isTikTok = channel.type === ChannelTypeEnum.TIKTOK
+    const isMeta = isInstagram || isFacebook
 
     const handleConnect = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -131,6 +133,39 @@ export function ConnectChannelDialog({
                 </DialogHeader>
 
                 <form onSubmit={handleConnect} className="space-y-4 py-2">
+                    {/* Meta Dual Option Mode Selector */}
+                    {isMeta && (
+                        <div className="space-y-2">
+                            <Label className="text-xs font-semibold">Select Meta Integration Mode:</Label>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setMetaMode("organic")}
+                                    className={`flex flex-col items-start p-2.5 rounded-lg border-2 text-left transition-all ${
+                                        metaMode === "organic"
+                                            ? "border-primary bg-primary/10 text-foreground font-semibold"
+                                            : "border-border bg-card text-muted-foreground hover:border-primary/40"
+                                    }`}
+                                >
+                                    <span className="text-xs font-bold text-foreground">📱 Organic Social</span>
+                                    <span className="text-[10px] text-muted-foreground mt-0.5">Post to Feed, Reels & Stories</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setMetaMode("meta_ads")}
+                                    className={`flex flex-col items-start p-2.5 rounded-lg border-2 text-left transition-all ${
+                                        metaMode === "meta_ads"
+                                            ? "border-primary bg-primary/10 text-foreground font-semibold"
+                                            : "border-border bg-card text-muted-foreground hover:border-primary/40"
+                                    }`}
+                                >
+                                    <span className="text-xs font-bold text-foreground">📢 Meta Ads Manager</span>
+                                    <span className="text-[10px] text-muted-foreground mt-0.5">Run Paid Ads & Campaigns</span>
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Platform Specific Guidance */}
                     {isBluesky && (
                         <div className="rounded-xl border border-blue-200 bg-blue-50/60 dark:border-blue-950 dark:bg-blue-950/30 p-3.5 space-y-1.5 text-xs text-blue-900 dark:text-blue-200">
@@ -144,14 +179,26 @@ export function ConnectChannelDialog({
                         </div>
                     )}
 
-                    {(isInstagram || isFacebook) && (
+                    {isMeta && metaMode === "organic" && (
                         <div className="rounded-xl border border-purple-200 bg-purple-50/60 dark:border-purple-950 dark:bg-purple-950/30 p-3.5 space-y-1.5 text-xs text-purple-900 dark:text-purple-200">
                             <div className="flex items-center gap-1.5 font-semibold">
                                 <KeyRound className="size-3.5" />
-                                <span>Meta Graph Access Token:</span>
+                                <span>Organic Social Publishing Token:</span>
                             </div>
                             <p className="leading-relaxed text-muted-foreground dark:text-purple-300/80">
-                                Get your Page Access Token or System User Token from <span className="font-medium text-foreground">Meta Business Suite</span> or <span className="font-medium text-foreground">Graph API Explorer</span>.
+                                Connect your Facebook Page or Instagram Business Profile Access Token from <span className="font-medium text-foreground">Meta Business Suite</span> to enable scheduled posts.
+                            </p>
+                        </div>
+                    )}
+
+                    {isMeta && metaMode === "meta_ads" && (
+                        <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 dark:border-indigo-950 dark:bg-indigo-950/30 p-3.5 space-y-1.5 text-xs text-indigo-900 dark:text-indigo-200">
+                            <div className="flex items-center gap-1.5 font-semibold">
+                                <KeyRound className="size-3.5" />
+                                <span>Meta Marketing API & Ad Account:</span>
+                            </div>
+                            <p className="leading-relaxed text-muted-foreground dark:text-indigo-300/80">
+                                Enter your <span className="font-medium text-foreground">Meta Ad Account ID (act_xxxxxxxx)</span> and User Access Token from <span className="font-medium text-foreground">Meta Graph Explorer</span> with <code className="font-mono text-[10px] bg-muted px-1 rounded">ads_management</code> permission to launch AI campaigns.
                             </p>
                         </div>
                     )}
@@ -221,6 +268,8 @@ export function ConnectChannelDialog({
                         <Label htmlFor="channel-handle" className="text-xs font-semibold">
                             {isBluesky 
                                 ? "Bluesky Handle / Identifier *" 
+                                : isMeta && metaMode === "meta_ads"
+                                ? "Meta Ad Account / Business Name *"
                                 : isInstagram 
                                 ? "Instagram Username / Handle *" 
                                 : isFacebook 
@@ -236,6 +285,8 @@ export function ConnectChannelDialog({
                             placeholder={
                                 isBluesky
                                     ? "e.g. username.bsky.social"
+                                    : isMeta && metaMode === "meta_ads"
+                                    ? "e.g. Apex Health Clinic Ads"
                                     : isInstagram
                                     ? "e.g. @your_instagram"
                                     : isTwitter
@@ -271,21 +322,38 @@ export function ConnectChannelDialog({
                         </div>
                     ) : (
                         <>
-                            {/* Provider Account / Page ID (Optional for Instagram, Facebook, LinkedIn) */}
+                            {/* Provider Account / Page ID / Ad Account ID */}
                             {(isInstagram || isFacebook || isLinkedIn) && (
                                 <div className="space-y-1.5">
                                     <div className="flex items-center justify-between">
                                         <Label htmlFor="channel-account-id" className="text-xs font-semibold">
-                                            {isInstagram ? "Instagram Business Account ID" : isFacebook ? "Facebook Page ID" : "LinkedIn Author URN / ID"}
+                                            {isMeta && metaMode === "meta_ads"
+                                                ? "Meta Ad Account ID *"
+                                                : isInstagram
+                                                ? "Instagram Business Account ID"
+                                                : isFacebook
+                                                ? "Facebook Page ID"
+                                                : "LinkedIn Author URN / ID"}
                                         </Label>
-                                        <span className="text-[11px] text-muted-foreground">Optional</span>
+                                        <span className="text-[11px] text-muted-foreground">
+                                            {isMeta && metaMode === "meta_ads" ? "Required for Ads" : "Optional"}
+                                        </span>
                                     </div>
                                     <Input
                                         id="channel-account-id"
-                                        placeholder={isInstagram ? "e.g. 17841400000000000" : isFacebook ? "e.g. 1000854321..." : "e.g. 12345678"}
+                                        placeholder={
+                                            isMeta && metaMode === "meta_ads"
+                                                ? "e.g. act_123456789012345"
+                                                : isInstagram
+                                                ? "e.g. 17841400000000000"
+                                                : isFacebook
+                                                ? "e.g. 1000854321..."
+                                                : "e.g. 12345678"
+                                        }
                                         value={providerAccountId}
                                         onChange={(e) => setProviderAccountId(e.target.value)}
                                         disabled={isLoading}
+                                        required={isMeta && metaMode === "meta_ads"}
                                     />
                                 </div>
                             )}
@@ -293,12 +361,20 @@ export function ConnectChannelDialog({
                             {/* Access Token / API Key */}
                             <div className="space-y-1.5">
                                 <Label htmlFor="channel-token" className="text-xs font-semibold">
-                                    {channel.name} Access Token / API Key *
+                                    {isMeta && metaMode === "meta_ads"
+                                        ? "Meta Marketing API User Token (with ads_management) *"
+                                        : isMeta && metaMode === "organic"
+                                        ? "Organic Social Publishing Page Token *"
+                                        : `${channel.name} Access Token / API Key *`}
                                 </Label>
                                 <Input
                                     id="channel-token"
                                     type="password"
-                                    placeholder={`Paste your ${channel.name} Access Token`}
+                                    placeholder={
+                                        isMeta && metaMode === "meta_ads"
+                                            ? "Paste your Meta User Token (EAAB...)"
+                                            : `Paste your ${channel.name} Access Token`
+                                    }
                                     value={accessToken}
                                     onChange={(e) => setAccessToken(e.target.value)}
                                     disabled={isLoading}

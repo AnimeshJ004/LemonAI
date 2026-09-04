@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useUser } from "@clerk/nextjs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,6 +22,8 @@ import {
   ChevronRight,
   Briefcase,
   Target,
+  ShieldCheck,
+  Lock,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -64,13 +67,47 @@ const FIELD_ICONS: Record<keyof BrandProfile, React.ElementType> = {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export function BrandProfileForm() {
+  const { user, isLoaded: isUserLoaded } = useUser();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<BrandProfile>(EMPTY_PROFILE);
   const [isInit, setIsInit] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
-  // Fetch existing profile
+  const storageKey = user?.id ? `lemon_ai_brand_profile_${user.id}` : null;
+
+  // Cleanup any legacy shared storage key that caused cross-user leaks
+  useEffect(() => {
+    setIsMounted(true);
+    try {
+      localStorage.removeItem("lemon_ai_brand_profile");
+    } catch {}
+  }, []);
+
+  // Sync from user-specific local storage when user is loaded
+  useEffect(() => {
+    if (!isUserLoaded) return;
+    if (!storageKey) {
+      setForm(EMPTY_PROFILE);
+      return;
+    }
+    try {
+      const cached = localStorage.getItem(storageKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed?.business_name) {
+          setForm(parsed);
+          setIsInit(true);
+        }
+      } else {
+        setForm(EMPTY_PROFILE);
+      }
+    } catch {}
+  }, [isUserLoaded, storageKey]);
+
+  // Fetch existing profile from server (strictly filtered by authenticated userId)
   const { isLoading, data } = useQuery({
-    queryKey: ["brand-profile"],
+    queryKey: ["brand-profile", user?.id],
+    enabled: !!user?.id,
     queryFn: async () => {
       const res = await fetch("/api/brand");
       if (!res.ok) throw new Error("Failed to fetch brand profile");
@@ -78,28 +115,63 @@ export function BrandProfileForm() {
     },
   });
 
-  // Initialize form from fetched data
+  // Sync form from server profile or user-specific cache
   useEffect(() => {
-    if (data?.profile && !isInit) {
-      setForm({
+    if (data?.profile) {
+      const loadedProfile: BrandProfile = {
         business_name: data.profile.business_name ?? "",
         niche: data.profile.niche ?? "",
         target_audience: data.profile.target_audience ?? "",
         brand_tone: data.profile.brand_tone ?? "Professional",
         main_offer: data.profile.main_offer ?? "",
         competitors: data.profile.competitors ?? "",
-      });
+      };
+      setForm(loadedProfile);
+      if (storageKey) {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(loadedProfile));
+        } catch {}
+      }
       setIsInit(true);
+    } else if (data && !data.profile) {
+      // If server returned no profile for this specific user, check user-scoped storage
+      if (storageKey) {
+        try {
+          const cached = localStorage.getItem(storageKey);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed?.business_name) {
+              setForm(parsed);
+              return;
+            }
+          }
+        } catch {}
+      }
+      setForm(EMPTY_PROFILE);
     }
-  }, [data, isInit]);
+  }, [data, storageKey]);
 
   const set = useCallback(<K extends keyof BrandProfile>(key: K, val: BrandProfile[K]) => {
-    setForm((prev) => ({ ...prev, [key]: val }));
-  }, []);
+    setForm((prev) => {
+      const updated = { ...prev, [key]: val };
+      if (storageKey) {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(updated));
+        } catch {}
+      }
+      return updated;
+    });
+  }, [storageKey]);
 
   // Save mutation
   const saveMutation = useMutation({
     mutationFn: async (payload: BrandProfile) => {
+      if (storageKey) {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(payload));
+        } catch {}
+      }
+
       const res = await fetch("/api/brand", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -112,7 +184,7 @@ export function BrandProfileForm() {
       return res.json();
     },
     onSuccess: () => {
-      toast.success("Brand profile saved successfully! AI will now use your business context.");
+      toast.success("Brand profile saved securely! Isolated to your account.");
       queryClient.invalidateQueries({ queryKey: ["brand-profile"] });
     },
     onError: (err: Error) => {
@@ -137,12 +209,50 @@ export function BrandProfileForm() {
     saveMutation.mutate(form);
   };
 
-  const isSaved = Boolean(data?.profile?.business_name);
+  // Auto-Pilot mutation
+  const [autoPilotResult, setAutoPilotResult] = useState<any | null>(null);
+
+  const autoPilotMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/ai/auto-pilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          businessName: form.business_name,
+          niche: form.niche,
+          targetAudience: form.target_audience,
+          brandTone: form.brand_tone,
+          mainOffer: form.main_offer,
+          competitors: form.competitors,
+          daysToGenerate: 7,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to execute auto-pilot engine");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setAutoPilotResult(data);
+      toast.success(data.message || "30-Day Marketing Calendar & Meta Ads generated!");
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      queryClient.invalidateQueries({ queryKey: ["brand-profile"] });
+    },
+    onError: (err: Error) => {
+      toast.error(err.message || "Auto-pilot generation failed. Please try again.");
+    },
+  });
+
+  const activeBusinessName = data?.profile?.business_name || form.business_name;
+  const activeNiche = data?.profile?.niche || form.niche;
+  const activeTone = data?.profile?.brand_tone || form.brand_tone || "Professional";
+  const isSaved = Boolean(activeBusinessName && activeNiche);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Active Brand Status Banner */}
-      {isSaved && data?.profile && (
+      {isSaved && (
         <div className="p-4 rounded-xl border border-primary/20 bg-primary/5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="size-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
@@ -150,10 +260,10 @@ export function BrandProfileForm() {
             </div>
             <div>
               <p className="text-xs font-semibold text-foreground">
-                Active Client Brand: <span className="text-primary font-bold">{data.profile.business_name}</span>
+                Active Client Brand: <span className="text-primary font-bold">{activeBusinessName}</span>
               </p>
               <p className="text-[11px] text-muted-foreground">
-                {data.profile.niche} • {data.profile.brand_tone} Tone
+                {activeNiche} • {activeTone} Tone
               </p>
             </div>
           </div>
@@ -164,7 +274,7 @@ export function BrandProfileForm() {
       )}
 
       {/* Form Fields */}
-      {isLoading ? (
+      {(!isMounted || isLoading) ? (
         <div className="space-y-4">
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="space-y-1.5">
@@ -286,12 +396,20 @@ export function BrandProfileForm() {
         </div>
       )}
 
+      {/* Privacy & Data Security Badge */}
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/40 border border-border/50 text-[11px] text-muted-foreground">
+        <ShieldCheck className="size-4 text-emerald-500 shrink-0" />
+        <span>
+          <strong className="text-foreground font-medium">Multi-Tenant Privacy Secured:</strong> Your brand profile and marketing DNA are strictly isolated to your authenticated account and never shared with other users.
+        </span>
+      </div>
+
       {/* Save Button */}
-      <div className="pt-2">
+      <div className="pt-2 flex flex-col gap-3">
         <Button
           type="submit"
           id="save-brand-profile-btn"
-          disabled={saveMutation.isPending || isLoading}
+          disabled={saveMutation.isPending || isLoading || autoPilotMutation.isPending}
           className="w-full gap-2 h-11 text-sm font-semibold"
         >
           {saveMutation.isPending ? (
@@ -306,6 +424,68 @@ export function BrandProfileForm() {
             </>
           )}
         </Button>
+
+        {/* 1-Click Autonomous Auto-Pilot Marketing Trigger */}
+        <div className="p-4 rounded-xl border-2 border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="size-4 text-primary animate-pulse" />
+              <p className="text-xs font-bold text-foreground">
+                1-Click Autonomous Marketing Engine
+              </p>
+            </div>
+            <span className="text-[10px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-full border border-primary/20">
+              Agency Auto-Pilot
+            </span>
+          </div>
+          <p className="text-[11px] text-muted-foreground leading-relaxed">
+            AI will instantly research market trends, generate 7 to 30 scheduled social media posts with authentic 8K photos, formulate high-CTR Meta Ad campaigns, and populate your calendar automatically!
+          </p>
+
+          <Button
+            type="button"
+            id="launch-autopilot-btn"
+            disabled={autoPilotMutation.isPending || isLoading || !form.business_name || !form.niche}
+            onClick={() => autoPilotMutation.mutate()}
+            className="w-full gap-2 h-10 text-xs font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-md"
+          >
+            {autoPilotMutation.isPending ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Generating 30-Day Content Calendar & Meta Ads...
+              </>
+            ) : (
+              <>
+                <Sparkles className="size-4" />
+                Launch 30-Day Auto-Pilot Marketing Engine
+              </>
+            )}
+          </Button>
+
+          {/* Auto-Pilot Generated Result Card */}
+          {autoPilotResult && (
+            <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 space-y-2 mt-1">
+              <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-200 flex items-center gap-1.5">
+                <Check className="size-4 text-emerald-600 dark:text-emerald-400" />
+                {autoPilotResult.message}
+              </p>
+              <div className="flex items-center gap-2 pt-1">
+                <a
+                  href="/schedule"
+                  className="flex-1 text-center py-1.5 px-2.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold transition-colors"
+                >
+                  View Scheduled Calendar ➔
+                </a>
+                <a
+                  href="/meta-ads"
+                  className="flex-1 text-center py-1.5 px-2.5 rounded-md bg-foreground text-background hover:bg-foreground/90 text-[11px] font-semibold transition-colors"
+                >
+                  View Meta Ads ➔
+                </a>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </form>
   );

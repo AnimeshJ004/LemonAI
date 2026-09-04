@@ -51,10 +51,22 @@ export async function POST(request: NextRequest) {
             characterLimit = channelData.character_limit;
         }
 
+        // Fetch client brand profile for personalized content generation
+        let brandProfile: any = null;
+        try {
+            const { data: profile } = await insforge.database
+                .from("brand_profiles")
+                .select("business_name, niche, target_audience, brand_tone, main_offer, competitors")
+                .eq("user_id", userId)
+                .limit(1)
+                .maybeSingle();
+            brandProfile = profile;
+        } catch {}
+
         const isGenerateAction = action === "generate";
         const systemPrompt = isGenerateAction
-            ? buildGenerateSystemPrompt(channelType, characterLimit)
-            : buildRefineSystemPrompt(channelType, characterLimit);
+            ? buildGenerateSystemPrompt(channelType, characterLimit, brandProfile)
+            : buildRefineSystemPrompt(channelType, characterLimit, brandProfile);
 
         const userPrompt = buildPrompt(action, content, prompt);
 
@@ -161,7 +173,7 @@ export async function POST(request: NextRequest) {
     }
 }
 
-function buildGenerateSystemPrompt(channelType?: string, characterLimit?: number) {
+function buildGenerateSystemPrompt(channelType?: string, characterLimit?: number, brandProfile?: any) {
     const now = new Date();
     const todayStr = now.toISOString().split("T")[0];
     const todayDay = now.toLocaleDateString("en-US", { weekday: "long" });
@@ -198,6 +210,42 @@ function buildGenerateSystemPrompt(channelType?: string, characterLimit?: number
         "}"
     ];
 
+    if (brandProfile?.business_name) {
+        parts.push(
+            "",
+            "Client Active Business DNA (Brand Profile):",
+            `- Business Name: ${brandProfile.business_name}`,
+            `- Niche / Industry: ${brandProfile.niche || "General"}`,
+            `- Target Audience: ${brandProfile.target_audience || "Target Customers"}`,
+            `- Brand Tone: ${brandProfile.brand_tone || "Professional"}`,
+            `- Primary Offer: ${brandProfile.main_offer || ""}`,
+            "Always align the copy, tone, vocabulary, and image prompts with this specific brand identity."
+        );
+    }
+
+    // Adapt generation style based on Channel Type (Organic Social vs Meta Ads)
+    const channelLower = (channelType || "").toLowerCase();
+    const isMetaAdChannel = channelLower.includes("ad") || channelLower.includes("meta_ad");
+
+    if (isMetaAdChannel) {
+        parts.push(
+            "",
+            "Performance Advertising Strategy (Meta Ads Mode):",
+            "- Goal: High CTR, lead generation, and direct conversion.",
+            "- Copy Structure: Scroll-stopping 5-7 word headline hook, clear problem/solution agitation, strong offer positioning, and decisive Call-to-Action (e.g. 'Claim 20% Off', 'Book Your 3D Scan Today').",
+            "- Visual: High-impact commercial product/service hero photography with clean focus."
+        );
+    } else {
+        parts.push(
+            "",
+            "Organic Community Strategy (Organic Social Mode):",
+            "- Goal: Organic reach, high saves, shares, and comment engagement.",
+            "- Copy Structure: Conversational hook, relatable storytelling, educational tip or insight, question to spark comments (e.g. 'What do you think? Drop a comment below!'), and 4-6 targeted niche hashtags.",
+            "- If user requests a Reel/Video: include timestamps (0-3s Hook, 3-20s Value, 20-30s CTA) with 9:16 vertical visual cues.",
+            "- Visual: Authentic, lifestyle and workplace documentary photography."
+        );
+    }
+
     if(channelType){
         parts.push(`Match the specific platform tone for ${channelType}.`);
     }
@@ -207,7 +255,7 @@ function buildGenerateSystemPrompt(channelType?: string, characterLimit?: number
     return parts.join("\n");
 }
 
-function buildRefineSystemPrompt(channelType?: string, characterLimit?: number){
+function buildRefineSystemPrompt(channelType?: string, characterLimit?: number, brandProfile?: any){
     const system_prompt = [
         "You are a social media writing assistant.",
         "Return only the final post text.",
@@ -215,6 +263,9 @@ function buildRefineSystemPrompt(channelType?: string, characterLimit?: number){
         "Do not use markdown formatting like **, *, #, or backticks.",
         "Return plain text only.",
     ];
+    if (brandProfile?.business_name) {
+        system_prompt.push(`Writing for brand: ${brandProfile.business_name} (${brandProfile.niche}), Tone: ${brandProfile.brand_tone || 'Professional'}.`);
+    }
     if(channelType){
         system_prompt.push(`Write for ${channelType}. Match the platform's tone, style, and expected length and relevant hashtags.`);
     }

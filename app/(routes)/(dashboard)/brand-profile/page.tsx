@@ -35,37 +35,15 @@ export default function BrandProfilePage() {
           </div>
         </div>
 
-        {/* Progress hint */}
-        <div className="flex items-center gap-3 mt-4 p-3 rounded-xl bg-primary/5 border border-primary/15">
-          <div className="flex items-center gap-0">
-            {[
-              { n: 1, label: "Brand Profile", active: true, done: false },
-              { n: 2, label: "AI Creative", active: false, done: false },
-              { n: 3, label: "Meta Ads", active: false, done: false },
-            ].map((step, idx, arr) => (
-              <div key={step.n} className="flex items-center">
-                <div
-                  className={`size-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                    step.active
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {step.n}
-                </div>
-                <span
-                  className={`text-[10px] ml-1.5 font-medium ${
-                    step.active ? "text-foreground" : "text-muted-foreground"
-                  }`}
-                >
-                  {step.label}
-                </span>
-                {idx < arr.length - 1 && (
-                  <div className="w-6 h-[2px] bg-border mx-2 rounded" />
-                )}
-              </div>
-            ))}
+        {/* All-in-One AI Engine Banner */}
+        <div className="flex items-center justify-between mt-4 p-3 rounded-xl bg-primary/5 border border-primary/15">
+          <div className="flex items-center gap-2 text-xs font-medium text-foreground">
+            <span className="flex size-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>All-In-One Unified AI Hub</span>
           </div>
+          <p className="text-[11px] text-muted-foreground hidden sm:block">
+            1-Click configures Social Posts, 8K Flux Visuals & Meta Ads simultaneously
+          </p>
         </div>
       </div>
 
