@@ -1,4 +1,5 @@
 import { getInsforgeServerClient, getInsforgeAdminClient } from "@/lib/insforge-server";
+import { getBrandProfileForUser, formatBrandHashtags, cleanTag } from "@/lib/brand-helper";
 import { generateAdCreativeImage } from "@/lib/ai-image-generator";
 import { POST_STATUS } from "@/constants/post";
 import { auth } from "@clerk/nextjs/server";
@@ -56,16 +57,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Fetch client brand profile for personalized content generation
-        let brandProfile: any = null;
-        try {
-            const { data: profile } = await insforge.database
-                .from("brand_profiles")
-                .select("business_name, niche, target_audience, brand_tone, main_offer, competitors")
-                .eq("user_id", userId)
-                .limit(1)
-                .maybeSingle();
-            brandProfile = profile;
-        } catch {}
+        const brandProfile = await getBrandProfileForUser(userId);
 
         // Fetch connected channels for this user
         const { data: userChannels } = await insforge.database
@@ -94,20 +86,30 @@ export async function POST(request: NextRequest) {
             };
             const defaultSlots = TIME_SLOT_MAP[perDayNum] || ["10:00 AM"];
 
-            const multiPrompt = `You are an expert Social Media Content Director. Deeply analyze and adhere to the active Brand Profile DNA below:
-- Business Name: ${brandProfile?.business_name || "the business"}
-- Niche / Industry: ${brandProfile?.niche || "General"}
-- Target Audience: ${brandProfile?.target_audience || "Target Customers"}
-- Brand Tone: ${brandProfile?.brand_tone || "Professional"}
-- Primary Offer: ${brandProfile?.main_offer || "Top Quality Service"}
+            const cleanBrandTag = cleanTag(brandProfile?.business_name, "Brand");
+            const cleanNicheTag = cleanTag(brandProfile?.niche, "Business");
+
+            const brandSummary = brandProfile?.business_name
+                ? `CRITICAL BRAND PROFILE DNA (You MUST deeply integrate this specific brand into every post, do NOT write generic or unrelated text):
+- Business Name: ${brandProfile.business_name}
+- Industry / Niche: ${brandProfile.niche}
+- Target Audience: ${brandProfile.target_audience}
+- Brand Tone & Voice: ${brandProfile.brand_tone || "Professional"}
+- Primary Core Offer: ${brandProfile.main_offer || "Top Quality Services"}
+- Competitors / Context: ${brandProfile.competitors || "Leading industry providers"}`
+                : `Business Context: High quality professional content tailored for the brand.`;
+
+            const multiPrompt = `You are the Lead Social Media Strategist and Copywriter.
+${brandSummary}
 
 User Request / Topic: ${prompt}.
 Target Channel: ${targetChannel}.
 Schedule: ${daysNum} day(s) duration with ${perDayNum} post(s) per day (Total ${totalPostsTarget} distinct posts).
 
-Generate exactly ${totalPostsTarget} distinct, high-converting social media posts distributed over the ${daysNum} day(s).
-For each day (Day 1 to Day ${daysNum}), generate ${perDayNum} distinct post(s) tailored to the brand's tone and audience with varied hooks, industry tips, customer solutions, and strong calls-to-action.
-Write in clean, professional plain text only. Do NOT use any emojis, icons, or symbols in post content.
+Strict Generation Rules:
+1. Every single post MUST specifically feature ${brandProfile?.business_name || "our brand"}, its niche (${brandProfile?.niche || "industry"}), and core offer. Do NOT write generic motivational quotes or unrelated filler.
+2. Every post MUST end with 4 to 6 relevant hashtags including #${cleanBrandTag} and #${cleanNicheTag} (e.g. #${cleanBrandTag} #${cleanNicheTag} #${cleanNicheTag}Tips #BusinessGrowth).
+3. Plain text only: zero emojis, zero icons, zero symbols. Do not use markdown headings (# Header) or bold asterisks (**bold**).
 
 Return ONLY a valid JSON object matching this schema without markdown formatting:
 {
@@ -115,7 +117,7 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
     {
       "dayOffset": 1,
       "timeSlot": "10:00 AM",
-      "content": "Engaging plain text caption with relevant hashtags",
+      "content": "Specific brand caption talking about ${brandProfile?.business_name || 'our services'} and value.\\n\\n#${cleanBrandTag} #${cleanNicheTag} #${cleanNicheTag}Tips #QualityService",
       "imagePrompt": "Authentic professional commercial photo of..."
     }
   ]
@@ -163,9 +165,10 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
                     scheduledDate.setHours(hour, min, 0, 0);
                 }
 
-                // Clean plain text without emojis or symbols
-                let postContent = item?.content || `Update from ${brandProfile?.business_name || "our team"}: We deliver top quality ${brandProfile?.niche || "solutions"} designed to give you the best results. Contact us today to learn more. #${(brandProfile?.niche || "Business").replace(/\s+/g, "")} #QualityService`;
-                postContent = postContent.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, "").trim();
+                // Clean plain text without emojis or symbols and guarantee 4-6 hashtags
+                let rawContent = item?.content || `Update from ${brandProfile?.business_name || "our team"}: We deliver top quality ${brandProfile?.niche || "solutions"} designed to give you the best results. Contact us today to learn more.`;
+                rawContent = rawContent.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, "").trim();
+                const postContent = cleanAndEnsureHashtags(rawContent, brandProfile);
 
                 let imageObj: { url: string; key: string } | null = null;
                 const imgPrompt = item?.imagePrompt || `${brandProfile?.business_name || "Professional"} ${brandProfile?.niche || "commercial"} showcase photo`;
@@ -292,9 +295,16 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
                     }
                 }
 
+                const finalContent = cleanAndEnsureHashtags(
+                    (parsed.content || cleanJson)
+                        .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, "")
+                        .trim(),
+                    brandProfile
+                );
+
                 return NextResponse.json({
                     isMultiDay: false,
-                    content: parsed.content || cleanJson,
+                    content: finalContent,
                     schedule: parsed.schedule || null,
                     autoSchedule: hasExplicitSchedule,
                     channels: Array.isArray(parsed.channels) ? parsed.channels : (targetChannel === "all" ? ["all"] : [targetChannel]),
@@ -302,9 +312,13 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
                 });
             } catch {
                 const hasScheduleKeywords = prompt.toLowerCase().includes("schedule");
+                const fallbackContent = cleanAndEnsureHashtags(
+                    cleanJson.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, "").trim(),
+                    brandProfile
+                );
                 return NextResponse.json({
                     isMultiDay: false,
-                    content: cleanJson,
+                    content: fallbackContent,
                     schedule: null,
                     autoSchedule: hasScheduleKeywords,
                     channels: targetChannel === "all" ? ["all"] : [targetChannel],
@@ -313,11 +327,49 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
             }
         }
 
-        return NextResponse.json({ isMultiDay: false, content: rawText, schedule: null, autoSchedule: false, channels: null, image: null });
+        const fallbackRefined = cleanAndEnsureHashtags(
+            rawText.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, "").trim(),
+            brandProfile
+        );
+        return NextResponse.json({ isMultiDay: false, content: fallbackRefined, schedule: null, autoSchedule: false, channels: null, image: null });
     } catch (error: any) {
         console.error("Generate post error:", error);
         return NextResponse.json({ error: error?.message || "Failed to generate post" }, { status: 500 });
     }
+}
+
+function cleanAndEnsureHashtags(content: string, brandProfile?: any): string {
+    if (!content) return content;
+
+    // 1. Clean markdown headings e.g. "# Headline" -> "Headline" and bold/italic asterisks
+    let cleaned = content
+        .replace(/^#+\s+/gm, "")
+        .replace(/\*\*(.*?)\*\*/g, "$1")
+        .replace(/\*(.*?)\*/g, "$1")
+        .trim();
+
+    // 2. Extract existing hashtags
+    const foundTags = cleaned.match(/#[a-zA-Z0-9_]+/g) || [];
+    
+    // Remove hashtags from main text body so we can format them cleanly at the end
+    cleaned = cleaned.replace(/#[a-zA-Z0-9_]+/g, "").trim();
+
+    // 3. Build brand-specific hashtags
+    const brandTags = formatBrandHashtags(brandProfile);
+    
+    // Combine unique tags
+    const combinedSet = new Set<string>();
+    for (const t of brandTags) {
+        if (t) combinedSet.add(t);
+    }
+    for (const t of foundTags) {
+        if (t && t.length > 1) combinedSet.add(t);
+    }
+
+    // Pick top 4 to 6 hashtags
+    const finalTags = Array.from(combinedSet).slice(0, 5).join(" ");
+
+    return `${cleaned}\n\n${finalTags}`;
 }
 
 function buildGenerateSystemPrompt(channelType?: string, characterLimit?: number, brandProfile?: any, targetChannel?: string) {
@@ -325,50 +377,58 @@ function buildGenerateSystemPrompt(channelType?: string, characterLimit?: number
     const todayStr = now.toISOString().split("T")[0];
     const todayDay = now.toLocaleDateString("en-US", { weekday: "long" });
 
+    const cleanBrandTag = cleanTag(brandProfile?.business_name, "Brand");
+    const cleanNicheTag = cleanTag(brandProfile?.niche, "Business");
+
+    const brandSummary = brandProfile?.business_name
+        ? `CRITICAL BRAND IDENTITY & MANDATORY DNA:
+- Business Name: ${brandProfile.business_name}
+- Industry / Niche: ${brandProfile.niche}
+- Target Audience: ${brandProfile.target_audience}
+- Brand Voice & Tone: ${brandProfile.brand_tone || "Professional"}
+- Primary Core Offer / Services: ${brandProfile.main_offer || "High Quality Services"}
+- Competitive Edge / Context: ${brandProfile.competitors || "Industry Leader"}
+
+MANDATORY BRAND REQUIREMENT:
+You are the dedicated social media manager and copywriter specifically for "${brandProfile.business_name}". Every single post you write MUST be directly about ${brandProfile.business_name}, its services/products, and its target audience (${brandProfile.target_audience}).
+DO NOT write generic motivational quotes, generic life advice, or vague platitudes. Speak directly as ${brandProfile.business_name} addressing potential clients.`
+        : `Business Context: You are writing high-converting, tailored social media posts for a professional brand.`;
+
     const parts = [
-        "You are an expert AI social media assistant and auto-scheduler.",
+        "You are an expert AI social media strategist, copywriter, and auto-scheduler.",
+        brandSummary,
+        "",
         `Current reference date: ${todayStr} (${todayDay}).`,
         "",
-        "Instructions:",
-        "1. Write one high quality, professional social media post in clean plain text. Do NOT use any emojis, icons, or symbols. Plain text only.",
-        "2. Plain text only in post content. Do not use markdown tags like **, *, #, or quotes.",
-        `3. If user mentions scheduling, dates, or times (e.g. 'tomorrow at 5pm', 'next Monday 10:00 AM', 'September 5th at 3 PM', 'in 2 hours', 'today at 6 PM', 'schedule kardo'):`,
-        `   - Calculate the exact target date formatted as 'YYYY-MM-DD' (relative to ${todayStr}).`,
-        "   - Format the time slot in 'h:mm A' 12-hour format (e.g. '5:00 PM', '10:30 AM', '3:00 PM', '9:15 AM').",
-        "   - Set schedule object: { 'date': 'YYYY-MM-DD', 'time': '5:00 PM' }.",
-        "   - Set autoSchedule: true.",
+        "Generation Rules:",
+        "1. Focus entirely on the brand's niche, services, and value proposition.",
+        "2. Clean plain text only: ZERO emojis, ZERO icons, ZERO symbols, and ZERO markdown headings (# Heading) or bold asterisks (**text**).",
+        `3. Every post MUST include 4 to 6 relevant social hashtags at the very bottom, always including #${cleanBrandTag} and #${cleanNicheTag} (e.g. #${cleanBrandTag} #${cleanNicheTag} #${cleanNicheTag}Tips #BusinessGrowth).`,
+        "4. Scheduling & Date Detection:",
+        `   - If user mentions dates or times (e.g. 'tomorrow at 5pm', 'next Monday 10:00 AM', 'September 5th at 3 PM', 'today at 6 PM', 'schedule kardo'):`,
+        `     * Calculate the exact target date formatted as 'YYYY-MM-DD' (relative to ${todayStr}).`,
+        "     * Format the time in 'h:mm A' 12-hour format (e.g. '5:00 PM', '10:30 AM').",
+        "     * Set schedule: { 'date': 'YYYY-MM-DD', 'time': '5:00 PM' }.",
+        "     * Set autoSchedule: true.",
         "   - If no scheduling is mentioned, set schedule: null and autoSchedule: false.",
-        "4. If user mentions target social media platforms (e.g. 'Twitter', 'X', 'LinkedIn', 'Instagram', 'Facebook', 'Bluesky', 'Threads', 'YouTube', 'TikTok', 'all channels'):",
-        "   - Set channels array: ['twitter', 'linkedin'] or ['all'].",
-        "   - If no platforms are mentioned, set channels: null.",
-        "5. If user asks for an image, photo, banner, visual, creative, reel, or asks to attach a visual (e.g. 'generate photo', 'attach this in post', 'with doctor photo'):",
-        "   - Set 'generateImage': true.",
-        "   - Formulate a clear, highly realistic commercial visual prompt in 'imagePrompt' (e.g. 'Authentic photo of a confident medical doctor in a modern clinic with stethoscope').",
-        "   - If no image requested, set 'generateImage': false and 'imagePrompt': null.",
+        "5. Channel Detection:",
+        "   - If user mentions target social platforms (e.g. 'Twitter', 'X', 'LinkedIn', 'Instagram', 'Facebook', 'Bluesky', 'all channels'):",
+        "     * Set channels array: ['twitter', 'linkedin'] or ['all'].",
+        "   - Else set channels: null.",
+        "6. Visual Photo Prompt:",
+        "   - Formulate a clear, highly realistic commercial photo prompt in 'imagePrompt' that reflects the brand's services (e.g. 'Authentic commercial photograph of...').",
+        "   - Set generateImage: true.",
         "",
-        "Return ONLY a valid JSON object matching this schema without any markdown formatting:",
+        "Return ONLY a valid JSON object matching this schema without any markdown wrapping:",
         "{",
-        '  "content": "The generated post text here",',
+        `  "content": "Specific caption about ${brandProfile?.business_name || 'our services'} and value proposition.\\n\\n#${cleanBrandTag} #${cleanNicheTag} #${cleanNicheTag}Tips #BusinessGrowth",`,
         '  "schedule": { "date": "YYYY-MM-DD", "time": "5:00 PM" } | null,',
         '  "autoSchedule": true,',
-        '  "channels": ["bluesky"] | null,',
+        '  "channels": ["instagram"] | null,',
         '  "generateImage": true,',
-        '  "imagePrompt": "Authentic professional commercial photo of doctor in modern clinic" | null',
+        '  "imagePrompt": "Authentic commercial photograph of..."',
         "}"
     ];
-
-    if (brandProfile?.business_name) {
-        parts.push(
-            "",
-            "Client Active Business DNA (Brand Profile):",
-            `- Business Name: ${brandProfile.business_name}`,
-            `- Niche / Industry: ${brandProfile.niche || "General"}`,
-            `- Target Audience: ${brandProfile.target_audience || "Target Customers"}`,
-            `- Brand Tone: ${brandProfile.brand_tone || "Professional"}`,
-            `- Primary Offer: ${brandProfile.main_offer || ""}`,
-            "Always align the copy, tone, vocabulary, and image prompts with this specific brand identity."
-        );
-    }
 
     // Adapt generation style based on Channel Type (Organic Social vs Meta Ads)
     const channelLower = (channelType || "").toLowerCase();
@@ -379,7 +439,7 @@ function buildGenerateSystemPrompt(channelType?: string, characterLimit?: number
             "",
             "Performance Advertising Strategy (Meta Ads Mode):",
             "- Goal: High CTR, lead generation, and direct conversion.",
-            "- Copy Structure: Scroll-stopping 5-7 word headline hook, clear problem/solution agitation, strong offer positioning, and decisive Call-to-Action (e.g. 'Claim 20% Off', 'Book Your 3D Scan Today').",
+            "- Copy Structure: Scroll-stopping 5-7 word headline hook, clear problem/solution agitation, strong offer positioning, and decisive Call-to-Action (e.g. 'Claim 20% Off', 'Book Your Consultation Today').",
             "- Visual: High-impact commercial product/service hero photography with clean focus."
         );
     } else {
@@ -393,16 +453,19 @@ function buildGenerateSystemPrompt(channelType?: string, characterLimit?: number
         );
     }
 
-    if(channelType){
+    if (channelType) {
         parts.push(`Match the specific platform tone for ${channelType}.`);
     }
-    if(characterLimit){
+    if (characterLimit) {
         parts.push(`Must be less than the maximum character limit: ${characterLimit}.`);
     }
     return parts.join("\n");
 }
 
-function buildRefineSystemPrompt(channelType?: string, characterLimit?: number, brandProfile?: any){
+function buildRefineSystemPrompt(channelType?: string, characterLimit?: number, brandProfile?: any) {
+    const cleanBrandTag = cleanTag(brandProfile?.business_name, "Brand");
+    const cleanNicheTag = cleanTag(brandProfile?.niche, "Business");
+
     const system_prompt = [
         "You are a social media writing assistant.",
         "Return only the final post text.",
@@ -411,18 +474,21 @@ function buildRefineSystemPrompt(channelType?: string, characterLimit?: number, 
         "Return plain text only.",
     ];
     if (brandProfile?.business_name) {
-        system_prompt.push(`Writing for brand: ${brandProfile.business_name} (${brandProfile.niche}), Tone: ${brandProfile.brand_tone || 'Professional'}.`);
+        system_prompt.push(
+            `Writing for brand: ${brandProfile.business_name} (${brandProfile.niche}), Tone: ${brandProfile.brand_tone || 'Professional'}, Offer: ${brandProfile.main_offer || 'Services'}.`,
+            `Ensure the post is tailored to ${brandProfile.business_name} and ends with hashtags #${cleanBrandTag} #${cleanNicheTag}.`
+        );
     }
-    if(channelType){
+    if (channelType) {
         system_prompt.push(`Write for ${channelType}. Match the platform's tone, style, and expected length and relevant hashtags.`);
     }
-    if(characterLimit){
+    if (characterLimit) {
         system_prompt.push(`Must be less than the maximum character limit: ${characterLimit}.`);
     }
     return system_prompt.join("\n");
 }
 
-function buildPrompt(action:ActionType,content:string, prompt:string){
+function buildPrompt(action: ActionType, content: string, prompt: string) {
     if (action === "generate") {
         return prompt;
     }

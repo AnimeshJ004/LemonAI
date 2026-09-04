@@ -11,5 +11,6 @@ export type ChannelType = {
     handle?: string | null
     profile_image?: string | null
     profile_url?: string | null
+    provider_account_id?: string | null
 }
 

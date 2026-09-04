@@ -26,6 +26,7 @@ const mainNav = [
   { name: "Ideas", href: "/ideas", icon: Lightbulb },
   { name: "Schedule", href: "/schedule", icon: Calendar },
   { name: "Brand Profile", href: "/brand-profile", icon: Building2 },
+  { name: "Meta Ads", href: "/meta-ads", icon: Megaphone },
   { name: "Billing", href: "/billing", icon: CreditCard },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
@@ -120,21 +121,19 @@ const AppSidebar = () => {
                   const profileUrl = getChannelProfileUrl(channel.type, channel.handle)
                   return (
                     <SidebarMenuItem key={channel.id}>
-                      <SidebarMenuButton asChild>
-                       <a
-                         href={profileUrl}
-                         target="_blank" rel="noreferrer"
-                          className="w-full! relative block items-center gap-2"
-                       >
-                           <ChannelAvatar
-                            size="sm"
-                           className="w-full flex items-center gap-2"
-                            type={channel.type}
-                            color={channel.color}
-                            profileImage={channel.profile_image}
-                            name={!isCollapsed ? (channel.handle || channel.name) : ""}
-                           />
-                       </a>
+                      <SidebarMenuButton
+                        onClick={() => handleConnect(channel)}
+                        className="w-full relative flex items-center gap-2 cursor-pointer hover:bg-muted/80 rounded-md"
+                        tooltip={`Edit ${channel.name} (${channel.handle || ""})`}
+                      >
+                        <ChannelAvatar
+                          size="sm"
+                          className="w-full flex items-center gap-2"
+                          type={channel.type}
+                          color={channel.color}
+                          profileImage={channel.profile_image}
+                          name={!isCollapsed ? (channel.handle || channel.name) : ""}
+                        />
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )

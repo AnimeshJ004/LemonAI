@@ -109,7 +109,10 @@ export function CampaignCreationWizard() {
     setData((prev) => ({ ...prev, [key]: val }));
   }, []);
 
-  // Fetch ad accounts on mount
+  const [hasLoadedProfile, setHasLoadedProfile] = useState(false);
+  const [showManualInputs, setShowManualInputs] = useState(false);
+
+  // Fetch ad accounts and brand profile on mount
   useEffect(() => {
     fetch("/api/meta/ad-accounts")
       .then((r) => r.json())
@@ -131,8 +134,9 @@ export function CampaignCreationWizard() {
             businessName: d.profile.business_name,
             niche: d.profile.niche || prev.niche,
             targetAudience: d.profile.target_audience || prev.targetAudience,
-            adHeadline: d.profile.main_offer ? d.profile.main_offer : prev.adHeadline,
+            adHeadline: d.profile.main_offer ? d.profile.main_offer : `Special Offer from ${d.profile.business_name}`,
           }));
+          setHasLoadedProfile(true);
         }
       })
       .catch(() => {});
@@ -292,77 +296,51 @@ export function CampaignCreationWizard() {
         </div>
       )}
 
-      {/* ─── Step 1: Brand & Target ─────────────────────────────────────────── */}
+      {/* ─── Step 1: AI Campaign Setup & Creative ──────────────────────────── */}
       {step === 1 && (
         <div className="flex flex-col gap-5">
-          {/* Client Brand Profile Status */}
-          {data.businessName ? (
-            <div className="p-3.5 rounded-xl border border-primary/20 bg-primary/5 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                  <Building2 className="size-4" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold text-foreground">
-                    Active Client Brand: <span className="text-primary font-bold">{data.businessName}</span>
-                  </p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {data.niche || "Custom Industry"} • Context loaded from your Brand Profile
-                  </p>
-                </div>
+          {/* Active Brand Context Banner */}
+          <div className="p-3.5 rounded-xl border border-primary/20 bg-primary/5 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="size-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
+                <Sparkles className="size-4" />
               </div>
-              <span className="text-[10px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
-                <Check className="size-3" /> Auto-Synced
-              </span>
-            </div>
-          ) : (
-            <div className="p-3.5 rounded-xl border bg-muted/40 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <Building2 className="size-4 text-muted-foreground" />
-                <p className="text-xs text-muted-foreground">
-                  Enter your client or company details below to target and generate ads.
+              <div>
+                <p className="text-xs font-semibold text-foreground">
+                  Using Brand DNA: <span className="text-primary font-bold">{data.businessName || "Your Brand"}</span>
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {data.niche ? `${data.niche} • Automatic AI targeting applied` : "Pre-configured from your Brand Profile"}
                 </p>
               </div>
             </div>
-          )}
+            <span className="text-[10px] font-medium bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+              <Check className="size-3" /> Brand Connected
+            </span>
+          </div>
 
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Business Name *</label>
+              <label className="text-xs font-semibold text-foreground">Campaign Name</label>
               <Input
-                id="wizard-business-name"
-                placeholder="e.g. Apex Dental Studio"
-                value={data.businessName}
-                onChange={(e) => set("businessName", e.target.value)}
+                id="wizard-campaign-name"
+                placeholder="e.g. Summer Leads Promo"
+                value={data.businessName ? `${data.businessName} - ${OBJECTIVES.find((o) => o.value === data.objective)?.label || "Campaign"}` : "My Meta Campaign"}
+                onChange={() => {}}
+                disabled
+                className="bg-muted/50 text-xs"
               />
             </div>
+
             <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Niche / Industry *</label>
-              <Input
-                id="wizard-niche"
-                placeholder="e.g. Cosmetic Dentistry & Clear Aligners"
-                value={data.niche}
-                onChange={(e) => set("niche", e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Target Audience *</label>
-              <Input
-                id="wizard-audience"
-                placeholder="e.g. Adults 24-45 looking for smile makeover in Mumbai"
-                value={data.targetAudience}
-                onChange={(e) => set("targetAudience", e.target.value)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-semibold text-foreground">Campaign Objective</label>
+              <label className="text-xs font-semibold text-foreground">Campaign Objective *</label>
               <Select value={data.objective} onValueChange={(v) => set("objective", v)}>
-                <SelectTrigger id="wizard-objective">
+                <SelectTrigger id="wizard-objective" className="text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {OBJECTIVES.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
+                    <SelectItem key={o.value} value={o.value} className="text-xs">
                       {o.label}
                     </SelectItem>
                   ))}
@@ -374,15 +352,14 @@ export function CampaignCreationWizard() {
           <Button
             id="wizard-next-step-1"
             onClick={() => {
-              if (!data.businessName || !data.niche || !data.targetAudience) {
-                toast.error("Please fill in all required fields.");
-                return;
-              }
               setStep(2);
+              if (!data.adHeadline || !data.adPrimaryText) {
+                generateCopy();
+              }
             }}
-            className="w-full gap-2"
+            className="w-full gap-2 h-11 text-xs font-semibold shadow-sm"
           >
-            Next: AI Creative <ChevronRight className="size-4" />
+            <Sparkles className="size-4" /> Generate AI Ad Creative & Live Preview <ChevronRight className="size-4" />
           </Button>
         </div>
       )}

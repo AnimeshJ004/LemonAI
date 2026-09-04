@@ -1,11 +1,9 @@
-import { getInsforgeServerClient, getInsforgeAdminClient } from "@/lib/insforge-server";
+import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
+import { userBrandCache, getBrandProfileForUser } from "@/lib/brand-helper";
 
 const BRAND_TONES = ["Professional", "Friendly", "Bold", "Luxury", "Energetic"] as const;
-
-// In-memory fallback cache per user ID to guarantee profile persistence across page refreshes
-const userBrandCache = new Map<string, any>();
 
 export async function GET() {
   try {
@@ -14,25 +12,7 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    let profile: any = userBrandCache.get(userId) || null;
-
-    try {
-      const admin = getInsforgeAdminClient();
-      const { data, error } = await admin.database
-        .from("brand_profiles")
-        .select("*")
-        .eq("user_id", userId)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (data) {
-        profile = data;
-        userBrandCache.set(userId, data);
-      }
-    } catch (dbErr: any) {
-      console.warn("Notice querying DB table brand_profiles:", dbErr?.message);
-    }
+    const profile = await getBrandProfileForUser(userId);
 
     return NextResponse.json({ profile, tableExists: true });
   } catch (error: any) {

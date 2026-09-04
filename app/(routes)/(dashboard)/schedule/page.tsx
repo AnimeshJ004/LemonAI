@@ -15,48 +15,47 @@ const SchedulePageContent = () => {
   const [activeView, setActiveView] = useQueryState("view", {
     defaultValue: "calendar",
   });
-  const [_,setStatus] = useQueryState("status", {
+  const [_, setStatus] = useQueryState("status", {
     defaultValue: "",
-  })
-  const [createPostModalOpen, setCreatePostModalOpen] = useState(false)
+  });
+  const [createPostModalOpen, setCreatePostModalOpen] = useState(false);
+
   return (
-    <div className="flex flex-col h-full">
-      <header className="flex items-center justify-between px-6 pt-4 pb-2">
+    <div className="flex flex-col h-full w-full min-w-0">
+      <header className="flex flex-wrap items-center justify-between gap-3 px-2 sm:px-4 pt-1 pb-3 border-b border-border/40 shrink-0">
         <div>
-          <h1 className="text-xl font-semibold">All Channels</h1>
+          <h1 className="text-lg sm:text-xl font-semibold text-foreground">All Channels</h1>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <ToggleGroup
             type="single"
             value={activeView}
             onValueChange={(value) => {
-              //reset the url status
-              setStatus(null)
-              setActiveView(value as ViewType)
-
+              if (value) {
+                setStatus(null);
+                setActiveView(value as ViewType);
+              }
             }}
-            className="border rounded-lg p-px"
+            className="border rounded-lg p-0.5 bg-muted/30"
           >
-            <ToggleGroupItem value="list"
-              className="gap-2 my-px"
-            >
+            <ToggleGroupItem value="list" className="gap-1.5 px-2.5 h-8">
               <LayoutList className="size-4" />
-              <span className="text-sm">List</span>
+              <span className="text-xs font-medium">List</span>
             </ToggleGroupItem>
-            <ToggleGroupItem value="calendar">
+            <ToggleGroupItem value="calendar" className="gap-1.5 px-2.5 h-8">
               <CalendarIcon className="size-4" />
-              <span className="text-sm">Calendar</span>
+              <span className="text-xs font-medium">Calendar</span>
             </ToggleGroupItem>
           </ToggleGroup>
-          <Button onClick={() => setCreatePostModalOpen(true)}>
+          <Button onClick={() => setCreatePostModalOpen(true)} className="gap-1.5 font-semibold text-xs sm:text-sm h-8 px-3 shrink-0">
             <Plus className="size-4" />
-            Add Post
+            New Post
           </Button>
         </div>
       </header>
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 min-w-0 overflow-hidden pt-2">
         {activeView === "list" ? (
           <ListView setCreatePostModalOpen={setCreatePostModalOpen} />
         ) : (
@@ -69,8 +68,8 @@ const SchedulePageContent = () => {
         onOpenChange={setCreatePostModalOpen}
       />
     </div>
-  )
-}
+  );
+};
 
 
 

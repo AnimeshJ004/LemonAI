@@ -30,6 +30,15 @@ export function ConnectChannelDialog({
     const [providerAccountId, setProviderAccountId] = useState("")
     const [isLoading, setIsLoading] = useState(false)
 
+    React.useEffect(() => {
+        if (channel && open) {
+            setHandle(channel.handle ? channel.handle.replace(/^@/, '') : "")
+            setProviderAccountId((channel as any).provider_account_id || "")
+            setAccessToken("")
+            setPassword("")
+        }
+    }, [channel, open])
+
     if (!channel) return null
 
     const icon = getChannelIcon(channel.type)
@@ -117,10 +126,12 @@ export function ConnectChannelDialog({
                         </div>
                         <div>
                             <DialogTitle className="text-base font-semibold">
-                                Connect {channel.name}
+                                {channel.connected ? `Update ${channel.name}` : `Connect ${channel.name}`}
                             </DialogTitle>
                             <DialogDescription className="text-xs text-muted-foreground mt-0.5">
-                                Connect your account to enable automatic scheduling and publishing.
+                                {channel.connected
+                                    ? `Update your credentials, token, or account ID for ${channel.name}.`
+                                    : `Connect your account to enable automatic scheduling and publishing.`}
                             </DialogDescription>
                         </div>
                     </div>
@@ -278,9 +289,11 @@ export function ConnectChannelDialog({
                                                 ? "Facebook Page ID"
                                                 : "LinkedIn Author URN / ID"}
                                         </Label>
-                                        <span className="text-[11px] text-muted-foreground">
-                                            Optional
-                                        </span>
+                                        {!isInstagram && (
+                                            <span className="text-[11px] text-muted-foreground">
+                                                Optional
+                                            </span>
+                                        )}
                                     </div>
                                     <Input
                                         id="channel-account-id"
@@ -353,10 +366,12 @@ export function ConnectChannelDialog({
                             {isLoading ? (
                                 <>
                                     <Spinner className="size-3.5 mr-1.5 text-white" />
-                                    <span className="text-white font-medium">Verifying...</span>
+                                    <span className="text-white font-medium">{channel.connected ? "Updating..." : "Verifying..."}</span>
                                 </>
                             ) : (
-                                <span className="text-white font-medium">Verify & Connect {channel.name}</span>
+                                <span className="text-white font-medium">
+                                    {channel.connected ? `Update ${channel.name}` : `Verify & Connect ${channel.name}`}
+                                </span>
                             )}
                         </Button>
                     </DialogFooter>

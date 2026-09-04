@@ -179,24 +179,49 @@ export async function POST(request: NextRequest) {
         // 2. Meta (Instagram & Facebook) Profile Fetching
         if (channelType.type === ChannelTypeEnum.INSTAGRAM || channelType.type === ChannelTypeEnum.FACEBOOK) {
             const cleanMetaHandle = rawHandle.replace(/^@/, '').trim();
+            if (providerAccountId && typeof providerAccountId === "string") {
+                verifiedAccountId = providerAccountId.trim();
+            }
+
             try {
-                // Try Graph API
-                const metaRes = await fetch(`https://graph.facebook.com/v19.0/me?fields=id,name,picture,username&access_token=${encodeURIComponent(rawToken)}`);
+                // Try 1: Graph API me with instagram_business_account
+                const metaRes = await fetch(`https://graph.facebook.com/v21.0/me?fields=id,name,picture,username,instagram_business_account{id,username,profile_picture_url}&access_token=${encodeURIComponent(rawToken)}`);
                 if (metaRes.ok) {
                     const metaData = await metaRes.json();
-                    profileImage = metaData?.picture?.data?.url || null;
-                    if (!verifiedAccountId && metaData?.id) {
-                        verifiedAccountId = metaData.id;
+                    profileImage = metaData?.instagram_business_account?.profile_picture_url || metaData?.picture?.data?.url || null;
+                    if (!verifiedAccountId) {
+                        verifiedAccountId = metaData?.instagram_business_account?.id || metaData?.id || null;
                     }
-                    if (metaData?.username) {
+                    if (metaData?.instagram_business_account?.username) {
+                        formattedHandle = `@${metaData.instagram_business_account.username.replace(/^@/, '')}`;
+                    } else if (metaData?.username) {
                         formattedHandle = `@${metaData.username.replace(/^@/, '')}`;
                     }
-                } else if (channelType.type === ChannelTypeEnum.INSTAGRAM) {
-                    // Fallback to Instagram Basic Display API
+                }
+
+                // Try 2: me/accounts
+                if (!verifiedAccountId || !profileImage) {
+                    const accRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,picture,instagram_business_account{id,username,profile_picture_url}&access_token=${encodeURIComponent(rawToken)}`);
+                    if (accRes.ok) {
+                        const accData = await accRes.json();
+                        const pageItem = accData?.data?.find((p: any) => p.instagram_business_account?.id) || accData?.data?.[0];
+                        if (pageItem) {
+                            if (!verifiedAccountId) {
+                                verifiedAccountId = pageItem?.instagram_business_account?.id || pageItem?.id || null;
+                            }
+                            if (!profileImage) {
+                                profileImage = pageItem?.instagram_business_account?.profile_picture_url || pageItem?.picture?.data?.url || null;
+                            }
+                        }
+                    }
+                }
+
+                // Try 3: Fallback to Instagram Basic Display API
+                if ((!verifiedAccountId || !profileImage) && channelType.type === ChannelTypeEnum.INSTAGRAM) {
                     const igRes = await fetch(`https://graph.instagram.com/me?fields=id,username,profile_picture_url&access_token=${encodeURIComponent(rawToken)}`);
                     if (igRes.ok) {
                         const igData = await igRes.json();
-                        profileImage = igData?.profile_picture_url || null;
+                        if (!profileImage) profileImage = igData?.profile_picture_url || null;
                         if (!verifiedAccountId && igData?.id) {
                             verifiedAccountId = igData.id;
                         }

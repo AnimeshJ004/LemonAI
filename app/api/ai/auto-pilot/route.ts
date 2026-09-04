@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getInsforgeServerClient, getInsforgeAdminClient } from "@/lib/insforge-server";
+import { getBrandProfileForUser, formatBrandHashtags, cleanTag } from "@/lib/brand-helper";
 import { generateAdCreativeImage } from "@/lib/ai-image-generator";
 import { POST_STATUS } from "@/constants/post";
 import { inngest } from "@/inngest/client";
@@ -29,31 +30,13 @@ export async function POST(req: NextRequest) {
     const body: AutoPilotRequest = await req.json().catch(() => ({}));
 
     // 1. Fetch saved brand profile if not fully provided in body
-    let businessName = body.businessName;
-    let niche = body.niche;
-    let targetAudience = body.targetAudience;
-    let brandTone = body.brandTone || "Professional";
-    let mainOffer = body.mainOffer || "";
-    let competitors = body.competitors || "";
-
-    if (!businessName || !niche) {
-      const { data: profile } = await insforge.database
-        .from("brand_profiles")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (profile) {
-        businessName = businessName || profile.business_name;
-        niche = niche || profile.niche;
-        targetAudience = targetAudience || profile.target_audience;
-        brandTone = brandTone || profile.brand_tone || "Professional";
-        mainOffer = mainOffer || profile.main_offer || "";
-        competitors = competitors || profile.competitors || "";
-      }
-    }
+    const savedProfile = await getBrandProfileForUser(userId);
+    let businessName = body.businessName || savedProfile?.business_name;
+    let niche = body.niche || savedProfile?.niche;
+    let targetAudience = body.targetAudience || savedProfile?.target_audience;
+    let brandTone = body.brandTone || savedProfile?.brand_tone || "Professional";
+    let mainOffer = body.mainOffer || savedProfile?.main_offer || "";
+    let competitors = body.competitors || savedProfile?.competitors || "";
 
     if (!businessName || !niche) {
       return NextResponse.json(
@@ -177,10 +160,27 @@ Return ONLY a valid JSON object matching this schema without any markdown format
         }
       }
 
+      // Clean emojis, markdown headings, and ensure 4-6 brand hashtags
+      let rawContent = (item.content || `Professional update from ${businessName}: We provide leading ${niche} services designed for maximum results.`)
+        .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, "")
+        .replace(/^#+\s+/gm, "")
+        .replace(/\*\*(.*?)\*\*/g, "$1")
+        .trim();
+
+      const brandTags = formatBrandHashtags(savedProfile || { business_name: businessName, niche });
+      const foundTags = rawContent.match(/#[a-zA-Z0-9_]+/g) || [];
+      rawContent = rawContent.replace(/#[a-zA-Z0-9_]+/g, "").trim();
+
+      const combinedSet = new Set<string>();
+      for (const t of brandTags) if (t) combinedSet.add(t);
+      for (const t of foundTags) if (t && t.length > 1) combinedSet.add(t);
+      const finalTags = Array.from(combinedSet).slice(0, 5).join(" ");
+      const finalPostContent = `${rawContent}\n\n${finalTags}`;
+
       return {
         user_id: userId,
         user_channel_id: defaultChannelId,
-        content: item.content,
+        content: finalPostContent,
         images: imageObj ? [imageObj] : [],
         scheduled_at: scheduledDate.toISOString(),
         status: POST_STATUS.QUEUE,

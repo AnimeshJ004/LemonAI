@@ -637,8 +637,53 @@ async function publishToInstagram({
     images?: ImageObject[];
     logger: any;
 }) {
-    if (!instagramAccountId) {
-        throw new Error("Missing Instagram Business Account ID");
+    let resolvedAccountId = instagramAccountId;
+
+    // Auto-discover Instagram Account ID if missing from user_channels record
+    if (!resolvedAccountId) {
+        logger.info("Instagram account ID not in record, auto-resolving from token...");
+        try {
+            const meRes = await fetch(`https://graph.facebook.com/v21.0/me?fields=id,instagram_business_account&access_token=${encodeURIComponent(accessToken)}`);
+            if (meRes.ok) {
+                const meData = await meRes.json();
+                if (meData?.instagram_business_account?.id) {
+                    resolvedAccountId = meData.instagram_business_account.id;
+                } else if (meData?.id) {
+                    resolvedAccountId = meData.id;
+                }
+            }
+        } catch {}
+
+        if (!resolvedAccountId) {
+            try {
+                const accRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account&access_token=${encodeURIComponent(accessToken)}`);
+                if (accRes.ok) {
+                    const accData = await accRes.json();
+                    const pageWithIg = accData?.data?.find((p: any) => p.instagram_business_account?.id);
+                    if (pageWithIg?.instagram_business_account?.id) {
+                        resolvedAccountId = pageWithIg.instagram_business_account.id;
+                    } else if (accData?.data?.[0]?.id) {
+                        resolvedAccountId = accData.data[0].id;
+                    }
+                }
+            } catch {}
+        }
+
+        if (!resolvedAccountId) {
+            try {
+                const igRes = await fetch(`https://graph.instagram.com/me?fields=id&access_token=${encodeURIComponent(accessToken)}`);
+                if (igRes.ok) {
+                    const igData = await igRes.json();
+                    if (igData?.id) {
+                        resolvedAccountId = igData.id;
+                    }
+                }
+            } catch {}
+        }
+    }
+
+    if (!resolvedAccountId) {
+        throw new Error("Unable to automatically detect Instagram Account ID. Please ensure your Instagram is connected to a Facebook Page or enter your Business Account ID.");
     }
 
     if (!images || images.length === 0) {
@@ -649,7 +694,7 @@ async function publishToInstagram({
 
     // Step 1: Create Instagram Media Container
     const createRes = await fetch(
-        `https://graph.facebook.com/v21.0/${instagramAccountId}/media`,
+        `https://graph.facebook.com/v21.0/${resolvedAccountId}/media`,
         {
             method: "POST",
             headers: { "Content-Type": "application/json" },

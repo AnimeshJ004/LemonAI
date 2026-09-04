@@ -70,110 +70,117 @@ export function PostCalendar({
 
   const CustomToolbar = (toolbar: any) => {
     return (
-      <div className="flex flex-col gap-4 mb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center border rounded-md overflow-hidden">
-              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-none border-r" onClick={() => toolbar.onNavigate('PREV')}>
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-none" onClick={() => toolbar.onNavigate('NEXT')}>
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <span className="text-base font-semibold">
-              {format(toolbar.date, "MMMM yyyy")}
-            </span>
-
-            <Button variant="outline" size="sm" className="font-medium" onClick={() => toolbar.onNavigate('TODAY')}>
-              Today
+      <div className="flex flex-wrap items-center justify-between gap-2.5 mb-3 min-w-0">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          <div className="flex items-center border rounded-md overflow-hidden bg-background">
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-none border-r" onClick={() => toolbar.onNavigate('PREV')}>
+              <ChevronLeft className="h-4 w-4" />
             </Button>
-
-            <select
-              className="text-sm font-medium bg-transparent border-none focus:ring-0 cursor-pointer outline-none"
-              value={view}
-              onChange={(e) => onViewChange(e.target.value)}
-            >
-              <option value="month">Month</option>
-              <option value="week">Week</option>
-            </select>
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-none" onClick={() => toolbar.onNavigate('NEXT')}>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
 
-          <div className="flex items-center gap-2">
-            {rightActions}
-          </div>
+          <span className="text-sm sm:text-base font-semibold text-foreground">
+            {format(toolbar.date, "MMMM yyyy")}
+          </span>
+
+          <Button variant="outline" size="sm" className="font-medium h-8 text-xs px-2.5" onClick={() => toolbar.onNavigate('TODAY')}>
+            Today
+          </Button>
+
+          <select
+            className="text-xs sm:text-sm font-medium bg-muted/50 border rounded-md px-2 py-1 focus:ring-0 cursor-pointer outline-none text-foreground"
+            value={view}
+            onChange={(e) => onViewChange(e.target.value)}
+          >
+            <option value="month">Month</option>
+            <option value="week">Week</option>
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {rightActions}
         </div>
       </div>
     )
   }
 
   return (
-    <div className={cn("h-full relative flex flex-col min-h-[600px] bg-background")}>
+    <div className={cn("h-full w-full relative flex flex-col min-h-[500px] min-w-[650px] bg-background")}>
       <Calendar
         localizer={localizer}
         events={events}
         date={currentDate}
         formats={formats}
-        step={isWeekView ? 15 : 60}
-        timeslots={10}
-        min={new Date(2026, 0, 1, 0, 0)}
-        max={new Date(2026, 0, 1, 23, 59)}
+        step={60}
+        timeslots={1}
+        min={new Date(0, 0, 0, 6, 0, 0)}
+        max={new Date(0, 0, 0, 23, 59, 59)}
         onNavigate={onDateChange}
         view={view === "month" ? Views.MONTH : Views.WEEK}
         onView={(v) => onViewChange(v === Views.MONTH ? "month" : "week")}
         onSelectEvent={(event: any) => onPostClick(event)}
-        //onSelectSlot={({ start }) => onCreatePost(start)}
-      
-        // In week view, disable past time slots 
-        // and style them differently
         slotPropGetter={(date) => {
           const isPastSlot = isBefore(date, new Date())
           return isPastSlot
             ? {
               className: "rbc-time-slot-disabled",
               style: {
-                backgroundColor: "hsl(var(--muted) / 0.35)",
+                backgroundColor: "hsl(var(--muted) / 0.25)",
                 pointerEvents: "none",
               },
             }
             : {}
         }}
-        // In month view, disable past dates and style them differently
         dayPropGetter={(date: Date) => {
-          const isPastDate = isBefore(date, new Date())
+          const isPastDate = isBefore(date, startOfDay(new Date()))
           return {
             className: isPastDate ? "bg-[#331f000f]! pointer-events-none" : "",
-            style: isPastDate ? { backgroundColor: "hsl(var(--muted) / 0.5)" } : {}
+            style: isPastDate ? { backgroundColor: "hsl(var(--muted) / 0.35)" } : {}
           }
         }}
         components={{
           toolbar: CustomToolbar,
-          // Customize event rendering to show channel icons and better styling
           event: ({ event }) => {
             const channel = event.user_channels?.channel_types
             const Icon = getChannelIcon(channel?.type || undefined)
-            const color = channel?.color || "#000000"
+            const color = channel?.color || "#3b82f6"
             const eventDate = event.scheduled_at ? new Date(event.scheduled_at) : (event.start ? new Date(event.start) : new Date())
             const isValidDate = !isNaN(eventDate.getTime())
 
             return (
-              <>
-                <div
-                  className="flex items-center gap-2 px-2 py-1 h-full"
-                  style={{ backgroundColor: color + "20", borderLeft: `3px solid ${color}` }}
-                  onClick={() => onPostClick(event)}
-                >
-                  {Icon && <HugeiconsIcon
-                    icon={Icon}
-                    className="shrink-0 text-white! size-4! p-0.5 rounded-sm"
-                    style={{
-                      background: color
-                    }} />}
-                  <span className="text-xs truncate max-w-[100px]">{event?.title}</span>
-                  <span className="font-semibold">{isValidDate ? format(eventDate, "h:mm a") : ""}</span>
+              <div
+                className="flex items-center gap-1.5 px-2 py-1 h-full w-full rounded-md overflow-hidden transition-all hover:brightness-95 cursor-pointer"
+                style={{
+                  backgroundColor: color + "18",
+                  borderLeft: `3.5px solid ${color}`,
+                  border: `1px solid ${color}35`,
+                  borderLeftWidth: "3.5px",
+                  borderLeftColor: color,
+                }}
+                onClick={() => onPostClick(event)}
+              >
+                {Icon && (
+                  <div
+                    className="size-4 rounded flex items-center justify-center shrink-0 shadow-xs"
+                    style={{ background: color }}
+                  >
+                    <HugeiconsIcon
+                      icon={Icon}
+                      className="size-2.5 text-white"
+                    />
+                  </div>
+                )}
+                <div className="flex flex-col min-w-0 flex-1 leading-none justify-center">
+                  <span className="text-[11px] font-semibold text-foreground truncate block">
+                    {event?.title || "Scheduled Post"}
+                  </span>
+                  <span className="text-[9px] text-muted-foreground font-medium mt-0.5">
+                    {isValidDate ? format(eventDate, "h:mm a") : ""}
+                  </span>
                 </div>
-              </>
+              </div>
             )
           },
 

@@ -75,6 +75,7 @@ export async function GET(request: NextRequest) {
               handle: userChannel?.handle ?? null,
               profile_image: userChannel?.profile_image ?? null,
               profile_url: userChannel?.profile_url ?? null,
+              provider_account_id: userChannel?.provider_account_id ?? null,
               connected: Boolean(userChannel?.is_connected)
             };
         });

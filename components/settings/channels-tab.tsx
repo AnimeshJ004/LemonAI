@@ -163,27 +163,41 @@ function ChannelTabContent() {
                                             </div>
                                         </div>
 
-                                        <Button 
-                                            variant={channel.connected ? "destructive" : "default"} 
-                                            size="sm"
-                                            disabled={isActionRunning}
-                                            onClick={() => channel.connected ? handleDisconnect(channel.user_channel_id!) : handleConnectClick(channel)}
-                                            className="min-w-[90px]"
-                                        >
-                                            {isThisConnecting ? (
-                                                <>
-                                                    <Spinner className='size-3.5 mr-1.5' />
-                                                    <span>Connecting</span>
-                                                </>
-                                            ) : isThisDisconnecting ? (
-                                                <>
-                                                    <Spinner className='size-3.5 mr-1.5' />
-                                                    <span>Disconnecting</span>
-                                                </>
-                                            ) : (
-                                                channel.connected ? "Disconnect" : "Connect"
+                                        <div className="flex items-center gap-2">
+                                            {channel.connected && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    disabled={isActionRunning}
+                                                    onClick={() => handleConnectClick(channel)}
+                                                    className="h-8 px-3 text-xs font-medium border-border hover:bg-muted"
+                                                >
+                                                    Edit
+                                                </Button>
                                             )}
-                                        </Button>
+
+                                            <Button 
+                                                variant={channel.connected ? "destructive" : "default"} 
+                                                size="sm"
+                                                disabled={isActionRunning}
+                                                onClick={() => channel.connected ? handleDisconnect(channel.user_channel_id!) : handleConnectClick(channel)}
+                                                className="min-w-[90px] h-8 text-xs font-medium"
+                                            >
+                                                {isThisConnecting ? (
+                                                    <>
+                                                        <Spinner className='size-3.5 mr-1.5' />
+                                                        <span>Connecting</span>
+                                                    </>
+                                                ) : isThisDisconnecting ? (
+                                                    <>
+                                                        <Spinner className='size-3.5 mr-1.5' />
+                                                        <span>Disconnecting</span>
+                                                    </>
+                                                ) : (
+                                                    channel.connected ? "Disconnect" : "Connect"
+                                                )}
+                                            </Button>
+                                        </div>
                                     </div>
                                 )
                             })

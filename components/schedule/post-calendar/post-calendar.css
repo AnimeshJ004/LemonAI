@@ -1,49 +1,53 @@
 /* calendar-overrides.css */
-.rbc-calendar { font-family: inherit; border: none !important; }
-.rbc-header {
-  padding: 8px !important;
-  font-weight: 500 !important;
-  font-size: 14px;
-  color: var(--color-muted-foreground);
-  background: var(--color-card);
-  border-bottom: 1px solid var(--color-border) !important;
+.rbc-calendar {
+  font-family: inherit;
+  border: none !important;
 }
 
-/* .rbc-day-bg[data-past="true"] {
-  background-color: gray !important;
-  opacity: 0.5;
-  pointer-events: none;
-} */
+.rbc-header {
+  padding: 10px 8px !important;
+  font-weight: 600 !important;
+  font-size: 12px;
+  color: var(--color-foreground);
+  background: var(--color-card);
+  border-bottom: 1px solid var(--color-border) !important;
+  text-transform: capitalize;
+}
 
-
-
-
-.rbc-time-header-content .rbc-header{
-  border-bottom:none !important;
+.rbc-time-header-content .rbc-header {
+  border-bottom: none !important;
 }
 
 .rbc-time-view .rbc-row {
-  border:none !important;
+  border: none !important;
   min-height: auto !important;
 }
-.rbc-time-slot  .rbc-label{
-  font-size: 14px;
-  font-weight: 600;
+
+.rbc-time-slot .rbc-label {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: var(--color-muted-foreground) !important;
+  padding: 0 8px !important;
 }
 
-.rbc-timeslot-group{
-  min-height: 44px;
+.rbc-timeslot-group {
+  min-height: 56px !important;
 }
 
-.rbc-month-view, .rbc-week-view, .rbc-time-view {
+.rbc-month-view,
+.rbc-week-view,
+.rbc-time-view {
   border: 1px solid var(--color-border) !important;
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
   background: var(--color-card);
 }
-.rbc-day-bg + .rbc-day-bg, .rbc-month-row + .rbc-month-row {
+
+.rbc-day-bg + .rbc-day-bg,
+.rbc-month-row + .rbc-month-row {
   border-left: 1px solid var(--color-border) !important;
 }
+
 .rbc-month-row,
 .rbc-time-content,
 .rbc-time-header-content,
@@ -54,28 +58,39 @@
 .rbc-time-content > * + * > * {
   border-color: var(--color-border) !important;
 }
-.rbc-off-range-bg { background: transparent !important; }
-.rbc-today { background: transparent !important; }
 
-/* Allow calendar cells to scroll when there are many events */
-/* .rbc-day-bg {
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
+.rbc-off-range-bg {
+  background: transparent !important;
 }
+
+.rbc-today {
+  background: hsl(var(--primary) / 0.04) !important;
+}
+
 .rbc-event {
-  flex-shrink: 0 !important;
-} */
-.rbc-event {
-  background: var(--color-card) !important;
-  border: 1px solid var(--color-border) !important;
-  color: var(--color-card-foreground) !important;
+  background: transparent !important;
+  border: none !important;
+  padding: 1px 2px !important;
   font-size: 11px;
-  border-radius: 4px;
-  box-shadow: 0 1px 2px color-mix(in oklab, black 12%, transparent);
+  border-radius: 6px;
+  box-shadow: none !important;
+}
+
+.rbc-event:focus {
+  outline: none !important;
+}
+
+.rbc-event-content {
+  height: 100% !important;
+  font-size: 11px !important;
+}
+
+.rbc-event-label {
+  display: none !important;
 }
 
 .rbc-time-slot-disabled {
-  opacity: 0.7;
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
