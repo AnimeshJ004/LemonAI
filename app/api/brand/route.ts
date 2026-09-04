@@ -4,6 +4,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 const BRAND_TONES = ["Professional", "Friendly", "Bold", "Luxury", "Energetic"] as const;
 
+// In-memory fallback cache per user ID to guarantee profile persistence across page refreshes
+const userBrandCache = new Map<string, any>();
+
 export async function GET() {
   try {
     const { userId } = await auth();
@@ -11,21 +14,27 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const admin = getInsforgeAdminClient();
-    const { data, error } = await admin.database
-      .from("brand_profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .limit(1)
-      .maybeSingle();
+    let profile: any = userBrandCache.get(userId) || null;
 
-    if (error && error.code !== "PGRST116") {
-      if (error.code === "42P01") {
-        return NextResponse.json({ profile: null, tableExists: false });
+    try {
+      const admin = getInsforgeAdminClient();
+      const { data, error } = await admin.database
+        .from("brand_profiles")
+        .select("*")
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (data) {
+        profile = data;
+        userBrandCache.set(userId, data);
       }
+    } catch (dbErr: any) {
+      console.warn("Notice querying DB table brand_profiles:", dbErr?.message);
     }
 
-    return NextResponse.json({ profile: data ?? null, tableExists: true });
+    return NextResponse.json({ profile, tableExists: true });
   } catch (error: any) {
     console.warn("Notice fetching brand profile:", error?.message);
     return NextResponse.json({ profile: null, tableExists: false });
@@ -63,7 +72,10 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    // 1. Check if record exists for this user
+    // Save immediately into server cache
+    userBrandCache.set(userId, payload);
+
+    // Persist into database
     let savedData: any = null;
     const admin = getInsforgeAdminClient();
 
@@ -90,6 +102,9 @@ export async function POST(request: NextRequest) {
           .select()
           .maybeSingle();
         savedData = inserted;
+      }
+      if (savedData) {
+        userBrandCache.set(userId, savedData);
       }
     } catch (dbErr: any) {
       console.warn("Notice saving to DB table brand_profiles:", dbErr?.message);

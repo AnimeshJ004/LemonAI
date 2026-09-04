@@ -80,7 +80,7 @@ export function BrandProfileForm() {
     setIsMounted(true);
     try {
       localStorage.removeItem("lemon_ai_brand_profile");
-    } catch {}
+    } catch { }
   }, []);
 
   // Sync from user-specific local storage when user is loaded
@@ -101,7 +101,7 @@ export function BrandProfileForm() {
       } else {
         setForm(EMPTY_PROFILE);
       }
-    } catch {}
+    } catch { }
   }, [isUserLoaded, storageKey]);
 
   // Fetch existing profile from server (strictly filtered by authenticated userId)
@@ -130,7 +130,7 @@ export function BrandProfileForm() {
       if (storageKey) {
         try {
           localStorage.setItem(storageKey, JSON.stringify(loadedProfile));
-        } catch {}
+        } catch { }
       }
       setIsInit(true);
     } else if (data && !data.profile) {
@@ -142,12 +142,14 @@ export function BrandProfileForm() {
             const parsed = JSON.parse(cached);
             if (parsed?.business_name) {
               setForm(parsed);
+              setIsInit(true);
               return;
             }
           }
-        } catch {}
+        } catch { }
       }
-      setForm(EMPTY_PROFILE);
+      // Only reset if form is currently empty
+      setForm((prev) => (prev.business_name ? prev : EMPTY_PROFILE));
     }
   }, [data, storageKey]);
 
@@ -157,7 +159,7 @@ export function BrandProfileForm() {
       if (storageKey) {
         try {
           localStorage.setItem(storageKey, JSON.stringify(updated));
-        } catch {}
+        } catch { }
       }
       return updated;
     });
@@ -169,7 +171,7 @@ export function BrandProfileForm() {
       if (storageKey) {
         try {
           localStorage.setItem(storageKey, JSON.stringify(payload));
-        } catch {}
+        } catch { }
       }
 
       const res = await fetch("/api/brand", {
@@ -183,9 +185,12 @@ export function BrandProfileForm() {
       }
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (resData) => {
       toast.success("Brand profile saved securely! Isolated to your account.");
       queryClient.invalidateQueries({ queryKey: ["brand-profile"] });
+      if (user?.id) {
+        queryClient.invalidateQueries({ queryKey: ["brand-profile", user.id] });
+      }
     },
     onError: (err: Error) => {
       toast.error(err.message || "Failed to save. Please try again.");
@@ -214,6 +219,12 @@ export function BrandProfileForm() {
 
   const autoPilotMutation = useMutation({
     mutationFn: async () => {
+      if (storageKey) {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(form));
+        } catch { }
+      }
+
       const res = await fetch("/api/ai/auto-pilot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -235,9 +246,12 @@ export function BrandProfileForm() {
     },
     onSuccess: (data) => {
       setAutoPilotResult(data);
-      toast.success(data.message || "30-Day Marketing Calendar & Meta Ads generated!");
+      toast.success(data.message || "Marketing Calendar & Meta Ads generated!");
       queryClient.invalidateQueries({ queryKey: ["posts"] });
       queryClient.invalidateQueries({ queryKey: ["brand-profile"] });
+      if (user?.id) {
+        queryClient.invalidateQueries({ queryKey: ["brand-profile", user.id] });
+      }
     },
     onError: (err: Error) => {
       toast.error(err.message || "Auto-pilot generation failed. Please try again.");

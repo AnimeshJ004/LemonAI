@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Repeat, Minus, Plus, Wand2Icon, ImageIcon, Sparkles } from "lucide-react";
+import { Repeat, Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,6 +22,8 @@ export interface AIAssistantGeneratedData {
   autoSchedule?: boolean;
   channels?: string[] | null;
   image?: ImageObject | null;
+  isMultiDay?: boolean;
+  scheduledCount?: number;
 }
 
 interface AIAssistantProps {
@@ -32,7 +34,11 @@ interface AIAssistantProps {
 }
 
 export function AIAssistant({ className, content, channelId, onGenerate }: AIAssistantProps) {
+  const queryClient = useQueryClient();
   const [prompt, setPrompt] = React.useState("");
+  const [daysCount, setDaysCount] = React.useState<number>(1);
+  const [postsPerDay, setPostsPerDay] = React.useState<number>(1);
+  const [targetChannel, setTargetChannel] = React.useState<string>("all");
   const [generateImage, setGenerateImage] = React.useState(true);
   const [aspectRatio, setAspectRatio] = React.useState<"1:1" | "9:16" | "16:9">("1:1");
 
@@ -48,6 +54,8 @@ export function AIAssistant({ className, content, channelId, onGenerate }: AIAss
   });
 
   const brand = brandData?.profile;
+
+  const totalPosts = daysCount * postsPerDay;
 
   const generateMutation = useMutation({
     mutationFn: async ({
@@ -67,6 +75,9 @@ export function AIAssistant({ className, content, channelId, onGenerate }: AIAss
           channelId,
           generateImage,
           aspectRatio,
+          daysCount,
+          postsPerDay,
+          targetChannel,
         }),
       });
       if (!res.ok) {
@@ -77,12 +88,17 @@ export function AIAssistant({ className, content, channelId, onGenerate }: AIAss
     },
     onSuccess: (data) => {
       onGenerate?.(data);
-      if (data.image) {
-        toast.success("AI Caption & Professional Photo attached to post!");
+      if (data.isMultiDay || (data.scheduledCount && data.scheduledCount > 1)) {
+        toast.success(`Generated & scheduled ${data.scheduledCount || totalPosts} posts across your calendar`);
+        queryClient.invalidateQueries({ queryKey: ["posts"] });
+        queryClient.invalidateQueries({ queryKey: ["scheduled-posts"] });
+        queryClient.invalidateQueries({ queryKey: ["calendar-posts"] });
+      } else if (data.image) {
+        toast.success("AI Caption & Professional Photo attached to post");
       } else if (data.schedule?.date && data.schedule?.time) {
         toast.success(`Generated & scheduled for ${data.schedule.date} at ${data.schedule.time}`);
       } else {
-        toast.success("Post content generated with AI!");
+        toast.success("Post content generated with AI");
       }
       setPrompt("");
     },
@@ -117,45 +133,106 @@ export function AIAssistant({ className, content, channelId, onGenerate }: AIAss
       )}
     >
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Wand2Icon className="h-4 w-4 text-primary" />
-          <span className="text-sm font-semibold text-foreground">
-            All-in-One AI Assistant
-          </span>
-        </div>
-        {brand?.business_name && (
-          <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+        <span className="text-sm font-semibold text-foreground">
+          AI Assistant
+        </span>
+        {brand?.business_name ? (
+          <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-medium">
             {brand.business_name}
+          </span>
+        ) : (
+          <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full font-medium">
+            Brand DNA Active
           </span>
         )}
       </div>
 
-      <p className="text-xs text-muted-foreground leading-relaxed">
-        Tell AI what to write, what photo to generate, and when/where to schedule in one prompt.
-      </p>
+      {/* Schedule & Channel Filters */}
+      <div className="space-y-2 pt-0.5">
+        <div className="grid grid-cols-2 gap-2">
+          {/* Days Dropdown */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-semibold text-muted-foreground">
+              Schedule Duration:
+            </label>
+            <select
+              value={daysCount}
+              onChange={(e) => setDaysCount(Number(e.target.value))}
+              className="w-full h-8 text-[11px] rounded-md border border-border bg-background px-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value={1}>1 Day (Single Day)</option>
+              <option value={3}>3 Days (3 Days Plan)</option>
+              <option value={7}>7 Days (1 Week Plan)</option>
+              <option value={14}>14 Days (2 Weeks Plan)</option>
+              <option value={30}>30 Days (Full Month Plan)</option>
+            </select>
+          </div>
+
+          {/* Posts per Day Dropdown */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-semibold text-muted-foreground">
+              Posts per Day:
+            </label>
+            <select
+              value={postsPerDay}
+              onChange={(e) => setPostsPerDay(Number(e.target.value))}
+              className="w-full h-8 text-[11px] rounded-md border border-border bg-background px-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            >
+              <option value={1}>1 Post / Day (10:00 AM)</option>
+              <option value={2}>2 Posts / Day (10:00 AM & 6:30 PM)</option>
+              <option value={3}>3 Posts / Day (9 AM, 2 PM, 8 PM)</option>
+              <option value={4}>4 Posts / Day (9 AM, 1 PM, 5 PM, 8:30 PM)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Target Channel Dropdown */}
+        <div className="space-y-1">
+          <label className="text-[10px] font-semibold text-muted-foreground">
+            Target Social Media:
+          </label>
+          <select
+            value={targetChannel}
+            onChange={(e) => setTargetChannel(e.target.value)}
+            className="w-full h-8 text-[11px] rounded-md border border-border bg-background px-2 text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          >
+            <option value="all">All Connected Channels</option>
+            <option value="instagram">Instagram</option>
+            <option value="facebook">Facebook</option>
+            <option value="linkedin">LinkedIn</option>
+            <option value="twitter">Twitter / X</option>
+            <option value="bluesky">Bluesky</option>
+            <option value="threads">Threads</option>
+            <option value="tiktok">TikTok</option>
+            <option value="youtube">YouTube</option>
+          </select>
+        </div>
+      </div>
 
       {/* Textarea for unified prompt */}
       <div className="flex flex-col gap-2.5 flex-1">
         <Textarea
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder="e.g. Generate a post for doctors with professional clinic photo, best caption & schedule on Bluesky today at 3:15 PM"
-          className="w-full min-h-[110px] resize-none text-xs"
+          placeholder={
+            totalPosts > 1
+              ? `Create ${totalPosts} posts (${daysCount} days with ${postsPerDay} posts/day) with authentic commercial photos for our brand...`
+              : "Write a post for tomorrow at 3 PM about our new offers with photo"
+          }
+          className="w-full min-h-[90px] resize-none text-xs"
         />
 
         {/* Visual Format Options */}
-        <div className="p-2.5 rounded-lg border bg-muted/30 space-y-2">
+        <div className="p-2 rounded-lg border bg-muted/30 space-y-1.5">
           <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer">
+            <label className="flex items-center gap-1.5 text-xs font-medium text-foreground cursor-pointer">
               <input
                 type="checkbox"
                 checked={generateImage}
                 onChange={(e) => setGenerateImage(e.target.checked)}
                 className="size-3.5 rounded border-border text-primary focus:ring-primary"
               />
-              <span className="flex items-center gap-1">
-                <ImageIcon className="size-3.5 text-primary" /> Generate & Attach AI Photo
-              </span>
+              <span>Generate & Attach 8K AI Photo</span>
             </label>
           </div>
 
@@ -189,19 +266,17 @@ export function AIAssistant({ className, content, channelId, onGenerate }: AIAss
           size="lg"
           onClick={handleGenerate}
           disabled={!prompt.trim() || generateMutation.isPending}
-          className="w-full gap-2 text-xs font-medium"
+          className="w-full text-xs font-semibold h-10"
         >
-          {generateMutation.isPending ? (
-            <>
-              <Spinner className="h-4 w-4" />
-              Generating Post & Media...
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-4 w-4" />
-              Generate Post & Visuals
-            </>
-          )}
+          {generateMutation.isPending
+            ? (totalPosts > 1
+                ? `Generating ${totalPosts} Posts (${daysCount} Days × ${postsPerDay}/Day)...`
+                : "Generating Post & Media...")
+            : (totalPosts > 1
+                ? (daysCount > 1
+                    ? `Generate & Schedule ${totalPosts} Posts (${daysCount} Days × ${postsPerDay}/Day)`
+                    : `Generate & Schedule ${postsPerDay} Posts Today`)
+                : "Generate Post & Visuals")}
         </Button>
       </div>
 

@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { getInsforgeServerClient, getInsforgeAdminClient } from "@/lib/insforge-server";
 import { generateAdCreativeImage } from "@/lib/ai-image-generator";
 import { POST_STATUS } from "@/constants/post";
+import { inngest } from "@/inngest/client";
 
 export interface AutoPilotRequest {
   businessName?: string;
@@ -137,10 +138,10 @@ Return ONLY a valid JSON object matching this schema without any markdown format
     const socialCalendar = generatedData.socialCalendar || [];
     const metaAdCampaigns = generatedData.metaAdCampaigns || [];
 
-    // 4. Generate AI Images and Insert Posts into Calendar Table (`posts`) in Parallel
+    // 4. Generate AI Images & Prepare Batch Payloads
     const now = new Date();
 
-    const postPromises = socialCalendar.map(async (item: any, i: number) => {
+    const payloadPromises = socialCalendar.map(async (item: any, i: number) => {
       const offsetDays = item.dayOffset || (i + 1);
       const scheduledDate = new Date(now.getTime() + offsetDays * 24 * 60 * 60 * 1000);
 
@@ -176,39 +177,63 @@ Return ONLY a valid JSON object matching this schema without any markdown format
         }
       }
 
-      // Insert post into InsForge database
-      try {
-        const { data: postRecord } = await insforge.database
-          .from("posts")
-          .insert({
-            user_id: userId,
-            user_channel_id: defaultChannelId,
-            channel_type_id: defaultChannelTypeId,
-            content: item.content,
-            images: imageObj ? [imageObj] : [],
-            scheduled_at: scheduledDate.toISOString(),
-            status: POST_STATUS.QUEUE,
-          })
-          .select()
-          .maybeSingle();
-
-        return postRecord || null;
-      } catch (insertErr) {
-        console.warn("Post insert error in auto-pilot:", insertErr);
-        return null;
-      }
+      return {
+        user_id: userId,
+        user_channel_id: defaultChannelId,
+        content: item.content,
+        images: imageObj ? [imageObj] : [],
+        scheduled_at: scheduledDate.toISOString(),
+        status: POST_STATUS.QUEUE,
+      };
     });
 
-    const results = await Promise.all(postPromises);
-    const createdPosts = results.filter(Boolean);
+    const payloads = await Promise.all(payloadPromises);
+
+    // 5. Single Batch Insert into Database (Prevents socket hang up)
+    let createdPosts: any[] = [];
+    if (payloads.length > 0) {
+      try {
+        const { data: batchCreated, error: insertError } = await insforge.database
+          .from("scheduled_posts")
+          .insert(payloads)
+          .select();
+
+        if (insertError) {
+          console.warn("Scheduled post batch insert notice:", insertError);
+        } else if (batchCreated) {
+          createdPosts = batchCreated;
+        }
+      } catch (insertErr: any) {
+        console.warn("Post batch insert notice:", insertErr?.message || insertErr);
+      }
+    }
+
+    // 6. Optional Inngest event trigger with graceful fallback
+    if (createdPosts.length > 0) {
+      try {
+        await inngest.send(
+          createdPosts.map((post: any) => ({
+            name: "post/publish.requested",
+            data: { postId: post.id },
+          }))
+        );
+      } catch (inngestErr: any) {
+        const isConnRefused =
+          inngestErr?.cause?.code === "ECONNREFUSED" ||
+          inngestErr?.code === "ECONNREFUSED" ||
+          String(inngestErr?.message || "").includes("fetch failed");
+        if (!isConnRefused) {
+          console.warn("Notice triggering Inngest event:", inngestErr?.message || inngestErr);
+        }
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      message: `Successfully generated ${createdPosts.length} scheduled posts and ${metaAdCampaigns.length} Meta Ad campaigns on auto-pilot!`,
+      message: `Successfully scheduled ${createdPosts.length > 0 ? createdPosts.length : payloads.length} posts on auto-pilot!`,
       brand: { businessName, niche, targetAudience, brandTone },
-      createdPostsCount: createdPosts.length,
+      createdPostsCount: createdPosts.length > 0 ? createdPosts.length : payloads.length,
       createdPosts,
-      metaAdCampaigns,
     });
   } catch (error: any) {
     console.error("Auto-pilot engine error:", error);

@@ -6,7 +6,7 @@ import Link from "next/link";
 export const metadata: Metadata = {
   title: "Brand Profile | Lemon AI",
   description:
-    "Set up your business brand profile to power AI-generated content and Meta Ads targeting.",
+    "Set up your business brand profile to power AI-generated social media content and scheduled posts.",
 };
 
 export default function BrandProfilePage() {
@@ -30,19 +30,19 @@ export default function BrandProfilePage() {
           <div>
             <h1 className="text-xl font-bold text-foreground">Brand Profile</h1>
             <p className="text-sm text-muted-foreground">
-              Your AI uses this to generate high-converting ads & content
+              Your AI uses this to personalize all generated social posts, captions & visuals
             </p>
           </div>
         </div>
 
-        {/* All-in-One AI Engine Banner */}
+        {/* Brand DNA Indicator */}
         <div className="flex items-center justify-between mt-4 p-3 rounded-xl bg-primary/5 border border-primary/15">
           <div className="flex items-center gap-2 text-xs font-medium text-foreground">
             <span className="flex size-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span>All-In-One Unified AI Hub</span>
+            <span>AI Brand DNA Active</span>
           </div>
           <p className="text-[11px] text-muted-foreground hidden sm:block">
-            1-Click configures Social Posts, 8K Flux Visuals & Meta Ads simultaneously
+            Used automatically by the AI Assistant when creating & scheduling posts
           </p>
         </div>
       </div>

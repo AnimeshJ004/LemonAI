@@ -26,7 +26,6 @@ const mainNav = [
   { name: "Ideas", href: "/ideas", icon: Lightbulb },
   { name: "Schedule", href: "/schedule", icon: Calendar },
   { name: "Brand Profile", href: "/brand-profile", icon: Building2 },
-  { name: "Meta Ads", href: "/meta-ads", icon: Megaphone },
   { name: "Billing", href: "/billing", icon: CreditCard },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
