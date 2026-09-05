@@ -79,8 +79,10 @@ export function CampaignsTable({ onCreateClick }: CampaignsTableProps) {
           >
             <option value="ALL">All Statuses</option>
             <option value="ACTIVE">Active</option>
+            <option value="SCHEDULED">Scheduled</option>
             <option value="DRAFT">Draft</option>
             <option value="PAUSED">Paused</option>
+
           </select>
 
           <Button

@@ -13,6 +13,8 @@
     "@base-ui/react": "^1.4.1",
     "@clerk/nextjs": "^7.6.4",
     "@ferrucc-io/emoji-picker": "^0.0.48",
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
     "@hello-pangea/dnd": "^18.0.1",
     "@hugeicons/core-free-icons": "^4.1.1",
     "@hugeicons/react": "^1.1.6",
@@ -40,6 +42,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/fluent-ffmpeg": "^2.1.28",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-big-calendar": "^1.16.3",

@@ -22,6 +22,11 @@ const STATUS_CONFIG: Record<string, { label: string; className: string; pulse: b
     className: "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300 dark:border-amber-800",
     pulse: true,
   },
+  SCHEDULED: {
+    label: "Scheduled",
+    className: "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300 dark:border-indigo-800",
+    pulse: true,
+  },
   ACTIVE: {
     label: "Active",
     className: "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-300 dark:border-emerald-800",
@@ -41,8 +46,10 @@ const STATUS_CONFIG: Record<string, { label: string; className: string; pulse: b
 
 const PULSE_COLORS: Record<string, string> = {
   IN_REVIEW: "bg-amber-500",
+  SCHEDULED: "bg-indigo-500",
   ACTIVE: "bg-emerald-500",
 };
+
 
 export function CampaignStatusBadge({
   status,

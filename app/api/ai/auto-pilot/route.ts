@@ -208,7 +208,49 @@ Return ONLY a valid JSON object matching this schema without any markdown format
       }
     }
 
-    // 6. Optional Inngest event trigger with graceful fallback
+    // 6. Save Meta Ad Campaigns if generated
+    let createdCampaignsCount = 0;
+    if (metaAdCampaigns.length > 0) {
+      try {
+        const adAccountDefault = process.env.META_AD_ACCOUNT_ID || "act_000000000";
+        const metaCampaignPayloads = metaAdCampaigns.map((camp: any, idx: number) => {
+          const campStart = new Date(now.getTime() + (idx * 2 + 1) * 24 * 60 * 60 * 1000);
+          const campEnd = new Date(campStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+          return {
+            user_id: userId,
+            name: camp.name || `${businessName} AI Campaign #${idx + 1}`,
+            objective: camp.objective || "OUTCOME_LEADS",
+            daily_budget: 500,
+            ad_headline: camp.headline || `Exclusive Offer from ${businessName}`,
+            ad_primary_text: camp.primaryText || `Discover how ${businessName} delivers the best results for ${niche}.`,
+            ad_image_url: null,
+            call_to_action: camp.callToAction || "LEARN_MORE",
+            meta_ad_account_id: adAccountDefault,
+            meta_campaign_id: `ai_camp_${Date.now()}_${idx}`,
+            meta_adset_id: `ai_adset_${Date.now()}_${idx}`,
+            meta_ad_id: `ai_ad_${Date.now()}_${idx}`,
+            meta_image_hash: `hash_${Date.now()}_${idx}`,
+            status: "SCHEDULED",
+            start_date: campStart.toISOString().split("T")[0],
+            end_date: campEnd.toISOString().split("T")[0],
+            updated_at: new Date().toISOString(),
+          };
+        });
+
+        const { data: insertedCamps, error: campErr } = await insforge.database
+          .from("meta_campaigns")
+          .insert(metaCampaignPayloads)
+          .select();
+
+        if (!campErr && insertedCamps) {
+          createdCampaignsCount = insertedCamps.length;
+        }
+      } catch (campEx) {
+        console.warn("Notice saving auto-pilot meta campaigns:", campEx);
+      }
+    }
+
+    // 7. Optional Inngest event trigger with graceful fallback
     if (createdPosts.length > 0) {
       try {
         await inngest.send(
@@ -230,11 +272,13 @@ Return ONLY a valid JSON object matching this schema without any markdown format
 
     return NextResponse.json({
       success: true,
-      message: `Successfully scheduled ${createdPosts.length > 0 ? createdPosts.length : payloads.length} posts on auto-pilot!`,
+      message: `Successfully scheduled ${createdPosts.length > 0 ? createdPosts.length : payloads.length} posts and ${createdCampaignsCount} Meta Ad campaigns on auto-pilot!`,
       brand: { businessName, niche, targetAudience, brandTone },
       createdPostsCount: createdPosts.length > 0 ? createdPosts.length : payloads.length,
+      createdCampaignsCount,
       createdPosts,
     });
+
   } catch (error: any) {
     console.error("Auto-pilot engine error:", error);
     return NextResponse.json({ error: error.message || "Failed to execute auto-pilot engine" }, { status: 500 });
