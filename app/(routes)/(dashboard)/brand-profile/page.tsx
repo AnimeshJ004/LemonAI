@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 
 export default function BrandProfilePage() {
   return (
-    <div className="max-w-2xl mx-auto py-6">
+    <div className="max-w-4xl mx-auto py-6 px-3 sm:px-0">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-xs text-muted-foreground mb-5">
         <Link href="/" className="hover:text-foreground transition-colors">

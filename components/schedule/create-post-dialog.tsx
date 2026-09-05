@@ -393,11 +393,11 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                     </DialogHeader>
 
 
-                    <div className="w-full flex flex-1 min-w-0 min-h-0 overflow-y-auto max-h-[calc(90vh-130px)]">
+                    <div className="w-full flex flex-1 min-w-0 min-h-0 overflow-hidden max-h-[calc(90vh-130px)]">
 
                         {/* Left — channel list */}
-                        <div className="flex flex-1 flex-col min-w-[320px] sm:min-w-[420px] w-full pb-5 overflow-y-auto">
-                            <div className="channel--selector py-4 px-8 border-b bg-muted/20">
+                        <div className="flex flex-1 flex-col min-w-[320px] sm:min-w-[420px] w-full pb-8 overflow-y-auto">
+                            <div className="channel--selector py-4 px-8 border-b bg-muted/20 shrink-0">
                                 <div className="flex items-center justify-between mb-3">
                                     <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Select Channels</span>
                                     {channels?.length > 0 && !isPending && (
@@ -458,16 +458,13 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                 </div>
                             </div>
 
-                            <div className="channel--content relative 
-                                        flex flex-col px-8 min-h-[300px] 
-                                        h-full overflow-y-auto">
+                            <div className="channel--content relative flex flex-col px-6 sm:px-8 py-4 space-y-4">
                                 {selectedChannels.length === 0 ? (
-                                    <div className="border rounded-xl p-4">
+                                    <div className="border rounded-xl p-4 bg-card shadow-xs">
                                         <ContentTextarea
                                             value={globalContent?.text || ""}
                                             images={globalContent?.images || []}
-                                            placeholder="Write your main content here..
-        . It will be copied to channels when you select them"
+                                            placeholder="Write your main content here... It will be copied to channels when you select them"
                                             minHeight={270}
                                             showAIAssistant={true}
                                             disabled={!hasConnectedChannel}
@@ -496,13 +493,11 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                                 <AccordionItem
                                                     key={channel.id}
                                                     value={channel.id}
-                                                    className="border rounded-xl"
+                                                    className="border rounded-xl bg-card shadow-xs"
                                                 >
                                                     {!isExpanded && (
                                                         <AccordionTrigger
-                                                            className="w-full px-3 cursor-pointer [&>svg]:hidden! hover:bg-muted
-hover:no-underline! justify-start gap-3 
-"
+                                                            className="w-full px-4 py-3 cursor-pointer [&>svg]:hidden! hover:bg-muted/40 hover:no-underline! justify-start gap-3"
                                                         >
                                                             <span>
                                                                 <HugeiconsIcon
@@ -514,20 +509,19 @@ hover:no-underline! justify-start gap-3
                                                                 />
                                                             </span>
                                                             {content.text ? (
-                                                                <p className="text-sm text-muted-foreground/80 
-truncate flex-1 text-left max-w-[400px]">
+                                                                <p className="text-sm text-muted-foreground/80 truncate flex-1 text-left max-w-[400px]">
                                                                     {content.text}
                                                                 </p>
                                                             ) : (
-                                                                <p className="text-sm tex-muted">What would you like to share</p>
+                                                                <p className="text-sm text-muted-foreground/60">What would you like to share</p>
                                                             )}
                                                         </AccordionTrigger>
                                                     )}
 
                                                     <AccordionContent className="overflow-visible">
-                                                        <div className="flex pt-3 px-3 gap-3">
+                                                        <div className="flex pt-3 px-4 pb-4 gap-3">
                                                             {isExpanded && (
-                                                                <span>
+                                                                <span className="pt-1">
                                                                     <HugeiconsIcon
                                                                         icon={icon}
                                                                         className={cn(
@@ -538,12 +532,9 @@ truncate flex-1 text-left max-w-[400px]">
                                                                 </span>
                                                             )}
 
-                                                            <div className="flex-1">
+                                                            <div className="flex-1 min-w-0">
                                                                 {!content?.text && (
-                                                                    <div className="w-full flex items-center gap-2 rounded-md
-bg-[#ffefd0] px-3 py-1 text-xs text-amber-700
-dark:bg-amber-950/40
-dark:text-amber-400">
+                                                                    <div className="w-full flex items-center gap-2 rounded-md bg-[#ffefd0] px-3 py-1 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
                                                                         <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                                                                         <p>Please include at least some text or an attachment.</p>
                                                                     </div>

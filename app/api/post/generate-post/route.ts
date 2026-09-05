@@ -5,6 +5,7 @@ import { POST_STATUS } from "@/constants/post";
 import { auth } from "@clerk/nextjs/server";
 import { inngest } from "@/inngest/client";
 import { NextRequest, NextResponse } from "next/server";
+import { getUserMemoryContext, buildMemoryPromptBlock } from "@/lib/ai-memory";
 
 const ACTIONS = ["generate", "rephrase", "shorten", "expand"] as const;
 type ActionType = (typeof ACTIONS)[number];
@@ -58,6 +59,10 @@ export async function POST(request: NextRequest) {
 
         // Fetch client brand profile for personalized content generation
         const brandProfile = await getBrandProfileForUser(userId);
+
+        // Fetch AI Prompt Memory for personalized generation
+        const userMemories = await getUserMemoryContext(userId, insforge);
+        const memoryBlock = buildMemoryPromptBlock(userMemories);
 
         // Fetch connected channels for this user
         const { data: userChannels } = await insforge.database
@@ -123,12 +128,13 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
   ]
 }`;
 
+            // High-Tier Task (Multi-Day Strategy & Batch Content): Gemini 3.7 Flash for deep reasoning
             const completion = await insforge.ai.chat.completions.create({
-                model: "google/gemini-3.8-flash",
+                model: "google/gemini-3.7-flash",
                 messages: [{ role: "user", content: multiPrompt }],
             }).catch(() => {
                 return insforge.ai.chat.completions.create({
-                    model: "google/gemini-3.7-flash",
+                    model: "google/gemini-3.8-flash",
                     messages: [{ role: "user", content: multiPrompt }],
                 });
             });
@@ -225,11 +231,12 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
 
         // Single Post Generation
         const systemPrompt = isGenerateAction
-            ? buildGenerateSystemPrompt(channelType, characterLimit, brandProfile, targetChannel)
-            : buildRefineSystemPrompt(channelType, characterLimit, brandProfile);
+            ? buildGenerateSystemPrompt(channelType, characterLimit, brandProfile, targetChannel, memoryBlock)
+            : buildRefineSystemPrompt(channelType, characterLimit, brandProfile, memoryBlock);
 
         const userPrompt = buildPrompt(action, content, prompt);
 
+        // Low-Tier Task (Fast Single Post, Rephrase, Shorten, Expand): Gemini 3.8 Flash for ultra-low cost (~₹0.01)
         const result = await insforge.ai.chat.completions.create({
             model: "google/gemini-3.8-flash",
             messages: [
@@ -372,7 +379,7 @@ function cleanAndEnsureHashtags(content: string, brandProfile?: any): string {
     return `${cleaned}\n\n${finalTags}`;
 }
 
-function buildGenerateSystemPrompt(channelType?: string, characterLimit?: number, brandProfile?: any, targetChannel?: string) {
+function buildGenerateSystemPrompt(channelType?: string, characterLimit?: number, brandProfile?: any, targetChannel?: string, memoryBlock?: string) {
     const now = new Date();
     const todayStr = now.toISOString().split("T")[0];
     const todayDay = now.toLocaleDateString("en-US", { weekday: "long" });
@@ -399,6 +406,7 @@ DO NOT write generic motivational quotes, generic life advice, or vague platitud
         brandSummary,
         "",
         `Current reference date: ${todayStr} (${todayDay}).`,
+        memoryBlock || "",
         "",
         "Generation Rules:",
         "1. Focus entirely on the brand's niche, services, and value proposition.",
@@ -416,7 +424,8 @@ DO NOT write generic motivational quotes, generic life advice, or vague platitud
         "     * Set channels array: ['twitter', 'linkedin'] or ['all'].",
         "   - Else set channels: null.",
         "6. Visual Photo Prompt:",
-        "   - Formulate a clear, highly realistic commercial photo prompt in 'imagePrompt' that reflects the brand's services (e.g. 'Authentic commercial photograph of...').",
+        "   - Formulate a clear, highly realistic commercial documentary photo prompt in 'imagePrompt' that shows real physical products, genuine workplace settings, or realistic client interactions (e.g. 'Candid commercial photograph of a professional team in a modern clinic with medical equipment, natural lighting').",
+        "   - Strictly avoid cartoon, anime, illustration, or fake CGI avatar descriptions.",
         "   - Set generateImage: true.",
         "",
         "Return ONLY a valid JSON object matching this schema without any markdown wrapping:",
@@ -426,7 +435,7 @@ DO NOT write generic motivational quotes, generic life advice, or vague platitud
         '  "autoSchedule": true,',
         '  "channels": ["instagram"] | null,',
         '  "generateImage": true,',
-        '  "imagePrompt": "Authentic commercial photograph of..."',
+        '  "imagePrompt": "Candid authentic commercial documentary photograph of..."',
         "}"
     ];
 
@@ -462,7 +471,7 @@ DO NOT write generic motivational quotes, generic life advice, or vague platitud
     return parts.join("\n");
 }
 
-function buildRefineSystemPrompt(channelType?: string, characterLimit?: number, brandProfile?: any) {
+function buildRefineSystemPrompt(channelType?: string, characterLimit?: number, brandProfile?: any, memoryBlock?: string) {
     const cleanBrandTag = cleanTag(brandProfile?.business_name, "Brand");
     const cleanNicheTag = cleanTag(brandProfile?.niche, "Business");
 
@@ -478,6 +487,9 @@ function buildRefineSystemPrompt(channelType?: string, characterLimit?: number, 
             `Writing for brand: ${brandProfile.business_name} (${brandProfile.niche}), Tone: ${brandProfile.brand_tone || 'Professional'}, Offer: ${brandProfile.main_offer || 'Services'}.`,
             `Ensure the post is tailored to ${brandProfile.business_name} and ends with hashtags #${cleanBrandTag} #${cleanNicheTag}.`
         );
+    }
+    if (memoryBlock) {
+        system_prompt.push(memoryBlock);
     }
     if (channelType) {
         system_prompt.push(`Write for ${channelType}. Match the platform's tone, style, and expected length and relevant hashtags.`);

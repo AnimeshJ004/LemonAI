@@ -1,15 +1,13 @@
 import * as React from "react"
 import { EmojiPicker } from "@ferrucc-io/emoji-picker"
-import { X, Wand2Icon, ImagePlus, SmileIcon, Eye, ZoomIn, ExternalLink, Download } from "lucide-react"
+import { X, ImagePlus, SmileIcon, Eye, ZoomIn, ExternalLink } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Separator } from "./ui/separator"
 import { Spinner } from "./ui/spinner"
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./ui/dialog"
 import { Textarea } from "./ui/textarea"
 import { ImageObject } from "@/types/post.type"
-
 
 interface ContentTextareaProps {
   value: string
@@ -48,6 +46,14 @@ const ContentTextarea = ({
   const [isUploading, setIsUploading] = React.useState(false)
   const [emojiOpen, setEmojiOpen] = React.useState(false)
   const [previewImage, setPreviewImage] = React.useState<ImageObject | null>(null)
+
+  React.useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto"
+      const nextHeight = Math.max(120, Math.min(textareaRef.current.scrollHeight, 380))
+      textareaRef.current.style.height = `${nextHeight}px`
+    }
+  }, [value])
 
   const insertEmoji = (emoji: string) => {
     if (disabled) return
@@ -105,9 +111,9 @@ const ContentTextarea = ({
   }
 
   return (
-    <div className={cn("flex flex-col h-full justify-between gap-3", className)}>
+    <div className={cn("flex flex-col w-full gap-3", className)}>
       {/* Editable area */}
-      <div className="flex-1 w-full min-h-[160px] overflow-y-auto">
+      <div className="w-full">
         <Textarea
           ref={textareaRef}
           value={value}
@@ -116,37 +122,35 @@ const ContentTextarea = ({
           disabled={disabled}
           className={cn(
             "w-full bg-transparent ring-0! border-none! shadow-none! resize-none! p-0 focus-visible:ring-0 focus-visible:outline-none focus:outline-none",
-            "placeholder:text-muted-foreground/80 leading-relaxed text-[15px]",
+            "placeholder:text-muted-foreground/80 leading-relaxed text-[15px] min-h-[120px] max-h-[380px] overflow-y-auto",
             disabled && "opacity-50 cursor-not-allowed",
             contentClass
           )}
-          style={{ minHeight: `${Math.min(minHeight - 80, 180)}px` }}
         />
       </div>
 
-      <div className="shrink-0 space-y-3 pt-3 border-t border-border/40">
-        {/* Image Upload Section */}
-        <div className="flex items-center gap-3">
+      {/* Image Upload & Media Gallery Section */}
+      <div className="w-full space-y-2 pt-3 border-t border-border/50">
+        <div className="flex flex-wrap items-center gap-2.5">
           {/* Add Image Button */}
           <div
             onClick={() => !isUploading && !disabled && fileInputRef.current?.click()}
             className={cn(
-              `shrink-0 h-16 w-24 border-2 border-dashed border-muted-foreground/25
+              `shrink-0 h-16 w-24 border-2 border-dashed border-muted-foreground/30
                rounded-lg flex flex-col items-center 
-              justify-center cursor-pointer hover:border-primary/50
-               hover:bg-muted/40 
-              transition-colors shadow-sm`,
+              justify-center cursor-pointer hover:border-primary hover:bg-muted/50 
+              transition-all shadow-xs bg-muted/10`,
               (isUploading || disabled) && "opacity-50 cursor-not-allowed",
               disabled && "grayscale"
             )}
           >
             {isUploading ? (
-              <Spinner className="h-4 w-4" />
+              <Spinner className="h-4 w-4 text-primary" />
             ) : (
               <ImagePlus className="h-4 w-4 text-muted-foreground mb-1" />
             )}
-            <span className="text-xs font-medium text-muted-foreground">
-              {isUploading ? "Uploading..." : "Select File"}
+            <span className="text-[11px] font-medium text-muted-foreground">
+              {isUploading ? "Uploading..." : "Add Image"}
             </span>
           </div>
           <input
@@ -158,18 +162,18 @@ const ContentTextarea = ({
             className="hidden"
           />
 
-          {/* Uploaded Images - Scrollable container */}
+          {/* Uploaded / AI Generated Images Preview List */}
           {images.length > 0 && (
-            <div className="flex gap-2.5 w-full max-w-[460px] overflow-x-auto pb-1">
+            <div className="flex flex-wrap items-center gap-2">
               {images.map((image, index) => (
                 <div
-                  key={image.key || index}
-                  className="shrink-0 relative size-16 rounded-lg overflow-hidden border shadow-sm group cursor-pointer"
+                  key={image.key || image.url || index}
+                  className="relative size-16 rounded-lg overflow-hidden border-2 border-primary/20 hover:border-primary shadow-xs group cursor-pointer bg-muted/40 transition-all shrink-0"
                   onClick={() => setPreviewImage(image)}
                 >
                   <img
                     src={image.url}
-                    alt={`Upload ${index + 1}`}
+                    alt={`Media ${index + 1}`}
                     className="w-full h-full object-cover transition-transform group-hover:scale-105"
                   />
                   {/* Hover Overlay with View Icon */}
@@ -177,11 +181,12 @@ const ContentTextarea = ({
                     <ZoomIn className="size-4 text-white drop-shadow" />
                   </div>
                   <button
+                    type="button"
                     onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveImage(index);
+                      e.stopPropagation()
+                      handleRemoveImage(index)
                     }}
-                    className="absolute top-1 right-1 z-10 bg-black/70 hover:bg-black text-white rounded-full p-0.5 transition-colors"
+                    className="absolute top-1 right-1 z-10 bg-black/80 hover:bg-red-600 text-white rounded-full p-0.5 transition-colors shadow-xs"
                     title="Remove media"
                   >
                     <X className="h-3 w-3" />
