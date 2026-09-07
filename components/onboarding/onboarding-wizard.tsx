@@ -228,7 +228,7 @@ export default function OnboardingWizard() {
           </div>
 
           <div className="space-y-2">
-            <h2 className="text-3xl font-bold text-zinc-900">You&apos;re All Set! 🍋</h2>
+            <h2 className="text-3xl font-bold text-zinc-900">You&apos;re All Set!</h2>
             <p className="text-zinc-600 text-sm leading-relaxed">
               Your business profile is saved. Lemon AI is customizing your social calendar and strategy…
             </p>
@@ -356,12 +356,6 @@ export default function OnboardingWizard() {
             <p className="text-zinc-600 text-sm sm:text-base leading-relaxed">
               {currentQuestion.subtitle}
             </p>
-          </div>
-
-          {/* Hint Card */}
-          <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200/70 flex items-start gap-2.5 text-xs text-amber-900">
-            <Sparkles className="size-4 text-amber-600 shrink-0 mt-0.5" />
-            <span>{currentQuestion.hint}</span>
           </div>
 
           {/* Options (for Brand Tone) */}

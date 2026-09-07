@@ -37,7 +37,15 @@ const SignUpPage = () => {
           const sessionId = result?.createdSessionId || result?.sessionId
           if (sessionId) {
             await (setActive as any)({ session: sessionId })
-            toast.success("Account ready! Redirecting to Dashboard...")
+            if (typeof document !== "undefined") {
+              document.cookie.split(";").forEach((c) => {
+                const name = c.split("=")[0].trim()
+                if (name.includes("onboarded")) {
+                  document.cookie = `${name}=; path=/; max-age=0; expires=Thu, 01 Jan 1970 00:00:00 GMT`
+                }
+              })
+            }
+            toast.success("Account ready! Opening AI Engine...")
             window.location.replace("/onboarding")
             return
           }
@@ -46,8 +54,10 @@ const SignUpPage = () => {
         }
       }
 
-      // 2. Fallback redirect with ticket
-      window.location.replace(`/sign-in?__clerk_ticket=${encodeURIComponent(data.token)}&redirect_url=${encodeURIComponent("/onboarding")}`)
+      // 2. Fallback redirect with ticket → lands on AI Engine
+      window.location.replace(
+        `/sign-in?__clerk_ticket=${encodeURIComponent(data.token)}&redirect_url=${encodeURIComponent("/onboarding")}`
+      )
     } catch (err: any) {
       console.error("Quick sign-up error:", err)
       toast.error(err?.message || "Failed to sign up instantly. Please use the form below.")
@@ -58,7 +68,8 @@ const SignUpPage = () => {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-muted/20">
       <div className="w-full max-w-md flex flex-col items-center gap-4">
-        {/* Instant 1-Click Sign-Up Card */}
+
+        {/* ── Instant 1-Click Sign-Up Card ── */}
         <div className="w-full rounded-2xl border border-border bg-card p-4 shadow-sm flex flex-col items-center text-center gap-3">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
             <Zap className="size-4 text-amber-500 fill-amber-500" />
@@ -68,10 +79,11 @@ const SignUpPage = () => {
           <p className="text-xs text-muted-foreground">
             Instantly sign up &amp; log in as{" "}
             <strong className="text-foreground">ajain4207@gmail.com</strong>{" "}
-            — no password, no code, no waiting.
+            — no password, no code. Opens the AI Engine directly.
           </p>
 
           <Button
+            id="one-click-signup-btn"
             type="button"
             size="lg"
             onClick={handleQuickSignUp}
@@ -86,18 +98,20 @@ const SignUpPage = () => {
             ) : (
               <>
                 <Zap className="size-4 fill-white" />
-                <span>1-Click Sign Up (ajain4207@gmail.com)</span>
+                <span>1-Click Sign Up → Open AI Engine</span>
               </>
             )}
           </Button>
         </div>
 
+        {/* ── Divider ── */}
         <div className="flex items-center w-full gap-2 text-xs text-muted-foreground">
           <div className="h-px bg-border flex-1" />
           <span>or sign up manually</span>
           <div className="h-px bg-border flex-1" />
         </div>
 
+        {/* ── Standard Clerk Sign-Up form ── */}
         <SignUp
           path="/sign-up"
           signInUrl="/sign-in"
