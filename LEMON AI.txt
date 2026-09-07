@@ -1,0 +1,157 @@
+LEMON AI
+│
+├── 🧠 Business Brain
+│   ├── Business Profile
+│   ├── Brand Knowledge
+│   ├── Products & Services
+│   ├── Target Audience
+│   └── Competitors
+│
+├── 🔍 AI Research
+│   ├── Market Research
+│   ├── Competitor Research
+│   ├── Trend Discovery
+│   ├── Audience Research
+│   └── Content Opportunities
+│
+├── 📅 Marketing Strategy
+│   ├── Content Strategy
+│   ├── Campaign Strategy
+│   ├── Content Calendar
+│   └── Growth Plan
+│
+├── 🎨 AI Content Studio
+│   ├── Social Posts
+│   ├── Reels
+│   ├── Carousels
+│   ├── Images
+│   ├── Videos
+│   ├── Blogs
+│   └── Ad Creatives
+│
+├── 📱 Social Automation
+│   ├── Instagram
+│   ├── Facebook
+│   ├── LinkedIn
+│   ├── YouTube
+│   ├── X
+│   ├── Scheduling
+│   ├── Comments
+│   └── DMs
+│
+├── 📣 AI Advertising
+│   ├── Competitor Ad Research
+│   ├── Campaign Builder
+│   ├── Audience Builder
+│   ├── Creative Generation
+│   ├── Copy Generation
+│   ├── Budget Recommendations
+│   └── Optimization
+│
+├── 🤖 AI Sales
+│   ├── Website Bot
+│   ├── WhatsApp Bot
+│   ├── Social DM Bot
+│   ├── Lead Qualification
+│   ├── Follow-ups
+│   └── Appointment Booking
+│
+├── 📞 AI Calling
+│   ├── Outbound Calls
+│   ├── Inbound Calls
+│   ├── Lead Qualification
+│   ├── Follow-ups
+│   └── Appointment Booking
+│
+├── 👥 CRM
+│   ├── Leads
+│   ├── Customers
+│   ├── Conversations
+│   ├── Pipeline
+│   └── Activities
+│
+└── 📊 Growth Analytics
+    ├── Social Analytics
+    ├── Content Analytics
+    ├── Ad Analytics
+    ├── Lead Analytics
+    ├── Sales Analytics
+    └── AI Recommendations
+
+For example, Lemon knows:
+
+Business type
+Products/services
+Pricing
+Target audience
+Location
+Brand voice
+Competitors
+Social accounts
+Previous content
+Ad performance
+Leads
+Customer conversations
+Sales outcomes
+
+Then the AI can connect the dots.
+
+For example:
+
+Research Agent
+
+"People in Indore are increasingly engaging with X topic."
+
+↓
+
+Strategy Agent
+
+"This business should create 3 reels around this topic."
+
+↓
+
+Content Agent
+
+Creates the reels/scripts/captions.
+
+↓
+
+Distribution Agent
+
+Publishes them at optimal times.
+
+↓
+
+Ads Agent
+
+Identifies the best-performing content and turns it into an ad.
+
+↓
+
+Lead Agent
+
+Captures people who respond.
+
+↓
+
+Calling Agent
+
+Calls qualified leads.
+
+↓
+
+Analytics Agent
+
+Determines which content/ad generated actual customers.
+
+↓
+
+Optimization Agent
+
+"Increase budget on Campaign A, stop Campaign B, create 4 more variations of Reel C."
+
+Research → Strategy → Create → Publish → Advertise → Capture → Follow Up → Sell → Analyze → Optimize → Repeat
+
+https://www.gohighlevel.com/
+check out this competitor
+

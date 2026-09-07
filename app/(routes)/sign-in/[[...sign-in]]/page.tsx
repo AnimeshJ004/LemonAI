@@ -37,8 +37,8 @@ const SignInPage = () => {
           const sessionId = result?.createdSessionId || result?.sessionId
           if (sessionId) {
             await (setActive as any)({ session: sessionId })
-            toast.success("Logged in successfully! Redirecting to Dashboard...")
-            window.location.replace("/")
+            toast.success("Logged in successfully! Redirecting to Workspace...")
+            window.location.replace("/schedule")
             return
           }
         } catch (innerErr) {
@@ -47,7 +47,7 @@ const SignInPage = () => {
       }
 
       // 2. In-app fallback staying strictly on local domain / dashboard
-      window.location.replace(`/sign-in?__clerk_ticket=${encodeURIComponent(data.token)}&redirect_url=${encodeURIComponent("/")}`)
+      window.location.replace(`/sign-in?__clerk_ticket=${encodeURIComponent(data.token)}&redirect_url=${encodeURIComponent("/schedule")}`)
     } catch (err: any) {
       console.error("Quick login error:", err)
       toast.error(err?.message || "Failed to login instantly. Please use password below.")
@@ -99,7 +99,8 @@ const SignInPage = () => {
         <SignIn 
           path="/sign-in" 
           signUpUrl="/sign-up" 
-          forceRedirectUrl="/" 
+          forceRedirectUrl="/schedule" 
+          fallbackRedirectUrl="/schedule"
           initialValues={{
             emailAddress: "ajain4207@gmail.com"
           }}

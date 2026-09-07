@@ -19,6 +19,7 @@ export interface AutoPilotRequest {
   days?: number; // 1 to 30 days
   daysToGenerate?: number; // fallback
   postsPerDay?: number; // 1 to 5 posts per day
+  customTimeSlots?: string[]; // user-configured times e.g. ["09:00", "15:30"] or ["09:00 AM", "03:30 PM"]
   selectedChannelIds?: string[];
   generateImages?: boolean;
   postStatus?: "queue" | "draft";
@@ -170,7 +171,10 @@ export async function POST(req: NextRequest) {
     } catch {}
 
     // 4. Generate AI Posts Strategy (STARTS TODAY: Day 0)
-    const timeSlotsPerDay = getTimeSlots(postsPerDay);
+    const timeSlotsPerDay =
+      body.customTimeSlots && Array.isArray(body.customTimeSlots) && body.customTimeSlots.length >= postsPerDay
+        ? body.customTimeSlots.slice(0, postsPerDay)
+        : getTimeSlots(postsPerDay);
     const brandTags = formatBrandHashtags({ business_name: businessName, niche });
 
     const systemPrompt = `You are an elite Autonomous Social Media Director and Marketing Strategist for "${businessName}" in the "${niche}" industry.
@@ -259,11 +263,11 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
 
         // Compute scheduled date & time
         let scheduledDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
-        const timeMatch = slot.match(/(\d+):(\d+)\s*(AM|PM)?/i);
+        const timeMatch = slot.match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/i);
         if (timeMatch) {
           let hour = parseInt(timeMatch[1], 10);
           const min = parseInt(timeMatch[2], 10) || 0;
-          const meridiem = timeMatch[3]?.toUpperCase() || "AM";
+          const meridiem = timeMatch[3]?.toUpperCase();
           if (meridiem === "PM" && hour < 12) hour += 12;
           if (meridiem === "AM" && hour === 12) hour = 0;
           scheduledDate.setHours(hour, min, 0, 0);

@@ -730,9 +730,9 @@ async function publishToInstagram({
     const containerId = createData.id;
     logger.info("Instagram media container created", { containerId });
 
-    // Step 2: Publish Container
+    // Step 2: Publish Container  ← BUG FIX: was using instagramAccountId (may be null), must use resolvedAccountId
     const publishRes = await fetch(
-        `https://graph.facebook.com/v21.0/${instagramAccountId}/media_publish`,
+        `https://graph.facebook.com/v21.0/${resolvedAccountId}/media_publish`,
         {
             method: "POST",
             headers: { "Content-Type": "application/json" },

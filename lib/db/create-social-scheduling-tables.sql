@@ -101,7 +101,7 @@ create table if not exists scheduled_posts (
   images          jsonb default '[]',
   scheduled_at    timestamptz not null,
   status          text not null default 'draft'
-                  check (status in ('queue', 'draft', 'published', 'failed')),
+                  check (status in ('queue', 'draft', 'publishing', 'published', 'failed')),
   published_at    timestamptz,
   published_url   text,
   error_message   text,

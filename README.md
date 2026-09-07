@@ -26,6 +26,10 @@ If this project helps you, you can support my work by:
 
 👉 [Watch the Full Tutorial](https://www.youtube.com/)
 
+## 📐 System Architecture & Product Roadmap
+* 🏛️ **[Full System Architecture & Diagram Flow](file:///d:/Seevora-Company/Lemon-AI-SocialMedia-Scheduling-SaaS/ARCHITECTURE.md)**: Detailed multi-agent flywheel diagrams, 10 core modules specification, sequence flows, ERD, and tech stack topology.
+* 📋 **[Master Feature Implementation Plan](file:///d:/Seevora-Company/Lemon-AI-SocialMedia-Scheduling-SaaS/IMPLEMENTATION_PLAN.md)**: Detailed phase-by-phase implementation plan based on Sir's requirements in `LEMON AI.txt`.
+
 ---
 
 ## 🗝️ Key Features 👇

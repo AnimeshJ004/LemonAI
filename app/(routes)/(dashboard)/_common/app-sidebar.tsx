@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
-import { Brain, Calendar, CreditCard, Lightbulb, Plus, PlusCircleIcon, Settings, Building2, Megaphone } from 'lucide-react';
+import { Calendar, CreditCard, Lightbulb, Plus, PlusCircleIcon, Settings, Building2, Megaphone, Brain } from 'lucide-react';
 import { useSidebar } from '@/components/ui/sidebar';
 import Logo from '@/components/logo';
 import { Button } from '@/components/ui/button';
@@ -26,8 +26,8 @@ const mainNav = [
   { name: "Ideas", href: "/ideas", icon: Lightbulb },
   { name: "Schedule", href: "/schedule", icon: Calendar },
   { name: "Brand Profile", href: "/brand-profile", icon: Building2 },
-  { name: "AI Memory", href: "/ai-memory", icon: Brain },
   { name: "Meta Ads", href: "/meta-ads", icon: Megaphone },
+  { name: "AI Memory", href: "/ai-memory", icon: Brain },
   { name: "Billing", href: "/billing", icon: CreditCard },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
