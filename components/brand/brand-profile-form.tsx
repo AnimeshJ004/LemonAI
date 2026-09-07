@@ -33,8 +33,8 @@ import {
   Image as ImageIcon,
   ExternalLink,
   Layers,
-  ArrowRight,
   Sparkle,
+  RotateCcw,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -81,6 +81,25 @@ const PRESET_POSTS_PER_DAY = [
   { value: 3, label: "3 / Day", desc: "High Engagement" },
   { value: 4, label: "4 / Day", desc: "Aggressive Blitz" },
 ];
+
+const DEFAULT_TIME_SLOTS: Record<number, string[]> = {
+  1: ["10:00"],
+  2: ["09:30", "16:30"],
+  3: ["09:00", "14:00", "19:30"],
+  4: ["08:30", "12:30", "17:00", "20:30"],
+};
+
+function formatTimeDisplay(timeStr: string): string {
+  if (!timeStr) return "";
+  const match = timeStr.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return timeStr;
+  let hour = parseInt(match[1], 10);
+  const min = match[2];
+  const ampm = hour >= 12 ? "PM" : "AM";
+  if (hour > 12) hour -= 12;
+  if (hour === 0) hour = 12;
+  return `${hour.toString().padStart(2, "0")}:${min} ${ampm}`;
+}
 
 const EMPTY_PROFILE: BrandProfile = {
   business_name: "",
@@ -248,20 +267,41 @@ export function BrandProfileForm() {
     return `Today (${start.toLocaleDateString("en-US", opts)}) – ${end.toLocaleDateString("en-US", opts)}`;
   }, [days]);
 
-  const timeSlotsPreview = useMemo(() => {
-    switch (postsPerDay) {
-      case 1:
-        return ["10:00 AM"];
-      case 2:
-        return ["09:30 AM (Morning)", "04:30 PM (Evening)"];
-      case 3:
-        return ["09:00 AM (Morning)", "02:00 PM (Midday)", "07:30 PM (Evening)"];
-      case 4:
-        return ["08:30 AM", "12:30 PM", "05:00 PM", "08:30 PM"];
-      default:
-        return ["08:00 AM", "11:30 AM", "02:30 PM", "05:30 PM", "08:30 PM"];
-    }
+  // User customizable time slots (HH:mm format)
+  const [customTimes, setCustomTimes] = useState<string[]>(["09:30", "16:30"]);
+
+  // Keep customTimes synced when postsPerDay changes
+  useEffect(() => {
+    setCustomTimes((prev) => {
+      const defaults = DEFAULT_TIME_SLOTS[postsPerDay] || ["10:00"];
+      const next: string[] = [];
+      for (let i = 0; i < postsPerDay; i++) {
+        next.push(prev[i] || defaults[i] || "10:00");
+      }
+      return next;
+    });
   }, [postsPerDay]);
+
+  const updateTimeSlot = (index: number, newTime: string) => {
+    if (!newTime) return;
+    setCustomTimes((prev) => {
+      const copy = [...prev];
+      copy[index] = newTime;
+      return copy;
+    });
+  };
+
+  const resetToDefaultTimes = () => {
+    const defaults = DEFAULT_TIME_SLOTS[postsPerDay] || ["10:00"];
+    setCustomTimes([...defaults]);
+    toast.success("Reset to AI recommended peak times");
+  };
+
+  const activeFormattedTimes = useMemo(() => {
+    return customTimes.slice(0, postsPerDay).map((t) => formatTimeDisplay(t));
+  }, [customTimes, postsPerDay]);
+
+  const timeSlotsPreview = activeFormattedTimes;
 
   // Save Brand Profile mutation
   const saveMutation = useMutation({
@@ -308,7 +348,7 @@ export function BrandProfileForm() {
         throw new Error("Please specify your Target Audience");
       }
 
-      setScheduleProgress("Saving Brand DNA & Synchronizing...");
+      setScheduleProgress("Analyzing Brand Profile & DNA...");
       if (storageKey) {
         try {
           localStorage.setItem(storageKey, JSON.stringify(form));
@@ -322,7 +362,7 @@ export function BrandProfileForm() {
         body: JSON.stringify(form),
       });
 
-      setScheduleProgress(`Formulating ${totalPostsToSchedule} branded posts for ${days} days...`);
+      setScheduleProgress(`Analyzing audience & generating ${totalPostsToSchedule} posts across ${days} days...`);
 
       // 2. Execute auto-pilot scheduling with filters
       const res = await fetch("/api/ai/auto-pilot", {
@@ -337,6 +377,7 @@ export function BrandProfileForm() {
           competitors: form.competitors,
           days,
           postsPerDay,
+          customTimeSlots: activeFormattedTimes,
           selectedChannelIds: selectedChannelIds.length > 0 ? selectedChannelIds : undefined,
           generateImages,
           postStatus,
@@ -571,22 +612,22 @@ export function BrandProfileForm() {
         )}
       </form>
 
-      {/* SECTION 2: AI Scheduling Configuration & Filters */}
+      {/* SECTION 2: AI Brand Analysis & Scheduling Configuration */}
       <div className="rounded-2xl border-2 border-primary/30 bg-gradient-to-br from-primary/5 via-card to-card p-6 shadow-sm space-y-6">
         <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-border/60">
           <div>
             <div className="flex items-center gap-2">
               <Sparkles className="size-5 text-primary animate-pulse" />
               <h2 className="text-lg font-bold text-foreground">
-                2. AI Autonomous Scheduling Configuration
+                2. AI Brand Analysis & Autonomous Scheduling
               </h2>
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Set your posting frequency and duration. Click <strong>Configure & Schedule</strong> to generate and schedule all posts directly into your calendar.
+              Set your posting frequency and duration. Click <strong>Analyze Brand & Schedule</strong> to analyze your brand profile, generate content, and schedule all posts into your calendar.
             </p>
           </div>
           <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 text-xs px-2.5 py-1 font-semibold">
-            Auto-Pilot Scheduler
+            AI Brand Analysis
           </Badge>
         </div>
 
@@ -667,20 +708,49 @@ export function BrandProfileForm() {
             ))}
           </div>
 
-          {/* Posting Time Slots Preview */}
-          <div className="p-3 rounded-xl bg-card border text-xs space-y-1.5">
-            <div className="flex items-center gap-1.5 text-muted-foreground text-[11px] font-medium">
-              <Clock className="size-3.5 text-primary" />
-              <span>Optimized Daily Peak Engagement Slots:</span>
+          {/* Customizable Posting Time Slots */}
+          <div className="p-3.5 rounded-xl bg-card border space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                <Clock className="size-3.5 text-primary" />
+                <span>Customize Daily Posting Time for each Post:</span>
+              </div>
+              <button
+                type="button"
+                onClick={resetToDefaultTimes}
+                className="text-[11px] text-primary hover:underline font-medium flex items-center gap-1 cursor-pointer"
+              >
+                <RotateCcw className="size-3" />
+                Reset to AI Peak Times
+              </button>
             </div>
-            <div className="flex flex-wrap items-center gap-1.5">
-              {timeSlotsPreview.map((slot, i) => (
-                <span
-                  key={i}
-                  className="px-2 py-0.5 rounded-md bg-primary/10 border border-primary/20 text-foreground font-semibold text-[11px]"
+
+            <p className="text-[11px] text-muted-foreground">
+              Adjust each time slot below. AI will automatically schedule posts at these exact times every day.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+              {customTimes.slice(0, postsPerDay).map((timeVal, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between gap-2 p-2.5 rounded-xl border bg-background hover:border-primary/50 transition-all shadow-2xs"
                 >
-                  {slot}
-                </span>
+                  <div className="min-w-0">
+                    <span className="block text-[10px] uppercase font-bold text-muted-foreground">
+                      Post #{idx + 1}
+                    </span>
+                    <span className="text-xs font-bold text-primary">
+                      {formatTimeDisplay(timeVal)}
+                    </span>
+                  </div>
+                  <input
+                    type="time"
+                    value={timeVal}
+                    onChange={(e) => updateTimeSlot(idx, e.target.value)}
+                    className="h-8 px-2 rounded-lg border bg-card text-foreground font-mono text-xs font-bold focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                    title={`Change time for Post #${idx + 1}`}
+                  />
+                </div>
               ))}
             </div>
           </div>
@@ -782,15 +852,20 @@ export function BrandProfileForm() {
         </div>
 
         {/* Live Calculation Summary Banner */}
-        <div className="p-4 rounded-xl bg-gradient-to-r from-primary/15 via-primary/10 to-primary/5 border border-primary/25 space-y-2">
-          <div className="flex items-center justify-between">
+        <div className="p-4 rounded-xl bg-gradient-to-r from-primary/15 via-primary/10 to-primary/5 border border-primary/25 space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
               <Sparkle className="size-4 text-primary" />
               Scheduling Plan Summary
             </span>
-            <span className="text-xs font-extrabold text-primary bg-background/80 px-2.5 py-0.5 rounded-full border border-primary/30">
-              {totalPostsToSchedule} Total Posts
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-medium text-muted-foreground">
+                {days} Days × {postsPerDay} {postsPerDay === 1 ? "Post" : "Posts"}/Day =
+              </span>
+              <span className="text-xs font-extrabold text-primary bg-background/90 px-3 py-1 rounded-full border border-primary/30 shadow-2xs">
+                {totalPostsToSchedule} Total Posts
+              </span>
+            </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1 text-muted-foreground">
             <div>
@@ -802,34 +877,36 @@ export function BrandProfileForm() {
               <strong className="text-foreground">{postsPerDay} Post{postsPerDay > 1 ? "s" : ""}/day</strong>
             </div>
             <div>
-              <span className="block text-[10px] uppercase font-bold text-muted-foreground">Calendar Span</span>
-              <strong className="text-foreground">{dateRangePreview}</strong>
+              <span className="block text-[10px] uppercase font-bold text-muted-foreground">Daily Post Times</span>
+              <strong className="text-foreground text-[11px] truncate block" title={activeFormattedTimes.join(", ")}>
+                {activeFormattedTimes.join(", ")}
+              </strong>
             </div>
             <div>
-              <span className="block text-[10px] uppercase font-bold text-muted-foreground">Status</span>
-              <strong className="text-foreground uppercase">{postStatus}</strong>
+              <span className="block text-[10px] uppercase font-bold text-muted-foreground">Calendar Span</span>
+              <strong className="text-foreground">{dateRangePreview}</strong>
             </div>
           </div>
         </div>
 
-        {/* Primary Configure Button */}
+        {/* Primary Analysis & Schedule Button */}
         <div className="space-y-3 pt-2">
           <Button
             type="button"
             id="configure-and-schedule-btn"
             disabled={isConfiguring || !form.business_name || !form.niche}
             onClick={() => configureAndScheduleMutation.mutate()}
-            className="w-full h-12 text-sm font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-md gap-2 rounded-xl transition-all"
+            className="w-full h-12 text-sm font-bold bg-primary hover:bg-primary/90 text-primary-foreground shadow-md gap-2 rounded-xl transition-all cursor-pointer"
           >
             {isConfiguring ? (
               <>
                 <Loader2 className="size-5 animate-spin" />
-                <span>{scheduleProgress || `Configuring & Scheduling ${totalPostsToSchedule} Posts...`}</span>
+                <span>{scheduleProgress || `Analyzing Brand & Scheduling ${totalPostsToSchedule} Posts (${days}d × ${postsPerDay}/d)...`}</span>
               </>
             ) : (
               <>
                 <Sparkles className="size-5" />
-                <span>Configure AI & Schedule {totalPostsToSchedule} Posts Across {days} Days</span>
+                <span>Analyze Brand & Auto-Schedule {totalPostsToSchedule} Posts ({days} Days × {postsPerDay}/Day)</span>
               </>
             )}
           </Button>

@@ -150,6 +150,7 @@ export async function createMetaAdSet(
     targetAgeMin,
     targetAgeMax,
     targetInterests,
+    targetCountries,
     dailyBudget,
     startTime,
     endTime,
@@ -160,6 +161,7 @@ export async function createMetaAdSet(
     targetAgeMin?: number;
     targetAgeMax?: number;
     targetInterests?: string[];
+    targetCountries?: string[]; // BUG FIX: was hardcoded to ["IN"] — now configurable
     dailyBudget: number;
     startTime?: string;
     endTime?: string;
@@ -177,7 +179,8 @@ export async function createMetaAdSet(
   const targeting: Record<string, unknown> = {
     age_min: targetAgeMin ?? 18,
     age_max: targetAgeMax ?? 65,
-    geo_locations: { countries: ["IN"] },
+    // BUG FIX: was hardcoded to ["IN"]. Now uses targetCountries param, defaults to ["IN"]
+    geo_locations: { countries: targetCountries && targetCountries.length > 0 ? targetCountries : ["IN"] },
   };
   if (targetInterests && targetInterests.length > 0) {
     targeting.interests = targetInterests.map((i) => ({ name: i }));
