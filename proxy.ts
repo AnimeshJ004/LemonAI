@@ -7,6 +7,11 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/auth/(.*)",
+  "/api/chat/(.*)",
+  "/api/webhooks/(.*)",
+  "/api/crm/(.*)",
+  "/api/voice/(.*)",
+  "/api/inngest(.*)",
 ]);
 
 // The onboarding page itself (authenticated but skip the onboarding check)
@@ -38,16 +43,7 @@ export default clerkMiddleware(
       return NextResponse.next();
     }
 
-    // Check user-specific onboarding cookie
-    const userOnboardedCookie = req.cookies.get(`lemon_ai_onboarded_${userId}`);
-
-    // If this specific user hasn't completed onboarding, always send them to /onboarding
-    if (!userOnboardedCookie?.value) {
-      const onboardingUrl = new URL("/onboarding", req.url);
-      return NextResponse.redirect(onboardingUrl);
-    }
-
-    // If user is already onboarded and visits landing page "/", redirect to their workspace
+    // If authenticated user visits landing page "/", redirect to their workspace
     if (req.nextUrl.pathname === "/") {
       const workspaceUrl = new URL("/schedule", req.url);
       return NextResponse.redirect(workspaceUrl);
