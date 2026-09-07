@@ -7,6 +7,10 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/auth/(.*)",
+  "/api/chat/(.*)",
+  "/api/webhooks/(.*)",
+  "/api/crm/(.*)",
+  "/api/voice/(.*)",
 ]);
 
 // The onboarding page itself (authenticated but skip the onboarding check)

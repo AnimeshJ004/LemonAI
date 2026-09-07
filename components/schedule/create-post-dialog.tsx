@@ -170,6 +170,30 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
         }
     }, [channels])
 
+    // Restore draft from localStorage when opening dialog
+    useEffect(() => {
+        if (open) {
+            try {
+                const savedDraft = localStorage.getItem("lemon_new_post_draft");
+                if (savedDraft) {
+                    const parsed = JSON.parse(savedDraft);
+                    if (parsed?.text && !globalContent.text) {
+                        setGlobalContent(parsed);
+                    }
+                }
+            } catch {}
+        }
+    }, [open]);
+
+    // Save draft to localStorage as user writes or generates
+    useEffect(() => {
+        if (globalContent.text || (globalContent.images && globalContent.images.length > 0)) {
+            try {
+                localStorage.setItem("lemon_new_post_draft", JSON.stringify(globalContent));
+            } catch {}
+        }
+    }, [globalContent]);
+
     const connectedChannels = channels.filter(channel => channel.connected);
     const selectedChannelsList = channels.filter((channel) => selectedChannels.includes(channel.id))
     const previewChannel = channels.find((c) => c.id === activePreview) ?? null;
@@ -195,6 +219,9 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
         },
         onSuccess: (data, variables) => {
             toast.success(`${data.posts.length} post(s) ${variables.status === POST_STATUS.DRAFT ? 'saved to draft' : 'scheduled'} successfully`);
+            try {
+                localStorage.removeItem("lemon_new_post_draft");
+            } catch {}
             queryClient.invalidateQueries({ queryKey: ["posts"] });
             queryClient.invalidateQueries({
                 predicate: (query) => query.queryKey[0] === "posts",

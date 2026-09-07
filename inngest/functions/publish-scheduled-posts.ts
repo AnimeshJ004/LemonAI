@@ -287,6 +287,12 @@ async function publishToTwitter({
         logger
     }) : [];
 
+    // Safely respect Twitter/X 280-character limit
+    let safeText = content || "";
+    if (safeText.length > 280) {
+        safeText = safeText.slice(0, 277).trim() + "...";
+    }
+
     const response = await fetch("https://api.x.com/2/tweets",{
         method:"POST",
         headers:{
@@ -294,7 +300,7 @@ async function publishToTwitter({
             "Content-Type": "application/json"
         },
         body: JSON.stringify({
-            text: content,
+            text: safeText,
              ...(mediaIds.length > 0 ? { 
                 media: { 
                     media_ids: mediaIds 
@@ -623,8 +629,14 @@ async function publishToBluesky({
         };
     }
 
+    // Bluesky has a strict 300 grapheme limit
+    let safeContent = content || "";
+    if (safeContent.length > 300) {
+        safeContent = safeContent.slice(0, 297).trim() + "...";
+    }
+
     const record: any = {
-        text: content,
+        text: safeContent,
         createdAt: new Date().toISOString(),
     };
 
@@ -724,7 +736,11 @@ async function publishToInstagram({
 
     const createData = await createRes.json();
     if (!createRes.ok || !createData.id) {
-        throw new Error(`Failed to create Instagram container: ${createData?.error?.message || JSON.stringify(createData)}`);
+        const errDetail = createData?.error?.message || JSON.stringify(createData);
+        if (errDetail.includes("not a confirmed user") || errDetail.includes("user logged out") || errDetail.includes("Error validating access token")) {
+            throw new Error(`Instagram session expired or unconfirmed in Meta Developer App: ${errDetail}. Please reconnect your Instagram account in Channels.`);
+        }
+        throw new Error(`Failed to create Instagram container: ${errDetail}`);
     }
 
     const containerId = createData.id;

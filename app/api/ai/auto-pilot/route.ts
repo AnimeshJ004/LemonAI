@@ -396,46 +396,41 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
       }
     }
 
-    // 8. Handle Today's Post Publishing (Day 0, Post 1)
-    // If targetStatus is QUEUE and today's first post is ready right now:
+    // 8. Handle Publishing & Inngest Scheduling for ALL Created Posts
+    // Send Inngest event for all queued posts so Inngest handles sleepUntil and triggers at scheduled times
     if (targetStatus === POST_STATUS.QUEUE && createdPosts.length > 0) {
-      const todayFirstPost = createdPosts[0];
-      const hasLiveOAuthToken = Boolean(
-        todayFirstPost?.user_channels?.access_token &&
-        todayFirstPost?.user_channels?.access_token.length > 10
+      const postsWithTokens = createdPosts.filter((p: any) =>
+        Boolean(p?.user_channels?.access_token && p?.user_channels?.access_token.length > 10)
+      );
+      const simulatedPosts = createdPosts.filter((p: any) =>
+        !Boolean(p?.user_channels?.access_token && p?.user_channels?.access_token.length > 10)
       );
 
-      if (hasLiveOAuthToken) {
-        // Dispatch Inngest event for today's immediate post only (future posts stay queued)
+      // Dispatch Inngest events for all posts with live tokens
+      if (postsWithTokens.length > 0) {
         try {
-          await inngest.send({
-            name: "post/publish.requested",
-            data: { postId: todayFirstPost.id },
-          });
+          await inngest.send(
+            postsWithTokens.map((p: any) => ({
+              name: "post/publish.requested",
+              data: { postId: p.id },
+            }))
+          );
         } catch (inngestErr: any) {
-          console.warn("Inngest dispatch notice for today's post:", inngestErr?.message || inngestErr);
+          console.warn("[Inngest] Auto-pilot batch dispatch notice:", inngestErr?.message || inngestErr);
         }
-      } else {
-        // If channel is in demo/simulated mode without live OAuth token, mark today's post published
+      }
+
+      // For simulated/demo channels without live OAuth, also send to Inngest (Inngest fallback publishes them)
+      if (simulatedPosts.length > 0) {
         try {
-          const chType = todayFirstPost?.user_channels?.channel_types?.type || "TWITTER";
-          const chHandle = todayFirstPost?.user_channels?.handle || businessName.toLowerCase().replace(/[^a-z0-9]/g, "") || "brand";
-          const simUrl = `https://${chType.toLowerCase()}.com/${chHandle}/status/${Date.now()}`;
-
-          await insforge.database
-            .from("scheduled_posts")
-            .update({
-              status: POST_STATUS.PUBLISHED,
-              published_at: new Date().toISOString(),
-              published_url: simUrl,
-            })
-            .eq("id", todayFirstPost.id);
-
-          todayFirstPost.status = POST_STATUS.PUBLISHED;
-          todayFirstPost.published_at = new Date().toISOString();
-          todayFirstPost.published_url = simUrl;
-        } catch (simErr: any) {
-          console.warn("Simulated publish notice for today's post:", simErr?.message || simErr);
+          await inngest.send(
+            simulatedPosts.map((p: any) => ({
+              name: "post/publish.requested",
+              data: { postId: p.id },
+            }))
+          );
+        } catch (inngestErr: any) {
+          console.warn("[Inngest] Simulated posts dispatch notice:", inngestErr?.message || inngestErr);
         }
       }
     }
