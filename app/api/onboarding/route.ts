@@ -46,6 +46,7 @@ export async function GET() {
     // Set the cookie so the middleware can skip the DB check for future requests
     if (completed) {
       res.cookies.set(ONBOARDED_COOKIE, "1", COOKIE_OPTIONS);
+      res.cookies.set(`lemon_ai_onboarded_${userId}`, "1", COOKIE_OPTIONS);
     }
 
     return res;
@@ -140,8 +141,9 @@ export async function POST(req: NextRequest) {
       message: "Onboarding completed! Welcome to Lemon AI 🍋",
     });
 
-    // Set permanent onboarding cookie so middleware doesn't redirect again
+    // Set permanent onboarding cookies so middleware doesn't redirect again
     res.cookies.set(ONBOARDED_COOKIE, "1", COOKIE_OPTIONS);
+    res.cookies.set(`lemon_ai_onboarded_${userId}`, "1", COOKIE_OPTIONS);
 
     return res;
   } catch (error: any) {

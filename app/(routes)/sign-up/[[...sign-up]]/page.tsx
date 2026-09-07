@@ -38,7 +38,7 @@ const SignUpPage = () => {
           if (sessionId) {
             await (setActive as any)({ session: sessionId })
             toast.success("Account ready! Redirecting to Dashboard...")
-            window.location.replace("/")
+            window.location.replace("/onboarding")
             return
           }
         } catch (innerErr) {
@@ -47,7 +47,7 @@ const SignUpPage = () => {
       }
 
       // 2. Fallback redirect with ticket
-      window.location.replace(`/sign-in?__clerk_ticket=${encodeURIComponent(data.token)}&redirect_url=${encodeURIComponent("/")}`)
+      window.location.replace(`/sign-in?__clerk_ticket=${encodeURIComponent(data.token)}&redirect_url=${encodeURIComponent("/onboarding")}`)
     } catch (err: any) {
       console.error("Quick sign-up error:", err)
       toast.error(err?.message || "Failed to sign up instantly. Please use the form below.")
@@ -98,7 +98,12 @@ const SignUpPage = () => {
           <div className="h-px bg-border flex-1" />
         </div>
 
-        <SignUp path="/sign-up" signInUrl="/sign-in" forceRedirectUrl="/" />
+        <SignUp
+          path="/sign-up"
+          signInUrl="/sign-in"
+          forceRedirectUrl="/onboarding"
+          fallbackRedirectUrl="/onboarding"
+        />
       </div>
     </div>
   )

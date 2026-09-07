@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 // Public routes that don't require authentication
 const isPublicRoute = createRouteMatcher([
+  "/",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/auth/(.*)",
@@ -14,40 +15,50 @@ const isOnboardingRoute = createRouteMatcher(["/onboarding(.*)"]);
 // API routes — skip the onboarding check, they handle auth themselves
 const isApiRoute = createRouteMatcher(["/api/(.*)"]);
 
-export default clerkMiddleware(async (auth, req) => {
-  const { userId } = await auth();
+export default clerkMiddleware(
+  async (auth, req) => {
+    const { userId } = await auth();
 
-  // Public routes — no auth required
-  if (isPublicRoute(req)) {
+    // 1. Unauthenticated users:
+    if (!userId) {
+      // Allow public routes
+      if (isPublicRoute(req)) {
+        return NextResponse.next();
+      }
+
+      // Redirect private dashboard routes to sign-in
+      const signInUrl = new URL("/sign-in", req.url);
+      signInUrl.searchParams.set("redirect_url", req.url);
+      return NextResponse.redirect(signInUrl);
+    }
+
+    // 2. Authenticated users:
+    // Allow API routes and the onboarding page itself to load without redirect loops
+    if (isApiRoute(req) || isOnboardingRoute(req)) {
+      return NextResponse.next();
+    }
+
+    // Check user-specific onboarding cookie
+    const userOnboardedCookie = req.cookies.get(`lemon_ai_onboarded_${userId}`);
+
+    // If this specific user hasn't completed onboarding, always send them to /onboarding
+    if (!userOnboardedCookie?.value) {
+      const onboardingUrl = new URL("/onboarding", req.url);
+      return NextResponse.redirect(onboardingUrl);
+    }
+
+    // If user is already onboarded and visits landing page "/", redirect to their workspace
+    if (req.nextUrl.pathname === "/") {
+      const workspaceUrl = new URL("/schedule", req.url);
+      return NextResponse.redirect(workspaceUrl);
+    }
+
     return NextResponse.next();
+  },
+  {
+    clockSkewInMs: 120 * 1000, // 2 minutes clock tolerance to absorb PC time drift and prevent "token-iat-in-the-future"
   }
-
-  // Redirect unauthenticated users to sign-in
-  if (!userId) {
-    const signInUrl = new URL("/sign-in", req.url);
-    signInUrl.searchParams.set("redirect_url", req.url);
-    return NextResponse.redirect(signInUrl);
-  }
-
-  // API routes and the onboarding page itself — allow through
-  if (isApiRoute(req) || isOnboardingRoute(req)) {
-    return NextResponse.next();
-  }
-
-  // For all authenticated dashboard routes:
-  // Check if the user has completed onboarding using a lightweight cookie-based approach.
-  // The onboarding completion is stored in a cookie set when the user finishes, avoiding
-  // any DB call in middleware (which is slow and has no native DB client access).
-  const onboardingCookie = req.cookies.get("lemon_ai_onboarded");
-
-  if (!onboardingCookie?.value) {
-    // No cookie — redirect to onboarding to check
-    const onboardingUrl = new URL("/onboarding", req.url);
-    return NextResponse.redirect(onboardingUrl);
-  }
-
-  return NextResponse.next();
-});
+);
 
 export const config = {
   matcher: [
