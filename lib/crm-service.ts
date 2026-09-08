@@ -93,9 +93,49 @@ export interface CRMMessage {
 // IN-MEMORY STORE & SEED DATA (Resilient fallback when DB tables not migrated)
 // ----------------------------------------------------------------------
 
-const memoryLeads = new Map<string, Lead[]>();
-const memoryConversations = new Map<string, CRMConversation[]>();
-const memoryMessages = new Map<string, CRMMessage[]>();
+import fs from "node:fs";
+import path from "node:path";
+
+let memoryLeads = new Map<string, Lead[]>();
+let memoryConversations = new Map<string, CRMConversation[]>();
+let memoryMessages = new Map<string, CRMMessage[]>();
+
+// --- FILE PERSISTENCE FOR DEV MODE ---
+const DB_FILE = path.join(process.cwd(), ".lemon_crm_memory.json");
+
+function loadFromDisk() {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const data = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+      if (data.leads) {
+        memoryLeads = new Map(Object.entries(data.leads));
+      }
+      if (data.conversations) {
+        memoryConversations = new Map(Object.entries(data.conversations));
+      }
+      if (data.messages) {
+        memoryMessages = new Map(Object.entries(data.messages));
+      }
+    }
+  } catch (err) {
+    console.error("Error loading dev DB file:", err);
+  }
+}
+
+function saveToDisk() {
+  try {
+    const data = {
+      leads: Object.fromEntries(memoryLeads),
+      conversations: Object.fromEntries(memoryConversations),
+      messages: Object.fromEntries(memoryMessages),
+    };
+    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+  } catch (err) {
+    console.error("Error saving dev DB file:", err);
+  }
+}
+
+loadFromDisk();
 
 const INITIAL_SEED_LEADS: Lead[] = [
   {
@@ -205,14 +245,158 @@ const INITIAL_SEED_LEADS: Lead[] = [
   },
 ];
 
+const INITIAL_SEED_CONVERSATIONS: CRMConversation[] = [
+  {
+    id: "conv-sarah-jenkins-01",
+    user_id: "user_lemon_default",
+    lead_id: "e1a90d8a-3601-443b-85ea-2b8d0c144701",
+    channel: "website",
+    status: "open",
+    is_ai_active: true,
+    last_message_at: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+    created_at: new Date(Date.now() - 3600000 * 4).toISOString(),
+  },
+  {
+    id: "conv-michael-chang-02",
+    user_id: "user_lemon_default",
+    lead_id: "e1a90d8a-3601-443b-85ea-2b8d0c144702",
+    channel: "whatsapp",
+    status: "open",
+    is_ai_active: true,
+    last_message_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+    created_at: new Date(Date.now() - 3600000 * 24).toISOString(),
+  },
+  {
+    id: "conv-elena-rostova-03",
+    user_id: "user_lemon_default",
+    lead_id: "e1a90d8a-3601-443b-85ea-2b8d0c144703",
+    channel: "instagram",
+    status: "open",
+    is_ai_active: false,
+    last_message_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+    created_at: new Date(Date.now() - 3600000 * 2).toISOString(),
+  },
+];
+
+const INITIAL_SEED_MESSAGES: Record<string, CRMMessage[]> = {
+  "conv-sarah-jenkins-01": [
+    {
+      id: "msg-sj-1",
+      conversation_id: "conv-sarah-jenkins-01",
+      sender_type: "lead",
+      content: "Hi there! I saw your post about autonomous AI marketing. Can Lemon AI handle multi-channel video content repurposing?",
+      created_at: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
+    },
+    {
+      id: "msg-sj-2",
+      conversation_id: "conv-sarah-jenkins-01",
+      sender_type: "ai_assistant",
+      content: "Hello Sarah! Absolutely. Lemon AI autonomously generates and schedules short-form video clips, carousel slides, and LinkedIn articles tailored to your brand voice. Are you looking to deploy this for your agency or an in-house team?",
+      created_at: new Date(Date.now() - 1000 * 60 * 23).toISOString(),
+    },
+    {
+      id: "msg-sj-3",
+      conversation_id: "conv-sarah-jenkins-01",
+      sender_type: "lead",
+      content: "For our marketing agency clients — we manage around 10 accounts and need to scale up our content output this quarter.",
+      created_at: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
+    },
+    {
+      id: "msg-sj-4",
+      conversation_id: "conv-sarah-jenkins-01",
+      sender_type: "ai_assistant",
+      content: "That's a great use case! Our Agency tier supports multi-brand workspaces and bulk publishing. Would you like to schedule a 15-minute walkthrough demo with our product team?",
+      created_at: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+    },
+  ],
+  "conv-michael-chang-02": [
+    {
+      id: "msg-mc-1",
+      conversation_id: "conv-michael-chang-02",
+      sender_type: "lead",
+      content: "Hello! We run a real estate brokerage in Miami with 5 agents. Does your WhatsApp bot qualify buyer leads automatically?",
+      created_at: new Date(Date.now() - 1000 * 60 * 60).toISOString(),
+    },
+    {
+      id: "msg-mc-2",
+      conversation_id: "conv-michael-chang-02",
+      sender_type: "ai_assistant",
+      content: "Hi Michael! Yes, Lemon AI connects directly with WhatsApp Cloud API to collect buyer budgets, preferred locations, and pre-qualification criteria 24/7, then syncs them instantly to your CRM pipeline.",
+      created_at: new Date(Date.now() - 1000 * 60 * 55).toISOString(),
+    },
+    {
+      id: "msg-mc-3",
+      conversation_id: "conv-michael-chang-02",
+      sender_type: "lead",
+      content: "That sounds awesome. Can you send me the calendar link to book a quick setup call?",
+      created_at: new Date(Date.now() - 1000 * 60 * 50).toISOString(),
+    },
+    {
+      id: "msg-mc-4",
+      conversation_id: "conv-michael-chang-02",
+      sender_type: "ai_assistant",
+      content: "Here you go Michael! You can pick an instant slot here: https://cal.com/lemon-demo/30min. We're excited to help you automate your real estate pipeline.",
+      created_at: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
+    },
+  ],
+  "conv-elena-rostova-03": [
+    {
+      id: "msg-er-1",
+      conversation_id: "conv-elena-rostova-03",
+      sender_type: "lead",
+      content: "Hey, I came across your Instagram ad. How does the AI generate ad creatives for skincare products?",
+      created_at: new Date(Date.now() - 1000 * 60 * 130).toISOString(),
+    },
+    {
+      id: "msg-er-2",
+      conversation_id: "conv-elena-rostova-03",
+      sender_type: "ai_assistant",
+      content: "Hello Elena! You simply connect your product catalog or upload brand assets, and our AI crafts high-converting Meta and TikTok ad creatives with compelling hooks and copy variants.",
+      created_at: new Date(Date.now() - 1000 * 60 * 125).toISOString(),
+    },
+    {
+      id: "msg-er-3",
+      conversation_id: "conv-elena-rostova-03",
+      sender_type: "lead",
+      content: "What is the typical pricing for an e-commerce brand?",
+      created_at: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
+    },
+  ],
+};
+
 function ensureMemoryStore(userId: string) {
-  if (!memoryLeads.has(userId)) {
+  loadFromDisk();
+  if (!memoryLeads.has(userId) || (memoryLeads.get(userId) || []).length === 0) {
     const defaultLeads = memoryLeads.get("user_lemon_default");
     const base = defaultLeads && defaultLeads.length > 0 ? defaultLeads : INITIAL_SEED_LEADS;
     memoryLeads.set(userId, base.map((l) => ({ ...l, user_id: userId })));
+    saveToDisk();
   }
-  if (!memoryConversations.has(userId)) {
-    memoryConversations.set(userId, []);
+  if (!memoryConversations.has(userId) || (memoryConversations.get(userId) || []).length === 0) {
+    const defaultConvs = memoryConversations.get("user_lemon_default");
+    const baseConvs = defaultConvs && defaultConvs.length > 0 ? defaultConvs : INITIAL_SEED_CONVERSATIONS;
+    memoryConversations.set(userId, baseConvs.map((c) => ({ ...c, user_id: userId })));
+
+    for (const conv of baseConvs) {
+      if (!memoryMessages.has(conv.id) || (memoryMessages.get(conv.id) || []).length === 0) {
+        const msgs = INITIAL_SEED_MESSAGES[conv.id] || [];
+        memoryMessages.set(conv.id, [...msgs]);
+      }
+    }
+    saveToDisk();
+  } else {
+    // Ensure existing conversations have their messages loaded if empty
+    const convs = memoryConversations.get(userId) || [];
+    let updated = false;
+    for (const conv of convs) {
+      if (!memoryMessages.has(conv.id) || (memoryMessages.get(conv.id) || []).length === 0) {
+        if (INITIAL_SEED_MESSAGES[conv.id]) {
+          memoryMessages.set(conv.id, [...INITIAL_SEED_MESSAGES[conv.id]]);
+          updated = true;
+        }
+      }
+    }
+    if (updated) saveToDisk();
   }
 }
 
@@ -248,6 +432,7 @@ export async function getLeadsForUser(userId: string): Promise<Lead[]> {
 }
 
 export async function getLeadById(leadId: string, userId?: string): Promise<Lead | null> {
+  loadFromDisk();
   try {
     const admin = getInsforgeAdminClient();
     let query = admin.database.from("leads").select("*").eq("id", leadId);
@@ -299,6 +484,7 @@ export async function createLead(payload: Partial<Lead> & { user_id: string }): 
   const memList = memoryLeads.get(payload.user_id) || [];
   memList.unshift(newLead);
   memoryLeads.set(payload.user_id, memList);
+  saveToDisk();
 
   // 2. Persist to PostgreSQL via InsForge
   try {
@@ -350,6 +536,10 @@ export async function updateLead(
       }
     }
   }
+  
+  if (foundInMem) {
+    saveToDisk();
+  }
 
   // 2. Update in DB
   try {
@@ -380,6 +570,7 @@ export async function deleteLead(leadId: string, userId: string): Promise<boolea
   const memList = memoryLeads.get(userId) || [];
   const nextList = memList.filter((l) => l.id !== leadId);
   memoryLeads.set(userId, nextList);
+  saveToDisk();
 
   try {
     const admin = getInsforgeAdminClient();
@@ -487,12 +678,15 @@ export async function getConversationsForUser(userId: string): Promise<CRMConver
     console.warn("Notice: reading conversations from DB:", err?.message);
   }
 
-  // Memory fallback with attached latest messages
+  // Memory fallback with attached latest messages and lead
   const convs = memoryConversations.get(userId) || [];
+  const leads = memoryLeads.get(userId) || memoryLeads.get("user_lemon_default") || [];
   return convs.map((c) => {
     const msgs = memoryMessages.get(c.id) || [];
+    const lead = leads.find((l) => l.id === c.lead_id) || null;
     return {
       ...c,
+      lead,
       messages: msgs,
     };
   });
@@ -502,6 +696,7 @@ export async function getConversationWithMessages(
   conversationId: string,
   userId?: string
 ): Promise<{ conversation: CRMConversation | null; messages: CRMMessage[] }> {
+  loadFromDisk();
   try {
     const admin = getInsforgeAdminClient();
     let convQuery = admin.database
@@ -544,6 +739,13 @@ export async function getConversationWithMessages(
         break;
       }
     }
+  }
+
+  if (conv) {
+    const effectiveUserId = userId || conv.user_id;
+    const leads = memoryLeads.get(effectiveUserId) || memoryLeads.get("user_lemon_default") || [];
+    const lead = leads.find((l) => l.id === conv.lead_id) || null;
+    conv = { ...conv, lead };
   }
 
   const messages = memoryMessages.get(conversationId) || [];
@@ -590,6 +792,7 @@ export async function createConversation(data: {
   const list = memoryConversations.get(data.user_id) || [];
   list.unshift(newConv);
   memoryConversations.set(data.user_id, list);
+  saveToDisk();
   return newConv;
 }
 
@@ -643,6 +846,7 @@ export async function addMessage(data: {
     }
   }
 
+  saveToDisk();
   return newMsg;
 }
 
@@ -680,6 +884,7 @@ export async function toggleAIActive(
     const c = list.find((item) => item.id === conversationId);
     if (c) {
       c.is_ai_active = is_ai_active;
+      saveToDisk();
       return c;
     }
   }

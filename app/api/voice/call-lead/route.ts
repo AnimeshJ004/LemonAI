@@ -148,32 +148,29 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const { leadId: inputLeadId, phone, name, company, notes } = body;
 
-    if (!phone?.trim()) {
-      return NextResponse.json({ error: "Phone number is required" }, { status: 400 });
-    }
-
     let lead: any = null;
 
     if (inputLeadId) {
       lead = await getLeadById(inputLeadId, targetUserId);
     }
 
-    // If no leadId supplied, find or create one from phone & name
+    const targetPhone = (phone?.trim() || lead?.phone || "").trim();
+
+    if (!targetPhone) {
+      return NextResponse.json(
+        { error: "Phone number is required to place an AI voice call" },
+        { status: 400 }
+      );
+    }
+
+    // If no leadId supplied or lead not found, find or create one from phone & name
     if (!lead) {
       lead = await findOrCreateLeadByContact({
         user_id: targetUserId,
         name: name?.trim() || "Voice Prospect",
-        phone: phone.trim(),
+        phone: targetPhone,
         source: "voice",
       });
-    }
-
-    const targetPhone = phone || lead.phone;
-    if (!targetPhone) {
-      return NextResponse.json(
-        { error: "Target phone number missing" },
-        { status: 400 }
-      );
     }
 
     const callResult = await triggerOutboundQualificationCall({

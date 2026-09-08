@@ -105,7 +105,7 @@ export function LeadDetailDialog({
       const res = await fetch("/api/voice/call-lead", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadId: lead.id }),
+        body: JSON.stringify({ leadId: lead.id, phone: lead.phone, name: lead.name }),
       });
 
       const data = await res.json();

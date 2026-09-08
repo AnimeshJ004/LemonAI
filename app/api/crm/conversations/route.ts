@@ -7,6 +7,7 @@ import {
   toggleAIActive,
   createConversation,
 } from "@/lib/crm-service";
+import { callResilientCompletion } from "@/lib/ai-gateway";
 
 export async function GET(request: NextRequest) {
   try {
@@ -47,7 +48,66 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const { conversation_id, content, sender_type = "human_agent", channel, lead_id } = body;
+    const { conversation_id, content, sender_type = "human_agent", channel, lead_id, action } = body;
+
+    // Handle AI Reply action ("Let AI Reply")
+    if (action === "ai_reply") {
+      if (!conversation_id) {
+        return NextResponse.json({ error: "conversation_id is required for ai_reply" }, { status: 400 });
+      }
+
+      const { conversation: conv, messages: existingMsgs } = await getConversationWithMessages(
+        conversation_id,
+        targetUserId
+      );
+
+      const lead = conv?.lead;
+      const recentHistory = existingMsgs
+        .slice(-6)
+        .map((m) => `${m.sender_type === "lead" ? lead?.name || "Customer" : m.sender_type === "ai_assistant" ? "AI Agent" : "Human Agent"}: ${m.content}`)
+        .join("\n");
+
+      let aiReplyContent = "";
+      try {
+        const aiRes = await callResilientCompletion({
+          messages: [
+            {
+              role: "system",
+              content: `You are Lemon AI's autonomous omnichannel sales bot for an agency & AI marketing platform.
+You are chatting with ${lead?.name || "the prospect"}${lead?.metadata?.company ? ` from ${lead.metadata.company}` : ""}.
+Your tone is friendly, consultative, concise, and helpful.
+Answer their questions, highlight autonomous content/lead qualification value, and gently suggest scheduling a 15-minute discovery session.
+Keep the response to 2-3 sentences. Do not output markdown headers.`,
+            },
+            {
+              role: "user",
+              content: `Recent conversation:\n${recentHistory || (content ? `Customer: ${content}` : "Hello")}\n\nDraft the next conversational response.`,
+            },
+          ],
+          temperature: 0.7,
+        });
+
+        if (aiRes.success && aiRes.content?.trim()) {
+          aiReplyContent = aiRes.content.trim();
+        }
+      } catch (err) {
+        console.warn("AI generation fallback:", err);
+      }
+
+      if (!aiReplyContent) {
+        aiReplyContent = `Thanks for asking, ${lead?.name ? lead.name.split(" ")[0] : "there"}! We can seamlessly configure this automation to match your goals. Would you like to pick a quick slot on our demo calendar to walk through the setup?`;
+      }
+
+      await toggleAIActive(conversation_id, true, targetUserId);
+
+      const message = await addMessage({
+        conversation_id,
+        sender_type: "ai_assistant",
+        content: aiReplyContent,
+      });
+
+      return NextResponse.json({ message, success: true }, { status: 201 });
+    }
 
     // If starting a brand new conversation
     if (!conversation_id && channel) {
@@ -77,7 +137,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // When human agent sends a message, automatically pause AI to prevent simultaneous conflicting responses
+    // When human agent sends a message, automatically pause AI to prevent conflicting responses
     if (sender_type === "human_agent") {
       await toggleAIActive(conversation_id, false, targetUserId);
     }

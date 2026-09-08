@@ -117,6 +117,64 @@ export default function InboxPage() {
     },
   });
 
+  // AI Assistant Auto-Reply Mutation
+  const aiReplyMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeConv) return;
+      const res = await fetch("/api/crm/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: activeConv.id,
+          action: "ai_reply",
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to generate AI reply");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success("AI Sales Assistant replied!");
+      queryClient.invalidateQueries({ queryKey: ["crm-conversation-detail", selectedConvId] });
+      queryClient.invalidateQueries({ queryKey: ["crm-conversations"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to generate AI reply");
+    },
+  });
+
+  // Simulate Inbound Lead Message Mutation
+  const simulateInboundMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeConv) return;
+      const sampleQueries = [
+        "What are your setup costs and deliverables for our team?",
+        "Can we schedule a 15-minute discovery walkthrough this week?",
+        "Does Lemon AI support multiple brand workspaces?",
+        "How quickly can our team get onboarded with the automated bots?",
+      ];
+      const randomQuery = sampleQueries[Math.floor(Math.random() * sampleQueries.length)];
+      const res = await fetch("/api/crm/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: activeConv.id,
+          content: randomQuery,
+          sender_type: "lead",
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to simulate inbound message");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast.success("Inbound prospect message received!");
+      queryClient.invalidateQueries({ queryKey: ["crm-conversation-detail", selectedConvId] });
+      queryClient.invalidateQueries({ queryKey: ["crm-conversations"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to simulate message");
+    },
+  });
+
   // Outbound Call Trigger
   const handleTriggerCall = async () => {
     if (!activeLead?.phone) {
@@ -128,7 +186,7 @@ export default function InboxPage() {
       const res = await fetch("/api/voice/call-lead", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadId: activeLead.id }),
+        body: JSON.stringify({ leadId: activeLead.id, phone: activeLead.phone, name: activeLead.name }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed to trigger call");
@@ -230,7 +288,10 @@ export default function InboxPage() {
               {/* Reply Box */}
               <ChatInput
                 onSendMessage={(content) => sendMutation.mutate(content)}
+                onAIReply={() => aiReplyMutation.mutate()}
+                onSimulateInbound={() => simulateInboundMutation.mutate()}
                 isSending={sendMutation.isPending}
+                isAIGenerating={aiReplyMutation.isPending}
                 calLink={calLink}
               />
             </>
