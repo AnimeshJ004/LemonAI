@@ -23,7 +23,7 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
     authUrl: "https://www.facebook.com/v22.0/dialog/oauth",
     tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
     profileUrl: "https://graph.facebook.com/v22.0/me?fields=id,name,picture",
-    scope: ["pages_show_list", "pages_read_engagement", "pages_manage_posts", "publish_video"],
+    scope: ["public_profile", "pages_show_list", "pages_read_engagement", "pages_manage_posts"],
   },
   [ChannelTypeEnum.INSTAGRAM]: {
     authUrl: "https://www.facebook.com/v22.0/dialog/oauth",
@@ -231,6 +231,33 @@ function createProvider(type:ChannelTypeEnum,opts: { pkce?: boolean} = {}): OAut
           }
         } catch (igErr) {
           console.warn("[Instagram OAuth] Notice checking me/accounts:", igErr);
+        }
+      }
+
+      // Resolve user's primary Facebook Page and Page Access Token for Facebook
+      if (type === ChannelTypeEnum.FACEBOOK) {
+        try {
+          const fbRes = await fetch("https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,picture{url}", {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/json",
+            }
+          });
+          if (fbRes.ok) {
+            const fbData = await fbRes.json();
+            const pages = fbData?.data || [];
+            const primaryPage = pages[0];
+            if (primaryPage) {
+              return {
+                providerAccountId: primaryPage.id,
+                handle: primaryPage.name || null,
+                profileImage: primaryPage.picture?.data?.url || null,
+                pageAccessToken: primaryPage.access_token || accessToken,
+              };
+            }
+          }
+        } catch (fbErr) {
+          console.warn("[Facebook OAuth] Notice checking me/accounts:", fbErr);
         }
       }
 
