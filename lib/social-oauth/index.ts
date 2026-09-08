@@ -32,9 +32,13 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
     scope: [
       "instagram_basic",
       "instagram_content_publish",
+      "instagram_manage_comments",   // Required: post replies to comments
+      "instagram_manage_messages",   // Required: send private DMs
       "pages_show_list",
       "pages_read_engagement",
-      "pages_manage_posts"
+      "pages_manage_posts",
+      "pages_manage_metadata",       // Required: subscribe to comment webhooks
+      "pages_messaging",             // Required: send Page messages / DMs
     ],
   },
   [ChannelTypeEnum.YOUTUBE]: {

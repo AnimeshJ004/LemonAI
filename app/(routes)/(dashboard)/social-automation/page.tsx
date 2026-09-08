@@ -13,8 +13,29 @@ import { Bot, MessageSquare, Zap, CheckCircle, Send, RefreshCw, Sparkles, Shield
 export default function SocialAutomationPage() {
   const [testComment, setTestComment] = useState({ text: "", platform: "INSTAGRAM" });
   const [testResult, setTestResult] = useState<any>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const queryClient = useQueryClient();
+
+  const handleSyncLiveComments = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await fetch("/api/social/sync-now", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data?.error || "Failed to sync comments from Instagram");
+      } else if (data.repliedCount > 0) {
+        toast.success(`Successfully replied to ${data.repliedCount} new comment(s) on Instagram! 🎉`);
+      } else {
+        toast.info("Scanned latest posts — all comments are already replied to! 👍");
+      }
+      refetch();
+    } catch (e) {
+      toast.error("Network error syncing comments from Instagram");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Fetch comment logs
   const { data: commentsData, isLoading, refetch } = useQuery({
@@ -75,9 +96,21 @@ export default function SocialAutomationPage() {
             Autonomous 24/7 AI engagement for Instagram & Facebook comments and DM conversions
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 text-xs">
-          <RefreshCw className="size-3.5" /> Refresh Log
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleSyncLiveComments}
+            disabled={isSyncing}
+            className="gap-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <RefreshCw className={`size-3.5 ${isSyncing ? "animate-spin" : ""}`} />
+            {isSyncing ? "Scanning Instagram..." : "Sync & Auto-Reply Now"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 text-xs">
+            <RefreshCw className="size-3.5" /> Refresh Log
+          </Button>
+        </div>
       </div>
 
       {/* Stats Grid */}

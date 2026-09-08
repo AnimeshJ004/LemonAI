@@ -1,5 +1,5 @@
 import { inngest } from "../client";
-import { getInsforgeAdminClient, getInsforgeServerClient } from "@/lib/insforge-server";
+import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { decrypt } from "@/lib/encryption";
 
 /**
@@ -12,7 +12,7 @@ export const pollPostComments = inngest.createFunction(
     name: "Poll & Auto-Reply to Post Comments",
     triggers: [
       {
-        cron: "*/15 * * * *",
+        cron: "*/2 * * * *", // Polling backup runs every 2 minutes (Meta webhook is real-time)
       },
     ],
   },
@@ -25,7 +25,7 @@ export const pollPostComments = inngest.createFunction(
 
       const { data: publishedPosts } = await admin.database
         .from("scheduled_posts")
-        .select("id, user_id, published_url, user_channel_id, user_channels(access_token, channel_types(type))")
+        .select("id, user_id, published_url, user_channel_id, user_channels(access_token, provider_account_id, channel_types(type))")
         .eq("status", "published")
         .gte("published_at", sevenDaysAgo)
         .not("published_url", "is", null)
@@ -120,9 +120,9 @@ export const pollPostComments = inngest.createFunction(
 
                   if (existing) continue;
 
-                  // Autonomous AI reply generation
-                  const { insforge } = await getInsforgeServerClient();
-                  const completion = await insforge.ai.chat.completions.create({
+                  // Autonomous AI reply generation using admin client (no auth context needed in cron)
+                  const adminClient = getInsforgeAdminClient();
+                  const completion = await adminClient.ai.chat.completions.create({
                     model: "google/gemini-3.8-flash",
                     messages: [
                       {
@@ -150,27 +150,41 @@ Return ONLY valid JSON:
                   } catch {}
 
                   // Post public reply to Instagram
-                  await fetch(`https://graph.facebook.com/v22.0/${commentId}/replies`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ message: aiResult.reply, access_token: accessToken }),
-                  });
+                  let replyOk = false;
+                  try {
+                    const replyRes = await fetch(`https://graph.facebook.com/v22.0/${commentId}/replies`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ message: aiResult.reply, access_token: accessToken }),
+                    });
+                    const replyJson = await replyRes.json().catch(() => ({}));
+                    if (replyRes.ok && replyJson?.id) {
+                      replyOk = true;
+                      console.log(`[Comment Poller] Successfully posted reply to comment ${commentId}: ${replyJson.id}`);
+                    } else {
+                      console.error(`[Comment Poller] Error replying to comment ${commentId}:`, replyJson);
+                    }
+                  } catch (err) {
+                    console.error(`[Comment Poller] Network error replying to comment ${commentId}:`, err);
+                  }
 
-                  // Log to database
-                  await admin.database.from("social_comments").insert({
-                    user_id: post.user_id,
-                    post_id: post.id,
-                    platform: channelType || "INSTAGRAM",
-                    platform_comment_id: commentId,
-                    commenter_handle: commenterHandle,
-                    comment_text: commentText,
-                    sentiment: aiResult.sentiment,
-                    reply_text: aiResult.reply,
-                    dm_sent: aiResult.shouldSendDM,
-                    status: "replied",
-                  });
+                  // Log to database only if successfully posted
+                  if (replyOk) {
+                    await admin.database.from("social_comments").insert({
+                      user_id: post.user_id,
+                      post_id: post.id,
+                      platform: channelType || "INSTAGRAM",
+                      platform_comment_id: commentId,
+                      commenter_handle: commenterHandle,
+                      comment_text: commentText,
+                      sentiment: aiResult.sentiment,
+                      reply_text: aiResult.reply,
+                      dm_sent: aiResult.shouldSendDM,
+                      status: "replied",
+                    });
 
-                  postReplies++;
+                    postReplies++;
+                  }
                 }
               }
             } catch (err) {
