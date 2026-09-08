@@ -1,6 +1,6 @@
 "use client";
 import { PostType } from "@/types/post.type";
-import { keepPreviousData, useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { useQueryState } from "nuqs";
 import { useState } from "react";
 import { Tabs, TabsList, TabsTrigger } from "../ui/tabs";
@@ -136,20 +136,21 @@ const ListView = ({
   const publishPostMutation = useMutation({
     mutationFn: async (postId: string) => {
       const res = await fetch(`/api/post/${postId}/publish`, { method: "POST" });
-      if (!res.ok) {
-        const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson?.error || "Failed to publish post");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to publish post");
       }
-      return res.json();
+      return data;
     },
-    onSuccess: () => {
-      toast.success("Post queued for publishing...");
+    onSuccess: (data) => {
+      toast.success(data?.simulated ? "Post published (simulated preview)" : "Post published successfully!");
       queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === "posts" });
       queryClient.invalidateQueries({ queryKey: ["posts", "totals"] });
       setPublishingPostId(null);
     },
     onError: (err: any) => {
       toast.error(err?.message || "Failed to publish post");
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === "posts" });
       setPublishingPostId(null);
     },
   });
@@ -395,7 +396,7 @@ const ListView = ({
                                       className="h-full w-full object-cover"
                                     />
                                   ) : (
-                                    <div className="flex h-full-center justify-center text-sm text-muted-foreground">
+                                    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
                                       No media
                                     </div>
                                   )}
@@ -515,8 +516,8 @@ const ListView = ({
                                         </Button>
                                       )}
 
-                                      {/* Publish Now (drafts only) */}
-                                      {post.status === "draft" && (
+                                      {/* Publish Now (drafts & queued posts) */}
+                                      {(post.status === "draft" || post.status === "queue") && (
                                         <Button
                                           id={`publish-post-${post.id}`}
                                           variant="outline"
