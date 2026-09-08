@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clapperboard, Sparkles, Clock, Copy, Check, Calendar } from "lucide-react";
+import { Clapperboard, Sparkles, Clock, Copy, Check, Calendar, Video, Play, Download, Loader2, Film } from "lucide-react";
 import ScheduleFromResearchDialog from "@/components/competition/schedule-from-research-dialog";
 
 export default function ReelsStudioPage() {
@@ -25,6 +25,7 @@ export default function ReelsStudioPage() {
     targetAudience: "",
   });
   const [script, setScript] = useState<any>(null);
+  const [videoResult, setVideoResult] = useState<any>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
 
@@ -81,6 +82,27 @@ export default function ReelsStudioPage() {
       toast.success("Reel script generated!");
     },
     onError: (err: any) => toast.error(err.message || "Generation failed"),
+  });
+
+  const { mutate: generateVideo, isPending: isVideoPending } = useMutation({
+    mutationFn: async () => {
+      const prompt = script?.title ? `${form.topic}: ${script.title}` : form.topic;
+      const res = await fetch("/api/ai/studio-reels-video", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, topic: form.topic }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Video generation failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setVideoResult(data.video);
+      toast.success("9:16 Commercial Video Reel generated!");
+    },
+    onError: (err: any) => toast.error(err.message || "Video generation failed"),
   });
 
   const copyText = (text: string, id: string) => {
@@ -142,12 +164,12 @@ export default function ReelsStudioPage() {
               onChange={(e) => setForm((f) => ({ ...f, targetAudience: e.target.value }))}
             />
           </div>
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Button
               id="generate-reel-btn"
               onClick={() => mutate(form)}
               disabled={isPending || !form.topic.trim()}
-              className="w-full"
+              className="w-full font-semibold"
               size="lg"
             >
               {isPending ? (
@@ -162,9 +184,91 @@ export default function ReelsStudioPage() {
                 </>
               )}
             </Button>
+
+            <Button
+              id="generate-video-reel-btn"
+              onClick={() => generateVideo()}
+              disabled={isVideoPending || !form.topic.trim()}
+              variant="outline"
+              className="w-full font-semibold border-primary/40 hover:bg-primary/5 text-primary"
+              size="lg"
+            >
+              {isVideoPending ? (
+                <>
+                  <Loader2 className="size-4 mr-2 animate-spin text-primary" />
+                  Rendering 9:16 Video Reel…
+                </>
+              ) : (
+                <>
+                  <Video className="size-4 mr-2 text-primary" />
+                  Generate 9:16 Video Reel (AI Video)
+                </>
+              )}
+            </Button>
           </div>
         </CardContent>
       </Card>
+
+      {/* 9:16 Video Reel Player Preview */}
+      {videoResult && videoResult.videoUrl && (
+        <Card className="border-primary/30 shadow-md bg-card overflow-hidden">
+          <CardHeader className="pb-3 bg-gradient-to-r from-primary/10 to-transparent">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Film className="size-4 text-primary" />
+                <CardTitle className="text-sm font-bold">9:16 Vertical Video Reel Ready</CardTitle>
+              </div>
+              <Badge variant="secondary" className="text-[10px] font-mono">
+                {videoResult.provider || "Wan 2.2 Commercial"}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-4 flex flex-col md:flex-row items-center gap-6">
+            <div className="relative w-full max-w-[260px] aspect-[9/16] rounded-2xl overflow-hidden border shadow-lg bg-black shrink-0">
+              <video
+                src={videoResult.videoUrl}
+                controls
+                autoPlay
+                loop
+                muted
+                playsInline
+                className="w-full h-full object-cover"
+              />
+            </div>
+            <div className="space-y-4 flex-1">
+              <div className="space-y-1">
+                <p className="text-sm font-semibold text-foreground">Commercial Social Video Rendered</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Ultra-smooth 9:16 vertical video reel optimized for Instagram Reels, TikTok, and YouTube Shorts.
+                </p>
+                <p className="text-[11px] text-muted-foreground/80 font-mono pt-1">
+                  Prompt: "{videoResult.prompt || form.topic}"
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2 pt-2">
+                <Button
+                  size="sm"
+                  asChild
+                  className="gap-2 text-xs font-semibold"
+                >
+                  <a href={videoResult.videoUrl} download="lemon-reel.mp4" target="_blank" rel="noopener noreferrer">
+                    <Download className="size-3.5" /> Download MP4 Video
+                  </a>
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setIsScheduleOpen(true)}
+                  className="gap-2 text-xs"
+                >
+                  <Calendar className="size-3.5" /> Schedule Video to Social
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {script && (
         <div className="space-y-4">

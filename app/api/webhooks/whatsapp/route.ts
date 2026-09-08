@@ -46,7 +46,19 @@ export async function POST(request: NextRequest) {
 
     // Process each inbound message
     for (const msg of parsedMessages) {
-      const targetUserId = "user_lemon_default"; // System / primary tenant
+      let targetUserId = "user_lemon_default";
+      try {
+        const { data: latestBrand } = await getBrandProfileForUser("");
+        // Query latest brand profile from DB
+        const admin = (await import("@/lib/insforge-server")).getInsforgeAdminClient();
+        const { data: b } = await admin.database
+          .from("brand_profiles")
+          .select("user_id")
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (b?.user_id) targetUserId = b.user_id;
+      } catch {}
 
       // 1. Find or create lead
       const lead = await findOrCreateLeadByContact({

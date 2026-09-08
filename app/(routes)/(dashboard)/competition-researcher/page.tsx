@@ -28,8 +28,10 @@ import {
   Calendar,
   Layers,
   ArrowRight,
+  Zap,
 } from "lucide-react";
 import ScheduleFromResearchDialog from "@/components/competition/schedule-from-research-dialog";
+import FlywheelLauncherDialog from "@/components/competition/flywheel-launcher-dialog";
 import Link from "next/link";
 
 export default function CompetitionResearcherPage() {
@@ -45,6 +47,7 @@ export default function CompetitionResearcherPage() {
 
   // Schedule modal states
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
+  const [isFlywheelOpen, setIsFlywheelOpen] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<"single" | "batch">("single");
   const [scheduleTopic, setScheduleTopic] = useState("");
   const [scheduleFormat, setScheduleFormat] = useState("FEED_POST");
@@ -136,14 +139,22 @@ export default function CompetitionResearcherPage() {
   return (
     <div className="max-w-6xl mx-auto py-6 px-3 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Search className="size-6 text-primary" />
-          Competition Researcher
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          AI analyses your market, competitors & extracts winning content angles, hooks & hashtags
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Search className="size-6 text-primary" />
+            Competition Researcher
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            AI analyses your market, competitors & extracts winning content angles, hooks & hashtags
+          </p>
+        </div>
+        <Button
+          onClick={() => setIsFlywheelOpen(true)}
+          className="gap-2 bg-gradient-to-r from-amber-500 to-primary text-primary-foreground font-bold shadow-sm"
+        >
+          <Zap className="size-4" /> Run Autonomous Flywheel
+        </Button>
       </div>
 
       {/* Input Form */}
@@ -519,6 +530,15 @@ export default function CompetitionResearcherPage() {
           competitors: form.competitorUrls,
           hashtags: result?.recommendedHashtags,
         }}
+      />
+
+      {/* Autonomous Multi-Agent Flywheel Launcher */}
+      <FlywheelLauncherDialog
+        open={isFlywheelOpen}
+        onOpenChange={setIsFlywheelOpen}
+        defaultNiche={form.niche}
+        defaultAudience={form.targetAudience}
+        defaultBusinessName={form.businessName}
       />
     </div>
   );

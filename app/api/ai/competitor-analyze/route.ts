@@ -24,11 +24,17 @@ export async function POST(req: NextRequest) {
     // Get brand profile to enrich the research with actual business context
     const brand = await getBrandProfileForUser(userId);
 
+    const parsedCompetitors = Array.isArray(competitorUrls)
+      ? competitorUrls
+      : typeof competitorUrls === "string"
+        ? competitorUrls.split(/[,\n]/).map((u) => u.trim()).filter(Boolean)
+        : [];
+
     const result = await researchMarketTrends({
       businessName: businessName || brand?.business_name || "My Business",
       niche: niche || brand?.niche || "general business",
       targetAudience: targetAudience || brand?.target_audience || "general audience",
-      competitors: Array.isArray(competitorUrls) ? competitorUrls : [],
+      competitors: parsedCompetitors,
       targetRegion: country || "IN",
     });
 

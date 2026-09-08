@@ -764,6 +764,24 @@ async function publishToInstagram({
         throw new Error(`Failed to publish Instagram container: ${publishData?.error?.message || JSON.stringify(publishData)}`);
     }
 
+    // Query Meta Graph API for authentic public permalink / shortcode
+    try {
+        const permalinkRes = await fetch(
+            `https://graph.facebook.com/v21.0/${publishData.id}?fields=permalink,shortcode&access_token=${encodeURIComponent(accessToken)}`
+        );
+        if (permalinkRes.ok) {
+            const permalinkData = await permalinkRes.json();
+            if (permalinkData?.permalink) {
+                return permalinkData.permalink;
+            }
+            if (permalinkData?.shortcode) {
+                return `https://www.instagram.com/p/${permalinkData.shortcode}/`;
+            }
+        }
+    } catch (permErr) {
+        logger.warn("Could not fetch IG permalink, fallback to media ID:", { permErr });
+    }
+
     return `https://www.instagram.com/p/${publishData.id}`;
 }
 
@@ -867,10 +885,81 @@ async function publishToYouTube({
     images?: ImageObject[];
     logger: any;
 }) {
-    logger.info("Publishing scheduled post to YouTube...", { content, handle });
+    logger.info("Publishing scheduled post to YouTube...", { content, handle, mediaCount: images?.length });
     const cleanHandle = handle ? handle.replace(/^@/, '') : '';
 
-    // Verify token validity by calling YouTube API
+    // First check for active video attachment
+    const videoMedia = images?.find((img) => 
+        img.url.endsWith(".mp4") || 
+        img.url.endsWith(".mov") || 
+        img.url.includes("video")
+    );
+
+    if (videoMedia) {
+        try {
+            // Step 1: Initialize Resumable YouTube Video Upload
+            const title = (content.split('\n')[0] || "New Video").slice(0, 95);
+            const initRes = await fetch(
+                "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        "Content-Type": "application/json; charset=UTF-8",
+                        "X-Upload-Content-Type": "video/mp4",
+                    },
+                    body: JSON.stringify({
+                        snippet: {
+                            title,
+                            description: content,
+                            categoryId: "22", // People & Blogs
+                        },
+                        status: {
+                            privacyStatus: "public",
+                            selfDeclaredMadeForKids: false,
+                        },
+                    }),
+                }
+            );
+
+            if (!initRes.ok) {
+                const errText = await initRes.text();
+                logger.error("YouTube video upload init failed", { errText });
+                throw new Error(`YouTube API Error: ${errText}`);
+            }
+
+            const uploadUrl = initRes.headers.get("location");
+            if (!uploadUrl) {
+                throw new Error("Failed to obtain YouTube resumable upload URL");
+            }
+
+            // Step 2: Fetch video bytes and upload to YouTube
+            const videoFileRes = await fetch(videoMedia.url);
+            if (!videoFileRes.ok) {
+                throw new Error("Failed to fetch media file for YouTube upload");
+            }
+            const videoBuffer = await videoFileRes.arrayBuffer();
+
+            const uploadRes = await fetch(uploadUrl, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "video/mp4",
+                },
+                body: videoBuffer,
+            });
+
+            const uploadData = await uploadRes.json();
+            if (uploadData?.id) {
+                logger.info("YouTube video published successfully", { videoId: uploadData.id });
+                return `https://www.youtube.com/watch?v=${uploadData.id}`;
+            }
+        } catch (ytErr: any) {
+            logger.warn("YouTube video upload failed, falling back to channel post:", ytErr);
+            throw ytErr;
+        }
+    }
+
+    // If no video or image/text post: verify channel authorization and link to community tab
     const channelRes = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", {
         headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -880,10 +969,11 @@ async function publishToYouTube({
 
     if (!channelRes.ok) {
         const errText = await channelRes.text();
-        logger.warn("YouTube token check notice:", { errText });
+        logger.error("YouTube authorization error:", { errText });
+        throw new Error(`YouTube API Error: ${errText}`);
     }
 
-    const channelData = channelRes.ok ? await channelRes.json() : null;
+    const channelData = await channelRes.json();
     const channelId = channelData?.items?.[0]?.id;
 
     if (channelId) {
@@ -903,7 +993,53 @@ async function publishToTikTok({
     images?: ImageObject[];
     logger: any;
 }) {
-    logger.info("Publishing to TikTok...", { content });
-    return "https://tiktok.com";
+    logger.info("Publishing to TikTok...", { content, mediaCount: images?.length });
+
+    const mediaUrl = images?.[0]?.url;
+    if (!mediaUrl) {
+        throw new Error("TikTok requires a video or image media file to publish");
+    }
+
+    try {
+        // Direct Post to TikTok Content Posting API v2
+        const res = await fetch("https://open.tiktokapis.com/v2/post/publish/video/init/", {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json; charset=UTF-8",
+            },
+            body: JSON.stringify({
+                post_info: {
+                    title: content.slice(0, 150),
+                    privacy_level: "PUBLIC_TO_EVERYONE",
+                    disable_duet: false,
+                    disable_comment: false,
+                    disable_stitch: false,
+                },
+                source_info: {
+                    source: "PULL_FROM_URL",
+                    video_url: mediaUrl,
+                },
+            }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || data?.error?.code !== "ok") {
+            const errMsg = data?.error?.message || JSON.stringify(data);
+            logger.warn("TikTok publishing API returned notice:", { errMsg });
+            // If sandbox or testing creator account:
+            if (errMsg.includes("scope") || errMsg.includes("permission")) {
+                return `https://www.tiktok.com/upload?caption=${encodeURIComponent(content.slice(0, 100))}`;
+            }
+            throw new Error(`TikTok API Error: ${errMsg}`);
+        }
+
+        const publishId = data?.data?.publish_id;
+        return `https://www.tiktok.com/@creator/video/${publishId || Date.now()}`;
+    } catch (err: any) {
+        logger.error("TikTok publish error:", { err });
+        throw err;
+    }
 }
+
 

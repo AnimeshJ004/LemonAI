@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getLeadsForUser, updateLead, VoiceCallLog } from "@/lib/crm-service";
+import { updateLead, VoiceCallLog } from "@/lib/crm-service";
+import { getInsforgeAdminClient } from "@/lib/insforge-server";
 
 /**
  * Vapi.ai / Bland.ai Call Events & Webhook Ingestion
@@ -17,15 +18,24 @@ export async function POST(request: NextRequest) {
     const recordingUrl = message.recordingUrl || call.recordingUrl || message.artifact?.recordingUrl;
     const summary = message.summary || call.summary || message.analysis?.summary;
 
-    const targetUserId = "user_lemon_default";
-    const allLeads = await getLeadsForUser(targetUserId);
+    const admin = getInsforgeAdminClient();
+    let matchedLead: any = null;
+    const cleanPhone = customerPhone ? customerPhone.replace(/\D/g, "") : null;
 
-    // Match lead by phone or by metadata callId
-    const matchedLead = allLeads.find(
-      (l) =>
-        (customerPhone && l.phone && l.phone.replace(/\D/g, "") === customerPhone.replace(/\D/g, "")) ||
-        (l.metadata?.callLogs && l.metadata.callLogs.some((c: VoiceCallLog) => c.callId === callId))
-    );
+    // 1. Dynamic Tenant Resolution: Query leads by phone or callId
+    if (cleanPhone) {
+      const { data: leadsByPhone } = await admin.database
+        .from("leads")
+        .select("*")
+        .order("updated_at", { ascending: false })
+        .limit(100);
+
+      matchedLead = leadsByPhone?.find(
+        (l: any) =>
+          (l.phone && l.phone.replace(/\D/g, "") === cleanPhone) ||
+          (l.metadata?.callLogs && l.metadata.callLogs.some((c: VoiceCallLog) => c.callId === callId))
+      );
+    }
 
     if (matchedLead) {
       const currentLogs: VoiceCallLog[] = matchedLead.metadata?.callLogs || [];

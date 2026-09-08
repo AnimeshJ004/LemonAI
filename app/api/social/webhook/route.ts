@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getInsforgeAdminClient, getInsforgeServerClient } from "@/lib/insforge-server";
+import { getInsforgeAdminClient } from "@/lib/insforge-server";
+import { callResilientCompletion } from "@/lib/ai-gateway";
 
 export const maxDuration = 60;
 
@@ -92,9 +93,8 @@ export async function POST(req: NextRequest) {
           };
 
           try {
-            const { insforge } = await getInsforgeServerClient();
-            const completion = await insforge.ai.chat.completions.create({
-              model: "google/gemini-3.8-flash",
+            const completion = await callResilientCompletion({
+              jsonMode: true,
               messages: [
                 {
                   role: "user",
@@ -114,15 +114,12 @@ Return ONLY valid JSON:
               ],
             });
 
-            const raw = completion.choices[0]?.message?.content || "{}";
-            const clean = raw.replace(/```(?:json)?\s*|\s*```/g, "").trim();
-            const parsed = JSON.parse(clean);
-            if (parsed && typeof parsed === "object") {
+            if (completion.data && typeof completion.data === "object") {
               aiResult = {
-                sentiment: parsed.sentiment || "NEUTRAL",
-                reply: parsed.reply || "Thanks for your comment! 🙏",
-                shouldSendDM: Boolean(parsed.shouldSendDM),
-                dmMessage: parsed.dmMessage || "",
+                sentiment: completion.data.sentiment || "NEUTRAL",
+                reply: completion.data.reply || "Thanks for your comment! 🙏",
+                shouldSendDM: Boolean(completion.data.shouldSendDM),
+                dmMessage: completion.data.dmMessage || "",
               };
             }
           } catch (aiErr) {
@@ -174,7 +171,71 @@ Return ONLY valid JSON:
             }
           }
 
-          // 6. Log the automated interaction to database
+          // 6. Automatically sync inbound lead & conversation into CRM Pipeline
+          if (aiResult.shouldSendDM || aiResult.sentiment === "INQUIRY" || commentText.toLowerCase().includes("price") || commentText.toLowerCase().includes("cost")) {
+            try {
+              let leadId: string | null = null;
+              const cleanHandle = commenterHandle.replace(/^@/, "");
+
+              // Check if lead exists
+              const { data: existingLead } = await admin.database
+                .from("leads")
+                .select("id")
+                .eq("user_id", userId)
+                .ilike("name", `%${cleanHandle}%`)
+                .limit(1)
+                .maybeSingle();
+
+              if (existingLead?.id) {
+                leadId = existingLead.id;
+              } else {
+                const { data: newLead } = await admin.database
+                  .from("leads")
+                  .insert({
+                    user_id: userId,
+                    name: commenterHandle,
+                    source: "instagram",
+                    stage: "new",
+                    score: 7,
+                    deal_value: 3000,
+                    metadata: {
+                      platform: "INSTAGRAM",
+                      commentId: platformCommentId,
+                      commentText,
+                      sentiment: aiResult.sentiment,
+                    },
+                  })
+                  .select("id")
+                  .single();
+                leadId = newLead?.id || null;
+              }
+
+              // Create CRM conversation and log messages for Kanban & Inbox
+              const { data: conv } = await admin.database
+                .from("crm_conversations")
+                .insert({
+                  user_id: userId,
+                  lead_id: leadId,
+                  channel: "instagram",
+                  status: "open",
+                  is_ai_active: true,
+                  last_message_at: new Date().toISOString(),
+                })
+                .select("id")
+                .single();
+
+              if (conv?.id) {
+                await admin.database.from("crm_messages").insert([
+                  { conversation_id: conv.id, sender_type: "lead", content: commentText },
+                  { conversation_id: conv.id, sender_type: "ai_assistant", content: aiResult.reply },
+                ]);
+              }
+            } catch (crmErr) {
+              console.warn("[Webhook] Notice capturing CRM lead from comment:", crmErr);
+            }
+          }
+
+          // 7. Log the automated interaction to database
           try {
             await admin.database.from("social_comments").insert({
               user_id: userId,

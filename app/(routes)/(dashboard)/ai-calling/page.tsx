@@ -1,86 +1,183 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Phone, PhoneCall, Clock, CheckCircle, Sparkles, User } from "lucide-react";
-
-const MOCK_CALL_LOGS = [
-  { id: 1, leadName: "Rahul Sharma", phone: "+91 98765 43210", status: "completed", duration: "4m 32s", outcome: "Appointment Booked", score: 8, time: "2 hours ago" },
-  { id: 2, leadName: "Priya Patel", phone: "+91 87654 32109", status: "voicemail", duration: "0m 45s", outcome: "Voicemail Left", score: 6, time: "4 hours ago" },
-  { id: 3, leadName: "Amit Singh", phone: "+91 76543 21098", status: "completed", duration: "2m 15s", outcome: "Not Interested", score: 2, time: "Yesterday" },
-  { id: 4, leadName: "Neha Gupta", phone: "+91 65432 10987", status: "completed", duration: "7m 01s", outcome: "Qualified - Follow Up", score: 7, time: "Yesterday" },
-];
+import { Switch } from "@/components/ui/switch";
+import {
+  Phone,
+  PhoneCall,
+  Clock,
+  CheckCircle,
+  Sparkles,
+  User,
+  RefreshCw,
+  Zap,
+  Bot,
+  Loader2,
+  CalendarCheck,
+  ShieldCheck,
+} from "lucide-react";
+import { toast } from "sonner";
 
 const STATUS_CONFIG: Record<string, { color: string; icon: string }> = {
   completed: { color: "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400", icon: "✅" },
   voicemail: { color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-950/40 dark:text-yellow-400", icon: "📱" },
   no_answer: { color: "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400", icon: "❌" },
   in_progress: { color: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400", icon: "🔄" },
+  initiated: { color: "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400", icon: "⚡" },
 };
 
 export default function AICallingPage() {
+  const queryClient = useQueryClient();
   const [manualPhone, setManualPhone] = useState("");
   const [manualName, setManualName] = useState("");
-  const [isCalling, setIsCalling] = useState(false);
 
-  const stats = [
-    { label: "Calls Today", value: "12", icon: Phone, color: "text-blue-500" },
-    { label: "Appointments Booked", value: "3", icon: CheckCircle, color: "text-green-500" },
-    { label: "Avg Call Duration", value: "3m 42s", icon: Clock, color: "text-orange-500" },
-    { label: "Connection Rate", value: "67%", icon: PhoneCall, color: "text-purple-500" },
-  ];
+  // Query real call logs and stats from backend
+  const { data, isLoading, refetch, isRefetching } = useQuery({
+    queryKey: ["voice-call-logs"],
+    queryFn: async () => {
+      const res = await fetch("/api/voice/call-lead");
+      if (!res.ok) throw new Error("Failed to load voice logs");
+      return res.json();
+    },
+  });
 
-  const handleManualCall = async () => {
-    if (!manualPhone || !manualName) return;
-    setIsCalling(true);
-    try {
+  const callLogs = data?.callLogs || [];
+  const statsData = data?.stats || {
+    totalCalls: 0,
+    bookedCalls: 0,
+    avgDuration: "0m 00s",
+    connectionRate: "0%",
+  };
+  const autoCallConfig = data?.autoCallConfig || {
+    enabled: false,
+    minScore: 7,
+    brandTone: "Professional",
+  };
+
+  const [autoCallEnabled, setAutoCallEnabled] = useState<boolean>(autoCallConfig.enabled);
+
+  // Sync config when loaded
+  useEffect(() => {
+    if (autoCallConfig.enabled !== undefined) {
+      setAutoCallEnabled(autoCallConfig.enabled);
+    }
+  }, [autoCallConfig.enabled]);
+
+  // Toggle Auto-Call Mutation
+  const autoCallMutation = useMutation({
+    mutationFn: async (enabled: boolean) => {
+      const res = await fetch("/api/brand", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          auto_call_enabled: enabled,
+          auto_call_min_score: 7,
+          business_name: "Brand",
+          niche: "Business",
+          target_audience: "Clients",
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to update auto-call configuration");
+      return res.json();
+    },
+    onSuccess: (_, enabled) => {
+      setAutoCallEnabled(enabled);
+      queryClient.invalidateQueries({ queryKey: ["voice-call-logs"] });
+      toast.success(
+        enabled
+          ? "Autonomous Auto-Calling Activated for High-Intent Leads (Score ≥ 7)!"
+          : "Auto-Calling Paused. Manual dispatch remains active."
+      );
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to update configuration");
+    },
+  });
+
+  // Manual Call Mutation
+  const manualCallMutation = useMutation({
+    mutationFn: async () => {
       const res = await fetch("/api/voice/call-lead", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          phone: manualPhone,
-          name: manualName,
+          phone: manualPhone.trim(),
+          name: manualName.trim(),
         }),
       });
-      const data = await res.json();
-      if (res.ok) {
-        alert(data.simulated ? `[Simulated] Call dispatched to ${manualPhone}` : `Call dispatched via Vapi.ai! Call ID: ${data.callId}`);
-      } else {
-        alert(`Error: ${data.error}`);
-      }
-    } catch (err: any) {
-      alert(`Call failed: ${err.message}`);
-    } finally {
-      setIsCalling(false);
-    }
-  };
+      const resData = await res.json();
+      if (!res.ok) throw new Error(resData.error || "Failed to dispatch call");
+      return resData;
+    },
+    onSuccess: (resData) => {
+      toast.success(
+        resData.simulated
+          ? `[Simulated Call] AI Call dispatched to ${manualPhone}!`
+          : `Live Call Dispatched via Vapi.ai! Call ID: ${resData.callId}`
+      );
+      setManualPhone("");
+      setManualName("");
+      queryClient.invalidateQueries({ queryKey: ["voice-call-logs"] });
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Call dispatch failed");
+    },
+  });
+
+  const stats = [
+    { label: "Total Dispatched Calls", value: statsData.totalCalls, icon: Phone, color: "text-blue-500" },
+    { label: "Appointments Booked", value: statsData.bookedCalls, icon: CheckCircle, color: "text-green-500" },
+    { label: "Avg Call Duration", value: statsData.avgDuration, icon: Clock, color: "text-orange-500" },
+    { label: "Connection Rate", value: statsData.connectionRate, icon: PhoneCall, color: "text-purple-500" },
+  ];
 
   return (
     <div className="max-w-5xl mx-auto py-6 px-3 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Phone className="size-6 text-primary" /> AI Voice Calling Agent
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          AI calls your leads, qualifies them with BANT, and books appointments automatically
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <Phone className="size-6 text-primary" /> AI Voice Calling Agent
+            </h1>
+            <Badge variant="secondary" className="text-xs bg-purple-500/10 text-purple-600 border-purple-200">
+              Interactive Demo Mode
+            </Badge>
+          </div>
+          <p className="text-muted-foreground text-sm mt-1">
+            Simulate and preview autonomous voice qualification, real-time BANT evaluation, and calendar booking
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetch()}
+            disabled={isRefetching}
+            className="gap-2 text-xs"
+          >
+            <RefreshCw className={`size-3.5 ${isRefetching ? "animate-spin" : ""}`} />
+            Refresh Logs
+          </Button>
+        </div>
       </div>
 
       {/* Hero Banner */}
       <Card className="border-primary/30 bg-gradient-to-r from-primary/5 to-purple-500/5">
         <CardContent className="pt-4 flex items-start gap-3">
           <Sparkles className="size-5 text-primary shrink-0 mt-0.5" />
-          <div>
-            <p className="text-sm font-semibold">AI Calling Engine — Powered by Vapi.ai</p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              The AI voice calling agent uses real-time conversational speech synthesis, BANT qualification, and Cal.com integration. When configured, the agent automatically calls qualified leads within minutes of arrival.
+          <div className="space-y-1">
+            <p className="text-sm font-semibold">Autonomous Inbound & Outbound Calling Engine — Powered by Vapi.ai</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              When a lead scores ≥ 7 via website chatbot, WhatsApp, or form submission, the AI Voice agent can automatically call them within 2 minutes. The agent qualifies budget, timeline, and books directly into your calendar.
             </p>
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {["Ultra-low latency (<600ms)", "Natural conversation", "Auto appointment booking", "Call recordings", "Transcript analysis"].map((f) => (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {["Ultra-low latency (<600ms)", "Natural Voice synthesis", "BANT Qualification", "Cal.com Instant Booking", "Real-time CRM Sync"].map((f) => (
                 <Badge key={f} variant="secondary" className="text-xs">{f}</Badge>
               ))}
             </div>
@@ -106,76 +203,101 @@ export default function AICallingPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Manual Call Trigger */}
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <PhoneCall className="size-4 text-green-500" /> Manual AI Call
             </CardTitle>
+            <CardDescription className="text-xs">
+              Test or instantly trigger an AI voice call to any prospect
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="space-y-1.5">
-              <Label className="text-xs">Lead Name</Label>
+              <Label className="text-xs">Lead / Prospect Name</Label>
               <Input
-                placeholder="John Doe"
+                placeholder="e.g. John Doe"
                 value={manualName}
                 onChange={(e) => setManualName(e.target.value)}
                 className="text-sm"
               />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Phone Number</Label>
+              <Label className="text-xs">Phone Number (with country code)</Label>
               <Input
                 placeholder="+91 98765 43210"
                 value={manualPhone}
                 onChange={(e) => setManualPhone(e.target.value)}
-                className="text-sm"
+                className="text-sm font-mono"
               />
             </div>
             <Button
               className="w-full gap-2"
-              disabled={!manualPhone || !manualName || isCalling}
-              onClick={handleManualCall}
+              disabled={!manualPhone || !manualName || manualCallMutation.isPending}
+              onClick={() => manualCallMutation.mutate()}
             >
-              <PhoneCall className="size-4" />
-              {isCalling ? "Dispatching Call..." : "Call Now (AI)"}
+              {manualCallMutation.isPending ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" /> Dispatching Call...
+                </>
+              ) : (
+                <>
+                  <PhoneCall className="size-4" /> Call Now (AI Voice)
+                </>
+              )}
             </Button>
-            <p className="text-xs text-center text-muted-foreground">
-              Direct connection to Vapi.ai agent endpoint
+            <p className="text-[11px] text-center text-muted-foreground">
+              Dispatches call via Vapi.ai with fallback simulator
             </p>
           </CardContent>
         </Card>
 
         {/* Auto-Call Settings */}
         <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle className="text-base">⚙️ Auto-Call Configuration</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Zap className="size-4 text-primary" /> Autonomous Auto-Call Triggers
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Configure autonomous calling rules for incoming CRM leads
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
-              <div>
-                <p className="text-sm font-medium">Auto-Call High-Intent Leads</p>
+            <div className="flex items-center justify-between p-3.5 rounded-lg bg-muted/40 border">
+              <div className="space-y-0.5">
+                <p className="text-sm font-semibold text-foreground">Auto-Call High-Intent Leads (Score ≥ 7)</p>
                 <p className="text-xs text-muted-foreground">
-                  Automatically call leads with score ≥ 7 within 2 minutes of CRM ingestion
+                  Automatically dispatch voice agent when BANT qualification scores 7 or higher
                 </p>
               </div>
-              <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400">Ready</Badge>
+              <Switch
+                checked={autoCallEnabled}
+                onCheckedChange={(checked) => autoCallMutation.mutate(checked)}
+                disabled={autoCallMutation.isPending}
+              />
             </div>
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
-              <div>
-                <p className="text-sm font-medium">Inbound AI Receptionist</p>
+
+            <div className="flex items-center justify-between p-3.5 rounded-lg bg-muted/40 border">
+              <div className="space-y-0.5">
+                <p className="text-sm font-semibold text-foreground">Inbound AI Receptionist</p>
                 <p className="text-xs text-muted-foreground">
-                  AI answers your business phone line and creates CRM prospects
+                  Answers incoming business calls and logs caller details directly into CRM
                 </p>
               </div>
-              <Badge className="bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400">Webhook Ready</Badge>
+              <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+                Webhook Ready
+              </Badge>
             </div>
-            <div className="flex items-center justify-between p-3 rounded-lg bg-muted/40 border">
-              <div>
-                <p className="text-sm font-medium">Call Objective: BANT Qualification</p>
+
+            <div className="flex items-center justify-between p-3.5 rounded-lg bg-muted/40 border">
+              <div className="space-y-0.5">
+                <p className="text-sm font-semibold text-foreground">Active Voice Persona Grounding</p>
                 <p className="text-xs text-muted-foreground">
-                  Budget, Authority, Need, Timeline — AI extracts all 4 scores during call
+                  Voice persona: Alex · Tone: {autoCallConfig.brandTone} · Calendar Sync Active
                 </p>
               </div>
-              <Badge className="bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400">Active</Badge>
+              <Badge variant="outline" className="text-xs">
+                Active
+              </Badge>
             </div>
           </CardContent>
         </Card>
@@ -185,41 +307,64 @@ export default function AICallingPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base">📋 Recent Call Logs</CardTitle>
-            <Badge variant="outline" className="text-xs">Live Voice Logs</Badge>
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Clock className="size-4 text-primary" /> Live Voice Call Activity Logs
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Real-time activity records from outbound and inbound AI telephone calls
+              </CardDescription>
+            </div>
+            <Badge variant="outline" className="text-xs font-mono">
+              {callLogs.length} Records
+            </Badge>
           </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {MOCK_CALL_LOGS.map((call) => {
-              const config = STATUS_CONFIG[call.status] || STATUS_CONFIG.completed;
-              return (
-                <div
-                  key={call.id}
-                  className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/30 transition-colors"
-                >
-                  <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
-                    <User className="size-4 text-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm font-medium">{call.leadName}</p>
-                      <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${config.color}`}>
-                        {config.icon} {call.status}
-                      </span>
+          {isLoading ? (
+            <div className="py-8 text-center text-muted-foreground text-xs flex items-center justify-center gap-2">
+              <Loader2 className="size-4 animate-spin" /> Loading call logs...
+            </div>
+          ) : callLogs.length === 0 ? (
+            <div className="py-8 text-center space-y-2 border border-dashed rounded-xl">
+              <Bot className="size-8 mx-auto text-muted-foreground/60" />
+              <p className="text-sm font-medium text-foreground">No voice calls recorded yet</p>
+              <p className="text-xs text-muted-foreground max-w-sm mx-auto">
+                Use the Manual AI Call panel above or enable Auto-Calling to start reaching out to prospects.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {callLogs.map((call: any) => {
+                const config = STATUS_CONFIG[call.status] || STATUS_CONFIG.completed;
+                return (
+                  <div
+                    key={call.id}
+                    className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/30 transition-colors"
+                  >
+                    <div className="size-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <User className="size-4 text-primary" />
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {call.phone} · {call.duration} · {call.time}
-                    </p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-foreground">{call.leadName}</p>
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${config.color}`}>
+                          {config.icon} {call.status}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        {call.phone} · {call.duration} · {call.timeAgo}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-medium text-foreground">{call.outcome}</p>
+                      <p className="text-xs text-muted-foreground">Intent Score: {call.score}/10</p>
+                    </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <p className="text-xs font-medium">{call.outcome}</p>
-                    <p className="text-xs text-muted-foreground">Intent: {call.score}/10</p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

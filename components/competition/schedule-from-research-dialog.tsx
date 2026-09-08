@@ -49,6 +49,8 @@ interface ScheduleFromResearchDialogProps {
     targetAudience?: string;
     competitors?: string;
     hashtags?: string[];
+    strategyPillars?: any[];
+    strategySchedule?: any[];
   };
 }
 
@@ -155,17 +157,17 @@ Include 3-5 relevant viral hashtags: ${researchContext?.hashtags?.slice(0, 5).jo
   // Single Post Schedule Mutation
   const { mutate: scheduleSinglePost, isPending: isScheduling } = useMutation({
     mutationFn: async () => {
-      if (!selectedChannelTypeId) {
-        throw new Error("Please select a target channel");
-      }
       if (!generatedContent.trim()) {
         throw new Error("Post content is empty. Please generate or write content first.");
       }
 
+      // If user hasn't selected a channel or none connected, fallback to first available or empty
+      const targetChannelId = selectedChannelTypeId || connectedChannels[0]?.channel_type_id || connectedChannels[0]?.id;
+
       const postPayload = {
         posts: [
           {
-            channelTypeId: selectedChannelTypeId,
+            channelTypeId: targetChannelId,
             content: generatedContent,
             images: generatedImages,
           },
@@ -203,6 +205,8 @@ Include 3-5 relevant viral hashtags: ${researchContext?.hashtags?.slice(0, 5).jo
         niche: researchContext?.niche,
         targetAudience: researchContext?.targetAudience,
         competitors: researchContext?.competitors,
+        strategyPillars: researchContext?.strategyPillars,
+        strategySchedule: researchContext?.strategySchedule,
         days,
         postsPerDay,
         generateImages: batchIncludeImages,
@@ -285,16 +289,17 @@ Include 3-5 relevant viral hashtags: ${researchContext?.hashtags?.slice(0, 5).jo
         </DialogHeader>
 
         {connectedChannels.length === 0 && !isLoadingChannels ? (
-          <div className="p-4 rounded-lg border border-amber-500/30 bg-amber-500/10 text-sm space-y-2">
-            <div className="flex items-center gap-2 font-semibold text-amber-800 dark:text-amber-200">
-              <AlertCircle className="size-4" /> No Channels Connected Yet
+          <div className="p-3.5 rounded-lg border border-primary/20 bg-primary/5 text-xs space-y-1.5">
+            <div className="flex items-center gap-1.5 font-semibold text-primary">
+              <Sparkles className="size-3.5" /> Ready for Calendar Scheduling
             </div>
-            <p className="text-muted-foreground text-xs">
-              To schedule posts to Instagram, Facebook, LinkedIn, or X, please connect at least one channel first.
+            <p className="text-muted-foreground leading-relaxed">
+              Posts will be scheduled directly into your Lemon AI Calendar queue. You can link live social accounts anytime in{" "}
+              <Link href="/settings" className="underline font-semibold text-foreground">
+                Settings &gt; Channels
+              </Link>{" "}
+              for autonomous publishing.
             </p>
-            <Button asChild size="sm" variant="outline" className="mt-2">
-              <Link href="/settings">Connect Channels in Settings</Link>
-            </Button>
           </div>
         ) : null}
 
@@ -534,12 +539,7 @@ Include 3-5 relevant viral hashtags: ${researchContext?.hashtags?.slice(0, 5).jo
           {mode === "single" ? (
             <Button
               onClick={() => scheduleSinglePost()}
-              disabled={
-                isScheduling ||
-                !generatedContent.trim() ||
-                !selectedChannelTypeId ||
-                connectedChannels.length === 0
-              }
+              disabled={isScheduling || !generatedContent.trim()}
             >
               {isScheduling ? (
                 <>
@@ -554,7 +554,7 @@ Include 3-5 relevant viral hashtags: ${researchContext?.hashtags?.slice(0, 5).jo
           ) : (
             <Button
               onClick={() => runBatchAutoPilot()}
-              disabled={isBatchScheduling || connectedChannels.length === 0}
+              disabled={isBatchScheduling}
               className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {isBatchScheduling ? (

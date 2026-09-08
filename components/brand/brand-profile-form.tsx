@@ -35,6 +35,7 @@ import {
   Layers,
   Sparkle,
   RotateCcw,
+  BookOpen,
 } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -47,6 +48,13 @@ interface BrandProfile {
   mainOffer?: string; // alias
   main_offer: string;
   competitors: string;
+  products_services?: string;
+  pricing_details?: string;
+  knowledge_docs?: string;
+  location?: string;
+  booking_url?: string;
+  auto_call_enabled?: boolean;
+  auto_call_min_score?: number;
 }
 
 interface ChannelItem {
@@ -108,6 +116,13 @@ const EMPTY_PROFILE: BrandProfile = {
   brand_tone: "Professional",
   main_offer: "",
   competitors: "",
+  products_services: "",
+  pricing_details: "",
+  knowledge_docs: "",
+  location: "India & Global",
+  booking_url: "",
+  auto_call_enabled: false,
+  auto_call_min_score: 7,
 };
 
 // ─── Field Config ─────────────────────────────────────────────────────────────
@@ -118,6 +133,11 @@ const FIELD_ICONS: Record<string, React.ElementType> = {
   brand_tone: Megaphone,
   main_offer: Gift,
   competitors: Link2,
+  products_services: Briefcase,
+  pricing_details: Clock,
+  knowledge_docs: BookOpen,
+  location: Building2,
+  booking_url: Link2,
 };
 
 export function BrandProfileForm() {
@@ -608,6 +628,89 @@ export function BrandProfileForm() {
                 onChange={(e) => set("competitors", e.target.value)}
               />
             </FormField>
+
+            {/* Target Location / Geography */}
+            <FormField
+              id="brand-location"
+              label="Location / Target Geography"
+              description="City, state, or countries targeted (e.g. Indore, India, Worldwide)"
+              icon={FIELD_ICONS.location}
+            >
+              <Input
+                id="brand-location"
+                placeholder="e.g. Indore & Central India, or United States & UK"
+                value={form.location || ""}
+                onChange={(e) => set("location", e.target.value)}
+              />
+            </FormField>
+
+            {/* Calendar Booking Link */}
+            <FormField
+              id="brand-booking-url"
+              label="Calendar Booking URL (Cal.com / Calendly)"
+              description="Used by AI Chatbot & WhatsApp Bot to book appointments automatically"
+              icon={FIELD_ICONS.booking_url}
+            >
+              <Input
+                id="brand-booking-url"
+                placeholder="e.g. https://cal.com/your-brand/consultation"
+                value={form.booking_url || ""}
+                onChange={(e) => set("booking_url", e.target.value)}
+              />
+            </FormField>
+
+            {/* Products & Services Catalog */}
+            <div className="sm:col-span-2">
+              <FormField
+                id="brand-products-services"
+                label="Products & Services Catalog"
+                description="List your flagship services, packages, or SKUs so the AI can explain them accurately"
+                icon={FIELD_ICONS.products_services}
+              >
+                <Textarea
+                  id="brand-products-services"
+                  placeholder="e.g. 1. Complete Growth Funnel Setup (₹45,000)&#10;2. Performance Meta Ads Management (₹25,000/mo)&#10;3. AI Chatbot Integration (₹15,000 one-time)"
+                  value={form.products_services || ""}
+                  onChange={(e) => set("products_services", e.target.value)}
+                  className="min-h-[70px] resize-none"
+                />
+              </FormField>
+            </div>
+
+            {/* Pricing & Guarantee Details */}
+            <div className="sm:col-span-2">
+              <FormField
+                id="brand-pricing-details"
+                label="Pricing Structure & Guarantee"
+                description="Special pricing rules, refunds, or risk-reversal guarantees"
+                icon={FIELD_ICONS.pricing_details}
+              >
+                <Input
+                  id="brand-pricing-details"
+                  placeholder="e.g. 100% money-back guarantee within 14 days; custom quotes for enterprise tiers"
+                  value={form.pricing_details || ""}
+                  onChange={(e) => set("pricing_details", e.target.value)}
+                />
+              </FormField>
+            </div>
+
+            {/* Brand Knowledge Base & Document Vault */}
+            <div className="sm:col-span-2">
+              <FormField
+                id="brand-knowledge-docs"
+                label="Brand Knowledge Base & Document Vault (RAG Grounding)"
+                description="Paste company docs, product manuals, FAQs, or brochure text so the AI answers with zero hallucinations"
+                icon={FIELD_ICONS.knowledge_docs}
+              >
+                <Textarea
+                  id="brand-knowledge-docs"
+                  placeholder="Paste company FAQs, customer onboarding guides, warranty policies, service agreements, or sales pitch decks here..."
+                  value={form.knowledge_docs || ""}
+                  onChange={(e) => set("knowledge_docs", e.target.value)}
+                  className="min-h-[85px] resize-none text-xs leading-relaxed"
+                />
+              </FormField>
+            </div>
           </div>
         )}
       </form>

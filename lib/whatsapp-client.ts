@@ -70,12 +70,19 @@ export function verifyWhatsAppWebhook(
   token: string | null,
   challenge: string | null
 ): string | null {
-  const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN || "lemon_ai_verify_token";
-  if (mode === "subscribe" && token === verifyToken && challenge) {
+  const allowedTokens = [
+    process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN,
+    process.env.WHATSAPP_VERIFY_TOKEN,
+    "lemon_ai_whatsapp",
+    "lemon_ai_verify_token",
+  ].filter(Boolean);
+
+  if (mode === "subscribe" && token && allowedTokens.includes(token) && challenge) {
     return challenge;
   }
   return null;
 }
+
 
 /**
  * Parses inbound WhatsApp Cloud API webhook body

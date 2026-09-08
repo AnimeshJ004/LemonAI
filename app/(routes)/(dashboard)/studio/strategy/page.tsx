@@ -418,6 +418,8 @@ export default function ContentStrategyPage() {
         researchContext={{
           niche: strategy?.strategyOverview || form.goal,
           targetAudience: form.goal,
+          strategyPillars: strategy?.contentPillars || [],
+          strategySchedule: strategy?.weeklySchedule || [],
         }}
       />
     </div>

@@ -6,6 +6,7 @@ import { generateAdCreativeImage } from "@/lib/ai-image-generator";
 import { POST_STATUS } from "@/constants/post";
 import { inngest } from "@/inngest/client";
 import { getUserMemoryContext, buildMemoryPromptBlock } from "@/lib/ai-memory";
+import { callResilientCompletion } from "@/lib/ai-gateway";
 
 export const maxDuration = 120; // Support extended AI batch generation
 
@@ -16,6 +17,8 @@ export interface AutoPilotRequest {
   brandTone?: string;
   mainOffer?: string;
   competitors?: string;
+  strategyPillars?: any[];
+  strategySchedule?: any[];
   days?: number; // 1 to 30 days
   daysToGenerate?: number; // fallback
   postsPerDay?: number; // 1 to 5 posts per day
@@ -177,11 +180,21 @@ export async function POST(req: NextRequest) {
         : getTimeSlots(postsPerDay);
     const brandTags = formatBrandHashtags({ business_name: businessName, niche });
 
+    const strategyContext = [
+      body.strategyPillars && Array.isArray(body.strategyPillars) && body.strategyPillars.length > 0
+        ? `STRATEGIC CONTENT PILLARS TO HONOR:\n${body.strategyPillars.map((p: any) => `- ${p.name} (${p.percentage}%): ${p.description}`).join("\n")}`
+        : "",
+      body.strategySchedule && Array.isArray(body.strategySchedule) && body.strategySchedule.length > 0
+        ? `STRATEGIC TOPIC ROADMAP:\n${body.strategySchedule.map((s: any) => `- Day ${s.day} [${s.contentType}]: ${s.topic} (${s.pillar})`).join("\n")}`
+        : "",
+    ].filter(Boolean).join("\n\n");
+
     const systemPrompt = `You are an elite Autonomous Social Media Director and Marketing Strategist for "${businessName}" in the "${niche}" industry.
 Brand Voice: ${brandTone}.
 Target Demographics: ${targetAudience || "Target customers, professionals, and clients"}.
 Core Offer: ${mainOffer || "High quality service & premium results"}.
 Competitor References: ${competitors || "Industry leaders"}.${memoryBlock}
+${strategyContext ? `\nVerified Strategy Inputs:\n${strategyContext}\n` : ""}
 
 Your mission:
 Generate exactly ${totalPostsToGenerate} high-converting social media posts designed to be scheduled across ${days} days with ${postsPerDay} posts per day.
@@ -191,7 +204,7 @@ CRITICAL TIMELINE RULES:
 - Day Offset 0 is TODAY: Post 1 must be a timely, high-impact introductory announcement, value insight, or compelling hook for today.
 - Day Offsets MUST range from 0 to ${days - 1} (total ${days} days).
 - Each post must feature punchy hooks, value-packed body copy, and 3-5 brand-relevant hashtags.
-- Distribute across diverse content pillars (e.g. Industry Tips, Social Proof/Case Study, Counter-Intuitive Insights, Behind-the-Scenes/Mission, and Strong Direct Offers).
+- Align post topics with the user's strategic pillars and roadmap.
 
 Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
 {
@@ -207,48 +220,20 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
   ]
 }`;
 
-    let aiRawResponse = "";
-    try {
-      const completion = await insforge.ai.chat.completions.create({
-        model: "google/gemini-3.8-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: `Generate all ${totalPostsToGenerate} social media posts starting TODAY (Day 0 to ${days - 1}) with ${postsPerDay} posts/day for ${businessName}.`,
-          },
-        ],
-      });
-      aiRawResponse = completion.choices[0]?.message?.content ?? "";
-    } catch (err) {
-      // Fallback to Gemini 3.7 Flash
-      const completion = await insforge.ai.chat.completions.create({
-        model: "google/gemini-3.7-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: `Generate all ${totalPostsToGenerate} social media posts starting TODAY (Day 0 to ${days - 1}) with ${postsPerDay} posts/day for ${businessName}.`,
-          },
-        ],
-      });
-      aiRawResponse = completion.choices[0]?.message?.content ?? "";
-    }
+    const completion = await callResilientCompletion({
+      jsonMode: true,
+      messages: [
+        { role: "system", content: systemPrompt },
+        {
+          role: "user",
+          content: `Generate all ${totalPostsToGenerate} social media posts starting TODAY (Day 0 to ${days - 1}) with ${postsPerDay} posts/day for ${businessName}.`,
+        },
+      ],
+    });
 
-    const cleanJson = aiRawResponse.replace(/```(?:json)?\s*|\s*```/g, "").trim();
     let generatedPosts: any[] = [];
-
-    try {
-      const parsed = JSON.parse(cleanJson);
-      generatedPosts = parsed.posts || parsed.socialCalendar || [];
-    } catch (parseErr) {
-      console.warn("AI post parse fallback, attempting relaxed extraction:", parseErr);
-      const match = cleanJson.match(/\[[\s\S]*\]/);
-      if (match) {
-        try {
-          generatedPosts = JSON.parse(match[0]);
-        } catch {}
-      }
+    if (completion.data) {
+      generatedPosts = completion.data.posts || completion.data.socialCalendar || (Array.isArray(completion.data) ? completion.data : []);
     }
 
     // 5. Structure Post Payloads for every Day & Time Slot (STARTS TODAY: Day 0)

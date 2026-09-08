@@ -16,8 +16,9 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Slider } from "@/components/ui/slider";
-import { LayoutTemplate, Sparkles, Copy, Check, Calendar } from "lucide-react";
+import { LayoutTemplate, Sparkles, Copy, Check, Calendar, FileText } from "lucide-react";
 import ScheduleFromResearchDialog from "@/components/competition/schedule-from-research-dialog";
+import { CarouselVisualPreview } from "@/components/studio/carousel-visual-preview";
 
 const SLIDE_TYPE_COLORS: Record<string, string> = {
   COVER: "bg-primary/10 border-primary/30",
@@ -95,6 +96,27 @@ export default function CarouselStudioPage() {
     setCopiedCaption(true);
     setTimeout(() => setCopiedCaption(false), 2000);
     toast.success("Caption copied!");
+  };
+
+  const exportSlideDeck = () => {
+    if (!carousel?.slides?.length) return;
+    const markdown = `# ${carousel.title}\n\n` +
+      carousel.slides.map((s: any) => `## Slide ${s.slideNumber} (${s.type})\n### ${s.headline}\n${s.subtext || ""}\n${s.bulletPoints?.map((bp: string) => `- ${bp}`).join("\n") || ""}\n*${s.swipePrompt || ""}*`).join("\n\n---\n\n") +
+      `\n\n---\n\n### Caption:\n${carousel.caption || ""}`;
+    
+    navigator.clipboard.writeText(markdown);
+    
+    try {
+      const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${(carousel.title || "carousel").replace(/[^a-z0-9]/gi, "_").toLowerCase()}_deck.md`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {}
+
+    toast.success("Slide deck copied to clipboard & downloaded!");
   };
 
   return (
@@ -182,7 +204,15 @@ export default function CarouselStudioPage() {
                 {carousel.slides?.length} slides · {form.platform} format
               </p>
             </div>
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={exportSlideDeck}
+                className="h-9 text-xs gap-1.5"
+              >
+                <FileText className="size-3.5" /> Export Markdown Deck
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -200,8 +230,18 @@ export default function CarouselStudioPage() {
             </div>
           </div>
 
-          {/* Slides */}
+          {/* Visual Slide Deck Generator */}
+          <CarouselVisualPreview
+            carousel={carousel}
+            onSchedule={() => setIsScheduleOpen(true)}
+          />
+
+          {/* Slides Outline */}
+          <div className="pt-2">
+            <h4 className="text-sm font-semibold text-muted-foreground mb-3">Slide Breakdown & Copy</h4>
+          </div>
           {carousel.slides?.map((slide: any, i: number) => (
+
             <Card
               key={i}
               className={SLIDE_TYPE_COLORS[slide.type] || ""}

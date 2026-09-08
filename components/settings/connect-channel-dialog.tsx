@@ -138,6 +138,41 @@ export function ConnectChannelDialog({
                 </DialogHeader>
 
                 <form onSubmit={handleConnect} className="space-y-4 py-2">
+                    {/* 1-Click OAuth Option (Non-Bluesky channels) */}
+                    {!isBluesky && (
+                        <div className="p-3.5 rounded-xl border bg-muted/30 space-y-2.5">
+                            <div className="flex items-center justify-between">
+                                <span className="text-xs font-semibold flex items-center gap-1.5 text-foreground">
+                                    <ShieldCheck className="size-4 text-emerald-500" />
+                                    1-Click OAuth 2.0 (Recommended)
+                                </span>
+                                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium px-1.5 py-0.5 bg-emerald-500/10 rounded-sm">
+                                    Official
+                                </span>
+                            </div>
+                            <p className="text-[11px] text-muted-foreground leading-relaxed">
+                                Authorize directly through official {channel.name} authentication. No manual developer token copy-pasting required.
+                            </p>
+                            <Button
+                                type="button"
+                                className="w-full text-xs font-semibold gap-2 h-9 text-white shadow-xs hover:opacity-90 transition-opacity"
+                                style={{ backgroundColor: channel.color || "#2563eb" }}
+                                onClick={() => {
+                                    window.location.href = `/api/channel/oauth?channelTypeId=${channel.id}`;
+                                }}
+                            >
+                                <HugeiconsIcon icon={icon} className="size-4" />
+                                Connect with {channel.name}
+                            </Button>
+                            <div className="relative my-2 pt-1">
+                                <div className="absolute inset-0 flex items-center"><div className="w-full border-t" /></div>
+                                <div className="relative flex justify-center text-[10px] uppercase text-muted-foreground">
+                                    <span className="bg-background px-2">or enter manual credentials</span>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* Platform Specific Guidance */}
                     {isBluesky && (
                         <div className="rounded-xl border border-blue-200 bg-blue-50/60 dark:border-blue-950 dark:bg-blue-950/30 p-3.5 space-y-1.5 text-xs text-blue-900 dark:text-blue-200">

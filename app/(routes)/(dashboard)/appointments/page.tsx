@@ -1,10 +1,11 @@
 "use client";
 import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CalendarClock, ExternalLink, CheckCircle, Save, Sparkles, Check } from "lucide-react";
+import { CalendarClock, ExternalLink, CheckCircle, Save, Sparkles, Check, Database, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -28,7 +29,7 @@ const BOOKING_TOOLS: BookingTool[] = [
       "Sign up or log in at cal.com",
       "Create an event type (e.g. '30-Min Discovery Consultation')",
       "Copy your public booking link (e.g. https://cal.com/yourbrand/call)",
-      "Save the link below for Lemon AI bots to share",
+      "Save the link below — Lemon AI bots will share it automatically",
     ],
   },
   {
@@ -41,7 +42,7 @@ const BOOKING_TOOLS: BookingTool[] = [
       "Sign up or log in at calendly.com",
       "Create an event type (e.g. '15-Min Strategy Session')",
       "Copy your scheduling URL",
-      "Paste below and save",
+      "Paste below and save to database",
     ],
   },
   {
@@ -54,12 +55,13 @@ const BOOKING_TOOLS: BookingTool[] = [
       "Open Google Calendar on desktop",
       "Click '+ Create' → Appointment schedule",
       "Set your availability and copy the booking page link",
-      "Paste below and save",
+      "Paste below and save to database",
     ],
   },
 ];
 
 export default function AppointmentsPage() {
+  const queryClient = useQueryClient();
   const [bookingLinks, setBookingLinks] = useState<Record<string, string>>({
     "Cal.com": "",
     "Calendly": "",
@@ -67,21 +69,72 @@ export default function AppointmentsPage() {
   });
   const [savedTool, setSavedTool] = useState<string | null>(null);
 
+  // Fetch verified brand profile from database
+  const { data: brandData, isLoading } = useQuery({
+    queryKey: ["brand-profile"],
+    queryFn: async () => {
+      const res = await fetch("/api/brand");
+      if (!res.ok) throw new Error("Failed to load brand profile");
+      return res.json();
+    },
+  });
+
+  const activeProfile = brandData?.profile;
+  const dbBookingUrl = activeProfile?.booking_url || "";
+
+  // Initialize from database URL if available
   useEffect(() => {
-    const saved = localStorage.getItem("lemon_booking_links");
-    if (saved) {
-      try {
-        setBookingLinks(JSON.parse(saved));
-      } catch {}
+    if (dbBookingUrl) {
+      if (dbBookingUrl.includes("cal.com")) {
+        setBookingLinks((prev) => ({ ...prev, "Cal.com": dbBookingUrl }));
+      } else if (dbBookingUrl.includes("calendly")) {
+        setBookingLinks((prev) => ({ ...prev, "Calendly": dbBookingUrl }));
+      } else if (dbBookingUrl.includes("calendar.google")) {
+        setBookingLinks((prev) => ({ ...prev, "Google Calendar": dbBookingUrl }));
+      } else {
+        setBookingLinks((prev) => ({ ...prev, "Cal.com": dbBookingUrl }));
+      }
     }
-  }, []);
+  }, [dbBookingUrl]);
+
+  // Database Save Mutation
+  const saveMutation = useMutation({
+    mutationFn: async ({ toolName, url }: { toolName: string; url: string }) => {
+      const payload = {
+        ...(activeProfile || {}),
+        business_name: activeProfile?.business_name || "My Business",
+        niche: activeProfile?.niche || "Professional Services",
+        target_audience: activeProfile?.target_audience || "Valued Clients",
+        booking_url: url.trim(),
+      };
+
+      const res = await fetch("/api/brand", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to save booking link");
+      }
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      setSavedTool(vars.toolName);
+      setTimeout(() => setSavedTool(null), 2500);
+      queryClient.invalidateQueries({ queryKey: ["brand-profile"] });
+      toast.success(`${vars.toolName} link synced to Server & Database! AI bots will now share this link.`);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to save link to database");
+    },
+  });
 
   const handleSave = (toolName: string) => {
-    const updated = { ...bookingLinks };
-    localStorage.setItem("lemon_booking_links", JSON.stringify(updated));
-    setSavedTool(toolName);
-    setTimeout(() => setSavedTool(null), 2500);
-    toast.success(`${toolName} link saved! Lemon AI will now share this with qualified leads.`);
+    const url = bookingLinks[toolName];
+    if (!url?.trim()) return;
+    saveMutation.mutate({ toolName, url });
   };
 
   return (
@@ -95,6 +148,32 @@ export default function AppointmentsPage() {
         </p>
       </div>
 
+      {/* Active Database Booking Status */}
+      <Card className="border-emerald-500/20 bg-emerald-50/20 dark:bg-emerald-950/15 shadow-xs">
+        <CardContent className="pt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="size-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-600">
+              <Database className="size-4" />
+            </div>
+            <div>
+              <p className="text-xs font-semibold text-emerald-900 dark:text-emerald-300">
+                Server-Synced Booking Link Status
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {dbBookingUrl ? (
+                  <span className="font-mono text-foreground font-medium">{dbBookingUrl}</span>
+                ) : (
+                  "No booking URL saved to database yet. Save one below to arm the AI bots."
+                )}
+              </p>
+            </div>
+          </div>
+          <Badge variant="outline" className={dbBookingUrl ? "bg-emerald-500/10 text-emerald-600 border-emerald-300" : "bg-muted text-muted-foreground"}>
+            {dbBookingUrl ? "● Active in AI Bots" : "Action Required"}
+          </Badge>
+        </CardContent>
+      </Card>
+
       {/* How AI works banner */}
       <Card className="border-primary/20 bg-primary/5 shadow-xs">
         <CardContent className="pt-4 space-y-2">
@@ -103,30 +182,33 @@ export default function AppointmentsPage() {
             <p className="text-sm font-semibold text-foreground">How Lemon AI Uses Your Scheduling Links</p>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Whenever a customer expresses interest in your offer across any touchpoint, our AI assistants seamlessly guide them toward scheduling a meeting using your verified booking link.
+            Whenever a customer expresses interest in your offer across any touchpoint, our AI assistants seamlessly guide them toward scheduling a meeting using your verified booking link stored in the Business Brain.
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
             {[
               "Website Chatbot upon high purchase intent",
-              "WhatsApp sales bot after customer qualification",
-              "Instagram & Facebook DM lead follow-ups",
-              "Automated email & CRM recovery workflows",
-            ].map((channel, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs text-foreground/90">
-                <span className="text-primary font-bold">✓</span> {channel}
+              "WhatsApp Bot for qualified customer inquiries",
+              "Instagram & Facebook DM automation bot",
+              "AI Voice Calling Agent SMS / follow-up handoff",
+            ].map((pt, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs text-foreground/80">
+                <Check className="size-3.5 text-primary shrink-0" />
+                <span>{pt}</span>
               </div>
             ))}
           </div>
         </CardContent>
       </Card>
 
-      {/* Booking Providers List */}
+      {/* Tools list */}
       <div className="space-y-4">
         {BOOKING_TOOLS.map((tool) => (
           <Card key={tool.name} className="shadow-sm">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">{tool.name}</CardTitle>
+                <CardTitle className="text-base font-bold flex items-center gap-2">
+                  {tool.name}
+                </CardTitle>
                 <Badge variant="outline" className={`text-xs font-medium ${tool.badgeColor}`}>
                   {tool.badge}
                 </Badge>
@@ -154,21 +236,25 @@ export default function AppointmentsPage() {
                     onChange={(e) =>
                       setBookingLinks((prev) => ({ ...prev, [tool.name]: e.target.value }))
                     }
-                    className="text-xs"
+                    className="text-xs font-mono"
                   />
                   <Button
                     size="sm"
                     onClick={() => handleSave(tool.name)}
-                    disabled={!bookingLinks[tool.name]?.trim()}
+                    disabled={!bookingLinks[tool.name]?.trim() || saveMutation.isPending}
                     className="text-xs gap-1.5 shrink-0"
                   >
-                    {savedTool === tool.name ? (
+                    {saveMutation.isPending && savedTool === tool.name ? (
+                      <>
+                        <Loader2 className="size-3.5 animate-spin" /> Saving...
+                      </>
+                    ) : savedTool === tool.name ? (
                       <>
                         <Check className="size-3.5 text-emerald-300" /> Saved!
                       </>
                     ) : (
                       <>
-                        <Save className="size-3.5" /> Save Link
+                        <Save className="size-3.5" /> Save to Database
                       </>
                     )}
                   </Button>

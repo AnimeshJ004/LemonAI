@@ -1,5 +1,6 @@
 import { inngest } from "../client";
 import { getInsforgeAdminClient, getInsforgeServerClient } from "@/lib/insforge-server";
+import { decrypt } from "@/lib/encryption";
 
 /**
  * Polls published posts for new comments every 15 minutes
@@ -38,27 +39,70 @@ export const pollPostComments = inngest.createFunction(
 
       for (const post of publishedPosts) {
         const channelType = (post.user_channels as any)?.channel_types?.type;
-        const accessToken = (post.user_channels as any)?.access_token;
+        const rawToken = (post.user_channels as any)?.access_token;
+        if (!rawToken) continue;
+
+        let accessToken: string | null = null;
+        try {
+          accessToken = decrypt(rawToken);
+        } catch {
+          accessToken = rawToken;
+        }
 
         if (!accessToken) continue;
+
 
         await step.run(`process-post-${post.id}`, async () => {
           let postReplies = 0;
 
-          // If post has a published URL or media ID, query Graph API for unhandled comments
-          const mediaIdMatch = post.published_url?.match(/\/p\/([^\/\?]+)/);
-          const shortcode = mediaIdMatch?.[1];
+          // Only poll platforms with active Graph API comments support
+          const normalizedChannel = String(channelType || "").toUpperCase();
+          if (normalizedChannel !== "INSTAGRAM" && normalizedChannel !== "FACEBOOK") {
+            // Other platforms (Twitter/LinkedIn/YouTube) require specialized comment webhooks
+            return { skipped: true, channel: channelType };
+          }
 
-          if (accessToken && shortcode) {
+          // Extract Media ID or shortcode from published URL (e.g. https://instagram.com/p/{shortcode} or facebook.com/{post_id})
+          const mediaIdMatch = post.published_url?.match(/\/(?:p|posts|status|reel)\/([^\/\?]+)/);
+          const rawMediaId = mediaIdMatch?.[1];
+
+          let numericMediaId: string | null = null;
+          if (rawMediaId && /^\d+$/.test(rawMediaId)) {
+            numericMediaId = rawMediaId;
+          } else if (rawMediaId && accessToken) {
+            // If shortcode (e.g. Cxyz123), resolve authentic numeric Media ID via Graph API
             try {
-              // Fetch latest comments on this media
+              const igAccountId = (post.user_channels as any)?.provider_account_id;
+              const lookupUrl = igAccountId
+                ? `https://graph.facebook.com/v22.0/${igAccountId}/media?fields=id,shortcode,permalink&limit=25&access_token=${encodeURIComponent(accessToken)}`
+                : `https://graph.facebook.com/v22.0/me/media?fields=id,shortcode,permalink&limit=25&access_token=${encodeURIComponent(accessToken)}`;
+              
+              const lookupRes = await fetch(lookupUrl);
+              if (lookupRes.ok) {
+                const lookupData = await lookupRes.json();
+                const matched = (lookupData.data || []).find(
+                  (m: any) => m.shortcode === rawMediaId || (post.published_url && m.permalink && post.published_url.includes(m.shortcode))
+                );
+                if (matched?.id) {
+                  numericMediaId = matched.id;
+                }
+              }
+            } catch (resolveErr) {
+              console.warn("[Comment Poller] Shortcode resolution notice:", resolveErr);
+            }
+          }
+
+          if (accessToken && numericMediaId) {
+            try {
+              // Query Meta Graph API directly for media comments using authentic numeric ID
               const res = await fetch(
-                `https://graph.facebook.com/v22.0/me?fields=business_discovery.username(${shortcode}){media{comments{id,text,from,timestamp}}}&access_token=${accessToken}`
+                `https://graph.facebook.com/v22.0/${numericMediaId}/comments?fields=id,text,from,timestamp&access_token=${encodeURIComponent(accessToken)}`
               );
 
               if (res.ok) {
                 const json = await res.json();
-                const comments = json?.business_discovery?.media?.comments?.data || [];
+                const comments = json?.data || [];
+
 
                 for (const item of comments) {
                   const commentId = item.id;
