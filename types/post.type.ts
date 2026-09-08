@@ -13,6 +13,7 @@ export type PostType = {
     scheduled_at: string
     status: string
     published_url?: string | null
+    error_message?: string | null
     user_channel_id?: string | null
     user_channels?: {
         id: string;
@@ -36,7 +37,8 @@ export type CalendarPostType = {
   content: string
   images: ImageObject[]
   scheduledAt: Date
-  status: "queue" | "draft" | "published"
+  status: "queue" | "draft" | "published" | "failed"
+  error_message?: string | null
   user_channel_id: string
   channel_types: ChannelType
 }

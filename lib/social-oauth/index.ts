@@ -1,21 +1,97 @@
 import { ChannelTypeEnum } from "@/constants/channels";
 import { OAuthProvider, OAuthTokenResponse } from "./types";
 
-function getEnv(key: string) {
-  const value = process.env[key]
-  if (!value) throw new Error(`${key} is missing.`)
-  return value
-}
+const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
+  authUrl: string;
+  tokenUrl: string;
+  profileUrl: string;
+  scope: string[];
+}> = {
+  [ChannelTypeEnum.TWITTER]: {
+    authUrl: "https://twitter.com/i/oauth2/authorize",
+    tokenUrl: "https://api.twitter.com/2/oauth2/token",
+    profileUrl: "https://api.twitter.com/2/users/me",
+    scope: ["tweet.read", "tweet.write", "users.read", "offline.access"],
+  },
+  [ChannelTypeEnum.LINKEDIN]: {
+    authUrl: "https://www.linkedin.com/oauth/v2/authorization",
+    tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken",
+    profileUrl: "https://api.linkedin.com/v2/userinfo",
+    scope: ["openid", "profile", "email", "w_member_social"],
+  },
+  [ChannelTypeEnum.FACEBOOK]: {
+    authUrl: "https://www.facebook.com/v22.0/dialog/oauth",
+    tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
+    profileUrl: "https://graph.facebook.com/v22.0/me?fields=id,name,picture",
+    scope: ["public_profile", "pages_show_list", "pages_read_engagement", "pages_manage_posts"],
+  },
+  [ChannelTypeEnum.INSTAGRAM]: {
+    authUrl: "https://www.facebook.com/v22.0/dialog/oauth",
+    tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
+    profileUrl: "https://graph.facebook.com/v22.0/me?fields=id,name,picture",
+    scope: [
+      "instagram_basic",
+      "instagram_content_publish",
+      "pages_show_list",
+      "pages_read_engagement",
+      "pages_manage_posts"
+    ],
+  },
+  [ChannelTypeEnum.YOUTUBE]: {
+    authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    profileUrl: "https://www.googleapis.com/oauth2/v2/userinfo",
+    scope: ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"],
+  },
+  [ChannelTypeEnum.THREADS]: {
+    authUrl: "https://threads.net/oauth/authorize",
+    tokenUrl: "https://graph.threads.net/oauth/access_token",
+    profileUrl: "https://graph.threads.net/v1.0/me?fields=id,username,threads_profile_picture_url",
+    scope: ["threads_basic", "threads_content_publish"],
+  },
+  [ChannelTypeEnum.BLUESKY]: {
+    authUrl: "https://bsky.social/xrpc/com.atproto.server.createSession",
+    tokenUrl: "https://bsky.social/xrpc/com.atproto.server.refreshSession",
+    profileUrl: "https://bsky.social/xrpc/com.atproto.server.getSession",
+    scope: [],
+  },
+  [ChannelTypeEnum.TIKTOK]: {
+    authUrl: "https://www.tiktok.com/v2/auth/authorize/",
+    tokenUrl: "https://open.tiktok.com/v2/oauth/token/",
+    profileUrl: "https://open.tiktok.com/v2/user/info/",
+    scope: ["user.info.basic", "video.upload", "video.publish"],
+  },
+};
 
-function getConfig(type:ChannelTypeEnum) {
-    return {
-        authUrl: getEnv(`${type}_AUTH_URL`),
-        tokenUrl: getEnv(`${type}_TOKEN_URL`),
-        profileUrl: getEnv(`${type}_PROFILE_URL`),
-        clientId: getEnv(`${type}_CLIENT_ID`),
-        clientSecret: getEnv(`${type}_CLIENT_SECRET`),
-        scope: getEnv(`${type}_SCOPES`).split(',').map(s => s.trim()).filter(Boolean),
-    }
+function getConfig(type: ChannelTypeEnum) {
+  const defaults = DEFAULT_PROVIDER_CONFIGS[type];
+  let clientId = process.env[`${type}_CLIENT_ID`]?.replace(/^["']|["']$/g, "").trim() || "";
+  let clientSecret = process.env[`${type}_CLIENT_SECRET`]?.replace(/^["']|["']$/g, "").trim() || "";
+
+  // Support generic META_CLIENT_ID / META_APP_ID for Instagram, Facebook, and Threads
+  if (!clientId && (type === ChannelTypeEnum.INSTAGRAM || type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.THREADS)) {
+    clientId = process.env.META_CLIENT_ID?.replace(/^["']|["']$/g, "").trim() || 
+               process.env.META_APP_ID?.replace(/^["']|["']$/g, "").trim() || "";
+    clientSecret = process.env.META_CLIENT_SECRET?.replace(/^["']|["']$/g, "").trim() || 
+                   process.env.META_APP_SECRET?.replace(/^["']|["']$/g, "").trim() || "";
+  }
+
+  const authUrl = process.env[`${type}_AUTH_URL`] || defaults?.authUrl || "";
+  const tokenUrl = process.env[`${type}_TOKEN_URL`] || defaults?.tokenUrl || "";
+  const profileUrl = process.env[`${type}_PROFILE_URL`] || defaults?.profileUrl || "";
+  const rawScopes = process.env[`${type}_SCOPES`];
+  const scope = rawScopes
+    ? rawScopes.split(",").map((s) => s.trim()).filter(Boolean)
+    : defaults?.scope || [];
+
+  return {
+    authUrl,
+    tokenUrl,
+    profileUrl,
+    clientId,
+    clientSecret,
+    scope,
+  };
 }
 
 
@@ -55,14 +131,15 @@ function createProvider(type:ChannelTypeEnum,opts: { pkce?: boolean} = {}): OAut
     type,
     getAuthorizationUrl: ({state, redirectUri, codeChallenge, codeChallengeMethod}) => {
        const config = getConfig(type)
-       // Build authorization URL with query parameters
-       const params = new URLSearchParams({
-         client_id: config.clientId,
-         redirect_uri: redirectUri,
-         response_type: 'code',
-         scope: config.scope.join(' '),
-         state,
-       })
+        const isMeta = type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.INSTAGRAM;
+        const scopeStr = isMeta ? config.scope.join(',') : config.scope.join(' ');
+        const params = new URLSearchParams({
+          client_id: config.clientId,
+          redirect_uri: redirectUri,
+          response_type: 'code',
+          scope: scopeStr,
+          state,
+        })
        if (opts.pkce && codeChallenge && codeChallengeMethod) {
          params.append('code_challenge', codeChallenge)
          params.append('code_challenge_method', codeChallengeMethod)
@@ -124,6 +201,62 @@ function createProvider(type:ChannelTypeEnum,opts: { pkce?: boolean} = {}): OAut
     },
     getProfile: async ({ accessToken }) => {
       const config = getConfig(type);
+
+      // Resolve linked Instagram Business Account from user's Facebook Pages
+      if (type === ChannelTypeEnum.INSTAGRAM) {
+        try {
+          const igRes = await fetch("https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,profile_picture_url}", {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/json",
+            }
+          });
+          if (igRes.ok) {
+            const igData = await igRes.json();
+            const pages = igData?.data || [];
+            const pageWithIg = pages.find((p: any) => p.instagram_business_account?.id);
+            if (pageWithIg?.instagram_business_account) {
+              const ig = pageWithIg.instagram_business_account;
+              return {
+                providerAccountId: ig.id,
+                handle: ig.username ? `@${ig.username.replace(/^@/, '')}` : null,
+                profileImage: ig.profile_picture_url || null,
+                pageAccessToken: pageWithIg.access_token || accessToken,
+              };
+            }
+          }
+        } catch (igErr) {
+          console.warn("[Instagram OAuth] Notice checking me/accounts:", igErr);
+        }
+      }
+
+      // Resolve user's primary Facebook Page and Page Access Token for Facebook
+      if (type === ChannelTypeEnum.FACEBOOK) {
+        try {
+          const fbRes = await fetch("https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,picture{url}", {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/json",
+            }
+          });
+          if (fbRes.ok) {
+            const fbData = await fbRes.json();
+            const pages = fbData?.data || [];
+            const primaryPage = pages[0];
+            if (primaryPage) {
+              return {
+                providerAccountId: primaryPage.id,
+                handle: primaryPage.name || null,
+                profileImage: primaryPage.picture?.data?.url || null,
+                pageAccessToken: primaryPage.access_token || accessToken,
+              };
+            }
+          }
+        } catch (fbErr) {
+          console.warn("[Facebook OAuth] Notice checking me/accounts:", fbErr);
+        }
+      }
+
       const response = await fetch(config.profileUrl,{
         headers:{
             Authorization: `Bearer ${accessToken}`,
@@ -142,8 +275,6 @@ function createProvider(type:ChannelTypeEnum,opts: { pkce?: boolean} = {}): OAut
 
       const profileImage = profileData?.thread_profile_picture ?? profileData?.profile_image_url ?? profileData?.avatar_url ?? profileData?.profile_image ?? profileData?.picture?.data?.url ?? profileData?.picture?.url ?? profileData?.picture ?? null
 
-      console.log(providerAccountId, handle, "providerAccountId")
-     
       return {
         providerAccountId,
         handle,
@@ -167,14 +298,23 @@ const PROVIDERS: Record<ChannelTypeEnum, any> = {
 
 export function isProviderConfigured(type: ChannelTypeEnum): boolean {
   try {
-    const clientId = process.env[`${type}_CLIENT_ID`]?.replace(/^["']|["']$/g, '').trim();
-    const authUrl = process.env[`${type}_AUTH_URL`];
-    if (!clientId || !authUrl) return false;
+    let clientId = process.env[`${type}_CLIENT_ID`]?.replace(/^["']|["']$/g, "").trim();
+    if (!clientId && (type === ChannelTypeEnum.INSTAGRAM || type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.THREADS)) {
+      clientId = process.env.META_CLIENT_ID?.replace(/^["']|["']$/g, "").trim() || 
+                 process.env.META_APP_ID?.replace(/^["']|["']$/g, "").trim();
+    }
+    if (!clientId) return false;
     const lower = clientId.toLowerCase();
-    if (lower.includes("your-") || lower.includes("placeholder") || lower.includes("todo")) {
+    if (
+      lower.includes("your-") ||
+      lower.includes("placeholder") ||
+      lower.includes("todo") ||
+      lower.length < 3
+    ) {
       return false;
     }
-    return true;
+    const config = getConfig(type);
+    return Boolean(config.authUrl && config.tokenUrl && config.clientId);
   } catch {
     return false;
   }
