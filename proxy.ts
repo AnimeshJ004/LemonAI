@@ -8,7 +8,11 @@ const isPublicRoute = createRouteMatcher([
   "/sign-up(.*)",
   "/api/auth/(.*)",
   "/api/chat/(.*)",
-  "/api/webhooks/(.*)",
+  "/api/webhooks/(.*)",        // Meta, WhatsApp, Calcom, Clerk, Voice webhooks
+  "/api/social/webhook(.*)",   // Instagram/Facebook comment webhook (Meta pushes here)
+  "/api/social/whatsapp(.*)",  // WhatsApp Cloud API webhook
+  "/api/chatbot(.*)",          // Public website chatbot widget
+  "/api/inngest(.*)",          // Inngest background job runner
   "/api/crm/(.*)",
   "/api/voice/(.*)",
 ]);
