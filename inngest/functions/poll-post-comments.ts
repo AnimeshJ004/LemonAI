@@ -12,7 +12,7 @@ export const pollPostComments = inngest.createFunction(
     name: "Poll & Auto-Reply to Post Comments",
     triggers: [
       {
-        cron: "*/2 * * * *", // Polling backup runs every 2 minutes (Meta webhook is real-time)
+        cron: "* * * * *", // Polling backup runs every 1 minute for near-instant fallback
       },
     ],
   },

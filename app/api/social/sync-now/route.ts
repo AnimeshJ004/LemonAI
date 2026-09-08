@@ -47,9 +47,9 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // 2. Fetch recent media from Instagram
+    // 2. Fetch recent media from Instagram (latest 5 posts for rapid scanning)
     const mediaRes = await fetch(
-      `https://graph.facebook.com/v22.0/${igAccountId}/media?fields=id,caption,comments{id,text,from,timestamp}&limit=10&access_token=${accessToken}`
+      `https://graph.facebook.com/v22.0/${igAccountId}/media?fields=id,caption,comments{id,text,from,timestamp}&limit=5&access_token=${accessToken}`
     );
 
     if (!mediaRes.ok) {

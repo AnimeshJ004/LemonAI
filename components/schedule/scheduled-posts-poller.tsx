@@ -39,13 +39,40 @@ export function ScheduledPostsPoller() {
       }
     }
 
-    // Initial check on mount
+    // Check for new Instagram comments to auto-reply immediately
+    async function syncLiveComments() {
+      try {
+        const res = await fetch("/api/social/sync-now", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.repliedCount && data.repliedCount > 0) {
+            console.log(`[Auto-Reply Poller] Answered ${data.repliedCount} new comment(s) on Instagram.`);
+            queryClient.invalidateQueries({
+              predicate: (q) => q.queryKey[0] === "social-comments",
+            });
+          }
+        }
+      } catch {
+        // Silent catch in background poller
+      }
+    }
+
+    // Initial checks on mount
     checkDuePosts();
+    syncLiveComments();
 
-    // Periodic check every 45 seconds
-    const interval = setInterval(checkDuePosts, 45_000);
+    // Periodic checks: posts every 45s, comments every 20s for immediate replies
+    const postInterval = setInterval(checkDuePosts, 45_000);
+    const commentInterval = setInterval(syncLiveComments, 20_000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(postInterval);
+      clearInterval(commentInterval);
+    };
   }, [queryClient]);
 
   return null;
