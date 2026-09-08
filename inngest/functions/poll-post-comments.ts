@@ -1,5 +1,5 @@
 import { inngest } from "../client";
-import { getInsforgeAdminClient, getInsforgeServerClient } from "@/lib/insforge-server";
+import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { decrypt } from "@/lib/encryption";
 
 /**
@@ -25,7 +25,7 @@ export const pollPostComments = inngest.createFunction(
 
       const { data: publishedPosts } = await admin.database
         .from("scheduled_posts")
-        .select("id, user_id, published_url, user_channel_id, user_channels(access_token, channel_types(type))")
+        .select("id, user_id, published_url, user_channel_id, user_channels(access_token, provider_account_id, channel_types(type))")
         .eq("status", "published")
         .gte("published_at", sevenDaysAgo)
         .not("published_url", "is", null)
@@ -120,9 +120,9 @@ export const pollPostComments = inngest.createFunction(
 
                   if (existing) continue;
 
-                  // Autonomous AI reply generation
-                  const { insforge } = await getInsforgeServerClient();
-                  const completion = await insforge.ai.chat.completions.create({
+                  // Autonomous AI reply generation using admin client (no auth context needed in cron)
+                  const adminClient = getInsforgeAdminClient();
+                  const completion = await adminClient.ai.chat.completions.create({
                     model: "google/gemini-3.8-flash",
                     messages: [
                       {

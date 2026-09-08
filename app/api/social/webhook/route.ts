@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { decrypt } from "@/lib/encryption";
 
 export const maxDuration = 60;
 
@@ -11,9 +12,13 @@ export async function GET(req: NextRequest) {
   const token = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
 
-  const verifyToken = process.env.META_WEBHOOK_VERIFY_TOKEN || "lemon_ai_social";
+  // Support both env var names for flexibility
+  const verifyToken =
+    process.env.META_WEBHOOK_VERIFY_TOKEN ||
+    process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ||
+    "lemon_ai_webhook";
 
-  if (mode === "subscribe" && token === verifyToken) {
+  if (mode === "subscribe" && token === verifyToken && challenge) {
     return new Response(challenge, { status: 200 });
   }
 
@@ -62,26 +67,63 @@ export async function POST(req: NextRequest) {
             // Ignore if check fails
           }
 
-          // 2. Find the post and associated user/access token
-          let userId = "usr_lemon_auto";
+          // 2. Resolve the correct SaaS tenant via user_channels.provider_account_id
+          // Meta sends entry.id = the Instagram Business Account ID or Page ID
+          const metaAccountId = entry.id as string | undefined;
+          let userId: string | null = null;
           let accessToken: string | null = null;
           let postId: string | null = null;
 
           try {
-            // Check if post exists in scheduled_posts matching this media
-            const { data: post } = await admin.database
-              .from("scheduled_posts")
-              .select("id, user_id, user_channel_id, user_channels(access_token)")
-              .limit(1)
-              .maybeSingle();
+            if (metaAccountId) {
+              // Primary: Match by Instagram Business Account ID stored at connect time
+              const { data: channel } = await admin.database
+                .from("user_channels")
+                .select("user_id, access_token")
+                .eq("provider_account_id", metaAccountId)
+                .maybeSingle();
 
-            if (post) {
-              postId = post.id;
-              userId = post.user_id;
-              accessToken = (post.user_channels as any)?.access_token || null;
+              if (channel?.user_id) {
+                userId = channel.user_id;
+                accessToken = decrypt(channel.access_token);
+              }
+            }
+
+            // Fallback: grab latest active channel if account ID lookup failed
+            if (!userId) {
+              const { data: fallbackChannel } = await admin.database
+                .from("user_channels")
+                .select("user_id, access_token")
+                .eq("is_connected", true)
+                .eq("is_active", true)
+                .order("updated_at", { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (fallbackChannel?.user_id) {
+                userId = fallbackChannel.user_id;
+                accessToken = decrypt(fallbackChannel.access_token);
+                console.warn(`[Webhook] Used fallback channel for account ${metaAccountId} — reconnect Instagram to fix this.`);
+              }
+            }
+
+            // Try to match the comment's media to a scheduled post for richer logging
+            if (userId && mediaId) {
+              const { data: post } = await admin.database
+                .from("scheduled_posts")
+                .select("id")
+                .eq("user_id", userId)
+                .ilike("published_url", `%${mediaId}%`)
+                .maybeSingle();
+              postId = post?.id || null;
             }
           } catch (e) {
-            console.warn("Could not find post for comment:", e);
+            console.warn("[Webhook] Could not resolve tenant from comment:", e);
+          }
+
+          if (!userId) {
+            console.warn(`[Webhook] Could not resolve user for Meta account ${metaAccountId}. Skipping comment.`);
+            continue;
           }
 
           // 3. Autonomous AI Sentiment Analysis & Reply Generation
@@ -136,10 +178,11 @@ Return ONLY valid JSON:
           }
 
           // 4. Send Public Reply back to Instagram/Facebook automatically via Graph API
+          // Use the resolved decrypted token; fall back to META_ADS_ACCESS_TOKEN env if available
           const tokenToUse = accessToken || process.env.META_ADS_ACCESS_TOKEN;
           if (tokenToUse && platformCommentId) {
             try {
-              await fetch(`https://graph.facebook.com/v22.0/${platformCommentId}/replies`, {
+              const replyRes = await fetch(`https://graph.facebook.com/v22.0/${platformCommentId}/replies`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -147,10 +190,17 @@ Return ONLY valid JSON:
                   access_token: tokenToUse,
                 }),
               });
-              console.log(`[Webhook] Autonomous reply posted to Instagram for comment: ${platformCommentId}`);
+              const replyJson = await replyRes.json().catch(() => ({}));
+              if (!replyRes.ok) {
+                console.error(`[Webhook] Meta Graph API reply error for comment ${platformCommentId}:`, JSON.stringify(replyJson));
+              } else {
+                console.log(`[Webhook] ✓ Auto-reply posted to comment ${platformCommentId}`);
+              }
             } catch (postErr) {
-              console.warn("Failed to post reply via Meta Graph API:", postErr);
+              console.warn("[Webhook] Failed to post reply via Meta Graph API:", postErr);
             }
+          } else {
+            console.warn(`[Webhook] No access token available for comment ${platformCommentId}. Connect Instagram channel first.`);
           }
 
           // 5. If purchase intent detected, send private DM automatically
