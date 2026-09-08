@@ -1,5 +1,6 @@
 import { POST_STATUS, POST_STATUSES } from "@/constants/post";
 import { inngest } from "@/inngest/client";
+import { publishPostDirectly } from "@/lib/direct-publisher";
 import { getInsforgeServerClient } from "@/lib/insforge-server";
 import { ImageObject } from "@/types/post.type";
 import { auth } from "@clerk/nextjs/server";
@@ -200,24 +201,35 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Failed to create posts" }, { status: 500 })
         }
 
-        // Send Inngest event for queued posts
+        // Publish immediately across all selected channels if scheduled for now, or queue
         if (postStatus === POST_STATUS.QUEUE && data && data.length > 0) {
-            try {
-                await inngest.send(
-                    data.map((post: any) => ({
-                        name: "post/publish.requested",
-                        data: { postId: post.id }
-                    }))
+            const isDueNow = new Date(scheduledAt).getTime() <= Date.now() + 120_000;
+
+            if (isDueNow) {
+                // Publish all selected channels at the exact same time concurrently
+                console.log(`[Publisher] Immediately publishing ${data.length} post(s) simultaneously across all channels`);
+                await Promise.allSettled(
+                    data.map((post: any) => publishPostDirectly(post.id))
                 );
-            } catch (inngestErr: any) {
-                const isConnRefused =
-                    inngestErr?.cause?.code === "ECONNREFUSED" ||
-                    inngestErr?.code === "ECONNREFUSED" ||
-                    String(inngestErr?.message || "").includes("fetch failed");
-                if (isConnRefused) {
-                    console.warn("[Inngest] Local Inngest server not running on port 8288. Posts are saved to database queue.");
-                } else {
-                    console.warn("[Inngest] Background dispatch error:", inngestErr?.message || inngestErr);
+            } else {
+                // Send Inngest event for future scheduled posts
+                try {
+                    await inngest.send(
+                        data.map((post: any) => ({
+                            name: "post/publish.requested",
+                            data: { postId: post.id }
+                        }))
+                    );
+                } catch (inngestErr: any) {
+                    const isConnRefused =
+                        inngestErr?.cause?.code === "ECONNREFUSED" ||
+                        inngestErr?.code === "ECONNREFUSED" ||
+                        String(inngestErr?.message || "").includes("fetch failed");
+                    if (isConnRefused) {
+                        console.warn("[Inngest] Local Inngest server not running. Posts are saved to database queue.");
+                    } else {
+                        console.warn("[Inngest] Background dispatch error:", inngestErr?.message || inngestErr);
+                    }
                 }
             }
         }

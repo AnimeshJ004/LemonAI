@@ -5,6 +5,7 @@ import { getBrandProfileForUser, formatBrandHashtags, cleanTag, userBrandCache }
 import { generateAdCreativeImage } from "@/lib/ai-image-generator";
 import { POST_STATUS } from "@/constants/post";
 import { inngest } from "@/inngest/client";
+import { publishPostDirectly } from "@/lib/direct-publisher";
 import { getUserMemoryContext, buildMemoryPromptBlock } from "@/lib/ai-memory";
 import { callResilientCompletion } from "@/lib/ai-gateway";
 
@@ -381,41 +382,36 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
       }
     }
 
-    // 8. Handle Publishing & Inngest Scheduling for ALL Created Posts
-    // Send Inngest event for all queued posts so Inngest handles sleepUntil and triggers at scheduled times
+    // 8. Handle Publishing & Inngest Scheduling for Created Posts
     if (targetStatus === POST_STATUS.QUEUE && createdPosts.length > 0) {
-      const postsWithTokens = createdPosts.filter((p: any) =>
-        Boolean(p?.user_channels?.access_token && p?.user_channels?.access_token.length > 10)
-      );
-      const simulatedPosts = createdPosts.filter((p: any) =>
-        !Boolean(p?.user_channels?.access_token && p?.user_channels?.access_token.length > 10)
+      const nowMs = Date.now();
+      const todayDuePosts = createdPosts.filter(
+        (p: any) => new Date(p.scheduled_at).getTime() <= nowMs + 120_000
       );
 
-      // Dispatch Inngest events for all posts with live tokens
-      if (postsWithTokens.length > 0) {
+      // Publish initial due posts across all selected channels simultaneously
+      const postsToPublishNow = todayDuePosts.length > 0 ? todayDuePosts : [createdPosts[0]];
+
+      console.log(`[AutoPilot] Publishing ${postsToPublishNow.length} initial post(s) simultaneously across channels`);
+      await Promise.allSettled(
+        postsToPublishNow.map((p: any) => publishPostDirectly(p.id))
+      );
+
+      // Send Inngest event for future scheduled posts so Inngest can trigger them at scheduled times
+      const futurePosts = createdPosts.filter(
+        (p: any) => !postsToPublishNow.some((nowPost) => nowPost.id === p.id)
+      );
+
+      if (futurePosts.length > 0) {
         try {
           await inngest.send(
-            postsWithTokens.map((p: any) => ({
+            futurePosts.map((p: any) => ({
               name: "post/publish.requested",
               data: { postId: p.id },
             }))
           );
         } catch (inngestErr: any) {
-          console.warn("[Inngest] Auto-pilot batch dispatch notice:", inngestErr?.message || inngestErr);
-        }
-      }
-
-      // For simulated/demo channels without live OAuth, also send to Inngest (Inngest fallback publishes them)
-      if (simulatedPosts.length > 0) {
-        try {
-          await inngest.send(
-            simulatedPosts.map((p: any) => ({
-              name: "post/publish.requested",
-              data: { postId: p.id },
-            }))
-          );
-        } catch (inngestErr: any) {
-          console.warn("[Inngest] Simulated posts dispatch notice:", inngestErr?.message || inngestErr);
+          console.warn("[Inngest] Auto-pilot future posts dispatch notice:", inngestErr?.message || inngestErr);
         }
       }
     }
