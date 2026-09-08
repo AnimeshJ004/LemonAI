@@ -9,11 +9,13 @@ import ScheduleToolbar from "./schedule-toolbar";
 import { Skeleton } from "../ui/skeleton";
 import {
   AlarmClockCheck,
+  AlertCircle,
   ExternalLink,
   LayoutList,
   Pencil,
   Pin,
   Plus,
+  RefreshCw,
   Send,
   ThumbsDown,
   ThumbsUp,
@@ -46,6 +48,37 @@ type GroupPostType = {
   posts: PostType[];
 };
 
+function formatFriendlyError(errorMsg?: string | null, channelType?: string): string {
+  if (!errorMsg) {
+    return "The post could not be published. Verify your account connection and click 'Retry Publish'.";
+  }
+  const lower = errorMsg.toLowerCase();
+  if (
+    lower.includes("not a confirmed user") ||
+    lower.includes("logged out") ||
+    lower.includes("error validating access token") ||
+    lower.includes("session is invalid")
+  ) {
+    return "Meta session expired or Facebook App is in Development Mode (unconfirmed tester). Reconnect your Instagram account in Channels / Settings.";
+  }
+  if (lower.includes("missing instagram business account id")) {
+    return "Instagram publishing requires a Professional/Business or Creator account connected to a Facebook Page.";
+  }
+  if (lower.includes("grapheme too big") || lower.includes("too big") || lower.includes("character")) {
+    return "The post content exceeded the platform character limit (e.g. Bluesky maximum is 300 characters).";
+  }
+  if (lower.includes("rate limit")) {
+    return "Platform rate limit reached. Please wait a short while before retrying.";
+  }
+  if (lower.includes("unsupported provider type")) {
+    return `Direct automated publishing is currently not supported for ${channelType || "this channel"}.`;
+  }
+  if (lower.includes("image")) {
+    return "The image could not be loaded or processed by the social platform's servers. Please edit and attach a valid image.";
+  }
+  return errorMsg;
+}
+
 const ListView = ({
   setCreatePostModalOpen,
 }: {
@@ -65,6 +98,7 @@ const ListView = ({
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [postToDelete, setPostToDelete] = useState<PostType | null>(null);
   const [likedPostIds, setLikedPostIds] = useState<Set<string>>(new Set());
+  const [publishingPostId, setPublishingPostId] = useState<string | null>(null);
 
   const [postsQuery, totalsQuery] = useQueries({
     queries: [
@@ -102,12 +136,21 @@ const ListView = ({
   const publishPostMutation = useMutation({
     mutationFn: async (postId: string) => {
       const res = await fetch(`/api/post/${postId}/publish`, { method: "POST" });
-      if (!res.ok) throw new Error("Failed to publish post");
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson?.error || "Failed to publish post");
+      }
       return res.json();
     },
     onSuccess: () => {
-      toast.success("Post processing...");
+      toast.success("Post queued for publishing...");
       queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === "posts" });
+      queryClient.invalidateQueries({ queryKey: ["posts", "totals"] });
+      setPublishingPostId(null);
+    },
+    onError: (err: any) => {
+      toast.error(err?.message || "Failed to publish post");
+      setPublishingPostId(null);
     },
   });
 
@@ -201,14 +244,15 @@ const ListView = ({
 
   const handlePublishNow = (post: PostType) => {
     if (publishPostMutation.isPending) return;
+    setPublishingPostId(post.id);
     publishPostMutation.mutate(post.id);
   };
 
   return (
     <>
-      <div className="flecx flex-col h-full pt-3">
+      <div className="flex flex-col h-full min-h-0 pt-1">
         {/* ── Tab bar ── */}
-        <div className="flex items-center justify-between border-b px-6">
+        <div className="flex items-center justify-between border-b px-4 sm:px-6 shrink-0 pb-2">
           <Tabs value={activeTab || "draft"} onValueChange={(val) => setActiveTab(val)}>
             <TabsList variant="line" className="space-x-4">
               <TabsTrigger value="draft">Draft {renderTotalBadge(totalDrafts)}</TabsTrigger>
@@ -227,8 +271,8 @@ const ListView = ({
         </div>
 
         {/* ── Post List ── */}
-        <div className="flex-1 p-6">
-          <div className="max-w-[900px] mx-auto w-full space-y-2">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
+          <div className="max-w-[900px] mx-auto w-full space-y-4 pb-20">
             {isPending ? (
               <div className="space-y-8">
                 {Array.from({ length: 2 }).map((_, index) => (
@@ -268,6 +312,7 @@ const ListView = ({
                         const previewImage = post.images?.[0]?.url;
                         const isLiked = likedPostIds.has(post.id);
                         const isPublished = post.status === "published";
+                        const isFailed = post.status === "failed";
 
                         return (
                           <div
@@ -280,16 +325,24 @@ const ListView = ({
                               <div
                                 className={cn(
                                   "flex items-center gap-2",
-                                  isPast(scheduleDate) &&
-                                    (post.status === "queue" || post.status === "draft")
+                                  isFailed
+                                    ? "text-destructive font-medium"
+                                    : isPast(scheduleDate) &&
+                                      (post.status === "queue" || post.status === "draft")
                                     ? "text-destructive"
                                     : "text-muted-foreground"
                                 )}
                               >
-                                <Pin className="size-4" />
+                                {isFailed ? (
+                                  <AlertCircle className="size-4 shrink-0" />
+                                ) : (
+                                  <Pin className="size-4 shrink-0" />
+                                )}
                                 <span className="capitalize">
-                                  {isPast(scheduleDate) &&
-                                  (post.status === "queue" || post.status === "draft")
+                                  {isFailed
+                                    ? "Failed"
+                                    : isPast(scheduleDate) &&
+                                      (post.status === "queue" || post.status === "draft")
                                     ? "Overdue"
                                     : post.status === "draft"
                                     ? "Draft"
@@ -299,9 +352,9 @@ const ListView = ({
                             </div>
 
                             {/* Post Card */}
-                            <Card className="py-0 gap-0">
+                            <Card className={cn("py-0 gap-0 transition-all", isFailed && "border-destructive/40 bg-destructive/[0.015]")}>
                               <CardContent className="grid gap-6 p-5 md:grid-cols-[minmax(0,1fr)_250px]">
-                                <div className="space-y-5">
+                                <div className="space-y-4">
                                   {channel ? (
                                     <ChannelAvatar
                                       type={channel.type}
@@ -310,6 +363,25 @@ const ListView = ({
                                       name={post.user_channels?.handle || channel.name}
                                     />
                                   ) : null}
+
+                                  {/* Error Diagnostics for Failed Posts */}
+                                  {isFailed && (
+                                    <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive space-y-1">
+                                      <div className="flex items-center gap-1.5 font-semibold">
+                                        <AlertCircle className="size-4 shrink-0" />
+                                        <span>Publishing Error</span>
+                                      </div>
+                                      <p className="leading-relaxed text-destructive/90">
+                                        {formatFriendlyError(post.error_message, channel?.type)}
+                                      </p>
+                                      {post.error_message && (
+                                        <p className="text-[10px] text-muted-foreground font-mono bg-background/60 rounded px-1.5 py-0.5 mt-1 break-all line-clamp-2" title={post.error_message}>
+                                          API: {post.error_message}
+                                        </p>
+                                      )}
+                                    </div>
+                                  )}
+
                                   <p className="whitespace-pre-wrap text-sm leading-6 line-clamp-4">
                                     {post.content}
                                   </p>
@@ -425,16 +497,34 @@ const ListView = ({
                                         Reschedule
                                       </Button>
 
+                                      {/* Retry Button (failed only) */}
+                                      {isFailed && (
+                                        <Button
+                                          id={`retry-post-${post.id}`}
+                                          variant="default"
+                                          className="bg-destructive hover:bg-destructive/90 text-destructive-foreground gap-1.5 text-xs font-semibold h-8"
+                                          disabled={publishPostMutation.isPending && publishingPostId === post.id}
+                                          onClick={() => handlePublishNow(post)}
+                                        >
+                                          {publishPostMutation.isPending && publishingPostId === post.id ? (
+                                            <Spinner className="size-3.5" />
+                                          ) : (
+                                            <RefreshCw className="size-3.5" />
+                                          )}
+                                          Retry Publish
+                                        </Button>
+                                      )}
+
                                       {/* Publish Now (drafts only) */}
                                       {post.status === "draft" && (
                                         <Button
                                           id={`publish-post-${post.id}`}
                                           variant="outline"
-                                          disabled={publishPostMutation.isPending}
+                                          disabled={publishPostMutation.isPending && publishingPostId === post.id}
                                           onClick={() => handlePublishNow(post)}
                                         >
-                                          {publishPostMutation.isPending ? (
-                                            <Spinner />
+                                          {publishPostMutation.isPending && publishingPostId === post.id ? (
+                                            <Spinner className="size-3.5" />
                                           ) : (
                                             <Send className="size-4" />
                                           )}

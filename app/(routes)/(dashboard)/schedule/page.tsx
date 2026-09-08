@@ -5,10 +5,11 @@ import { useQueryState } from "nuqs"
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { CalendarIcon, LayoutList, Plus } from "lucide-react";
+import { CalendarIcon, LayoutList, Plus, Sparkles } from "lucide-react";
 import ListView from "@/components/schedule/list-view";
 import CalendarView from "@/components/schedule/calendar-view";
 import CreatePostDialog from "@/components/schedule/create-post-dialog";
+import AutonomousCampaignDialog from "@/components/campaign/autonomous-campaign-dialog";
 
 type ViewType = "calendar" | "list"
 const SchedulePageContent = () => {
@@ -19,6 +20,7 @@ const SchedulePageContent = () => {
     defaultValue: "",
   });
   const [createPostModalOpen, setCreatePostModalOpen] = useState(false);
+  const [autoScheduleModalOpen, setAutoScheduleModalOpen] = useState(false);
 
   return (
     <div className="flex flex-col h-full w-full min-w-0">
@@ -48,6 +50,14 @@ const SchedulePageContent = () => {
               <span className="text-xs font-medium">Calendar</span>
             </ToggleGroupItem>
           </ToggleGroup>
+          <Button
+            variant="outline"
+            onClick={() => setAutoScheduleModalOpen(true)}
+            className="gap-1.5 font-semibold text-xs sm:text-sm h-8 px-3 shrink-0 border-primary/40 hover:bg-primary/10 hover:text-primary transition-colors"
+          >
+            <Sparkles className="size-3.5 text-primary" />
+            Auto-Schedule Days
+          </Button>
           <Button onClick={() => setCreatePostModalOpen(true)} className="gap-1.5 font-semibold text-xs sm:text-sm h-8 px-3 shrink-0">
             <Plus className="size-4" />
             New Post
@@ -55,7 +65,7 @@ const SchedulePageContent = () => {
         </div>
       </header>
 
-      <div className="flex-1 min-w-0 overflow-hidden pt-2">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden pt-2">
         {activeView === "list" ? (
           <ListView setCreatePostModalOpen={setCreatePostModalOpen} />
         ) : (
@@ -66,6 +76,10 @@ const SchedulePageContent = () => {
       <CreatePostDialog 
         open={createPostModalOpen}
         onOpenChange={setCreatePostModalOpen}
+      />
+      <AutonomousCampaignDialog
+        open={autoScheduleModalOpen}
+        onOpenChange={setAutoScheduleModalOpen}
       />
     </div>
   );

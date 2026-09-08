@@ -40,8 +40,24 @@ export async function GET(request: NextRequest) {
         const { data: posts, error } = await postQuery;
         if (error) throw error;
 
-        //console.log("posts:", JSON.stringify(posts, null, 2))
+        // Auto-heal: dispatch any overdue queued posts that reached their scheduled time
+        const nowIso = new Date().toISOString();
+        const overduePosts = (posts ?? []).filter(
+            (p: any) => p.status === "queue" && p.scheduled_at && p.scheduled_at <= nowIso
+        );
 
+        if (overduePosts.length > 0) {
+            try {
+                await inngest.send(
+                    overduePosts.map((p: any) => ({
+                        name: "post/publish.requested",
+                        data: { postId: p.id }
+                    }))
+                );
+            } catch (dispatchErr) {
+                console.warn("[Inngest] Auto-dispatch due posts notice:", dispatchErr);
+            }
+        }
 
         if (!groupByDate) return NextResponse.json({ posts: posts ?? [] })
 

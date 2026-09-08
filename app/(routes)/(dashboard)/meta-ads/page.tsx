@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { AdOptimizerBanner } from "@/components/meta-ads/ad-optimizer-banner";
 
 export default function MetaAdsPage() {
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
@@ -33,6 +34,13 @@ export default function MetaAdsPage() {
   const activeCount = campaigns.filter(
     (c) => c.status?.toUpperCase() === "ACTIVE"
   ).length;
+  const draftCount = campaigns.filter(
+    (c) => c.status?.toUpperCase() === "DRAFT" || !c.status
+  ).length;
+  const totalDailyBudget = campaigns.reduce(
+    (sum, c) => sum + (Number(c.daily_budget) || 0),
+    0
+  );
 
   const STAT_CARDS = [
     {
@@ -45,25 +53,25 @@ export default function MetaAdsPage() {
     },
     {
       icon: Users,
-      label: "Total Reach",
-      value: campaigns.length > 0 ? `${(campaigns.length * 12.4).toFixed(1)}k` : "—",
-      sub: "Across all targeted audiences",
+      label: "Daily Ad Budget",
+      value: totalDailyBudget > 0 ? `₹${totalDailyBudget.toLocaleString()}` : "₹0",
+      sub: "Total allocated daily budget",
       color: "text-emerald-600",
       bg: "bg-emerald-50 dark:bg-emerald-950/30",
     },
     {
       icon: Zap,
-      label: "Ad Impressions",
-      value: campaigns.length > 0 ? `${(campaigns.length * 28.5).toFixed(1)}k` : "—",
-      sub: "Instagram & Facebook feeds",
+      label: "Staged Drafts",
+      value: String(draftCount),
+      sub: "Ready for review & launch",
       color: "text-amber-600",
       bg: "bg-amber-50 dark:bg-amber-950/30",
     },
     {
       icon: Megaphone,
-      label: "Click-Through Rate",
-      value: campaigns.length > 0 ? "3.8%" : "—",
-      sub: "Avg. high-CTR performance",
+      label: "Meta Marketing API",
+      value: "Live v21.0",
+      sub: "Direct Graph API Deployment",
       color: "text-purple-600",
       bg: "bg-purple-50 dark:bg-purple-950/30",
     },
@@ -138,6 +146,9 @@ export default function MetaAdsPage() {
           );
         })}
       </div>
+
+      {/* Autonomous AI Ad Optimizer (Sir's Flywheel Requirement) */}
+      <AdOptimizerBanner />
 
       {/* Main View: List or Create Wizard */}
       {viewMode === "list" ? (

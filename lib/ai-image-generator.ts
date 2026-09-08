@@ -80,7 +80,7 @@ async function pollReplicatePrediction(predictionUrl: string, apiToken: string, 
  * Curated High-Definition Commercial Photography Database (Emergency Safe Fallback)
  * 100% Real Camera Photography (Zero anime, zero 3D) in case Replicate token runs out of credits
  */
-const CURATED_COMMERCIAL_PHOTOS: Record<string, string[]> = {
+export const CURATED_COMMERCIAL_PHOTOS: Record<string, string[]> = {
   business: [
     "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80",
     "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=1200&q=80",
@@ -104,7 +104,7 @@ const CURATED_COMMERCIAL_PHOTOS: Record<string, string[]> = {
   ],
 };
 
-const CURATED_VERTICAL_REELS: string[] = [
+export const CURATED_VERTICAL_REELS: string[] = [
   "https://assets.mixkit.co/videos/preview/mixkit-young-woman-working-with-a-laptop-in-an-office-42790-large.mp4",
   "https://assets.mixkit.co/videos/preview/mixkit-group-of-diverse-people-having-a-business-meeting-42777-large.mp4",
   "https://assets.mixkit.co/videos/preview/mixkit-man-working-on-a-laptop-in-a-coffee-shop-42784-large.mp4",

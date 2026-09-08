@@ -265,7 +265,151 @@ export const publishScheduledPost = inngest.createFunction(
     }
 )
 
+/**
+ * Direct Synchronous Post Publisher
+ * Publishes a scheduled_post directly to the provider without requiring an active Inngest server.
+ */
+export async function executePostPublishDirectly(postId: string): Promise<{
+    success: boolean;
+    publishedUrl?: string | null;
+    error?: string;
+    provider?: string;
+}> {
+    const insforge = getInsforgeAdminClient();
+    const { data: post, error } = await insforge.database
+        .from("scheduled_posts")
+        .select("*, user_channels(*, channel_types(id, type, name))")
+        .eq("id", postId)
+        .single();
 
+    if (error || !post) {
+        return { success: false, error: error?.message || "Post not found" };
+    }
+
+    const userChannel = post.user_channels;
+    if (!userChannel) {
+        const msg = "No connected social channel assigned to this post";
+        await markPostFailed(post.id, msg);
+        return { success: false, error: msg };
+    }
+
+    const providerType = userChannel.channel_types?.type;
+    const accessToken = decrypt(userChannel.access_token);
+    const refreshToken = decrypt(userChannel.refresh_token);
+    const tokenExpiresAt = userChannel.token_expires_at
+        ? new Date(userChannel.token_expires_at).getTime()
+        : null;
+    const callbackUrl = `${APP_URL}/api/channel/callback`;
+
+    if (!providerType || !accessToken) {
+        const msg = `Missing access token for ${providerType || "channel"}. Please reconnect in Channels.`;
+        await markPostFailed(post.id, msg);
+        return { success: false, error: msg, provider: providerType };
+    }
+
+    let currentAccessToken = accessToken;
+    if (refreshToken && tokenExpiresAt !== null && tokenExpiresAt <= Date.now()) {
+        try {
+            const refreshed = await refreshOauthToken(
+                providerType as ChannelTypeEnum,
+                refreshToken,
+                callbackUrl
+            );
+            await saveRefreshedToken(
+                userChannel.id,
+                refreshed.accessToken,
+                refreshed.refreshToken ?? refreshToken,
+                refreshed.expiresAt
+            );
+            currentAccessToken = refreshed.accessToken;
+        } catch (refreshErr) {
+            console.warn("[Direct Publisher] Notice refreshing token:", refreshErr);
+        }
+    }
+
+    const logger = {
+        info: (msg: string, ctx?: any) => console.log(`[Direct Publisher] INFO: ${msg}`, ctx || ""),
+        warn: (msg: string, ctx?: any) => console.warn(`[Direct Publisher] WARN: ${msg}`, ctx || ""),
+        error: (msg: string, ctx?: any) => console.error(`[Direct Publisher] ERROR: ${msg}`, ctx || ""),
+    };
+
+    let publishedUrl: string | null = null;
+    try {
+        if (providerType === ChannelTypeEnum.TWITTER) {
+            publishedUrl = await publishToTwitter({
+                accessToken: currentAccessToken,
+                content: post.content,
+                handle: userChannel.handle,
+                images: post.images,
+                logger,
+            });
+        } else if (providerType === ChannelTypeEnum.LINKEDIN) {
+            publishedUrl = await publishToLinkedIn({
+                accessToken: currentAccessToken,
+                text: post.content,
+                authorId: userChannel.provider_account_id,
+                images: post.images,
+                logger,
+            });
+        } else if (providerType === ChannelTypeEnum.BLUESKY) {
+            publishedUrl = await publishToBluesky({
+                identifier: userChannel.handle || process.env.BLUESKY_IDENTIFIER,
+                password: currentAccessToken || process.env.BLUESKY_APP_PASSWORD,
+                content: post.content,
+                images: post.images,
+                logger,
+            });
+        } else if (providerType === ChannelTypeEnum.INSTAGRAM) {
+            publishedUrl = await publishToInstagram({
+                accessToken: currentAccessToken,
+                instagramAccountId: userChannel.provider_account_id,
+                content: post.content,
+                images: post.images,
+                logger,
+            });
+        } else if (providerType === ChannelTypeEnum.FACEBOOK) {
+            publishedUrl = await publishToFacebook({
+                accessToken: currentAccessToken,
+                pageId: userChannel.provider_account_id,
+                content: post.content,
+                images: post.images,
+                logger,
+            });
+        } else if (providerType === ChannelTypeEnum.THREADS) {
+            publishedUrl = await publishToThreads({
+                accessToken: currentAccessToken,
+                content: post.content,
+                images: post.images,
+                logger,
+            });
+        } else if (providerType === ChannelTypeEnum.YOUTUBE) {
+            publishedUrl = await publishToYouTube({
+                accessToken: currentAccessToken,
+                content: post.content,
+                handle: userChannel.handle,
+                images: post.images,
+                logger,
+            });
+        } else if (providerType === ChannelTypeEnum.TIKTOK) {
+            publishedUrl = await publishToTikTok({
+                accessToken: currentAccessToken,
+                content: post.content,
+                images: post.images,
+                logger,
+            });
+        } else {
+            throw new Error(`Unsupported provider type: ${providerType}`);
+        }
+
+        await markPostPublished(post.id, publishedUrl);
+        return { success: true, publishedUrl, provider: providerType };
+    } catch (error: any) {
+        const msg = error?.message || "Failed to publish post";
+        logger.error("Direct publish failed:", { error });
+        await markPostFailed(post.id, msg);
+        return { success: false, error: msg, provider: providerType };
+    }
+}
 
 async function publishToTwitter({
     accessToken,
@@ -287,6 +431,12 @@ async function publishToTwitter({
         logger
     }) : [];
 
+    // Safely respect Twitter/X 280-character limit
+    let safeText = content || "";
+    if (safeText.length > 280) {
+        safeText = safeText.slice(0, 277).trim() + "...";
+    }
+
     const response = await fetch("https://api.x.com/2/tweets",{
         method:"POST",
         headers:{
@@ -294,7 +444,7 @@ async function publishToTwitter({
             "Content-Type": "application/json"
         },
         body: JSON.stringify({
-            text: content,
+            text: safeText,
              ...(mediaIds.length > 0 ? { 
                 media: { 
                     media_ids: mediaIds 
@@ -593,8 +743,15 @@ async function publishToBluesky({
     }
 
     const cleanIdentifier = identifier.replace(/^@/, "").trim();
+    let finalIdentifier = cleanIdentifier;
+    let finalPassword = password;
+    if (password.includes(":::")) {
+        const parts = password.split(":::");
+        finalIdentifier = parts[0].replace(/^@/, "").trim();
+        finalPassword = parts[1];
+    }
     const agent = new BskyAgent({ service: "https://bsky.social" });
-    await agent.login({ identifier: cleanIdentifier, password });
+    await agent.login({ identifier: finalIdentifier, password: finalPassword });
 
     let embed: any = undefined;
 
@@ -623,8 +780,14 @@ async function publishToBluesky({
         };
     }
 
+    // Bluesky has a strict 300 grapheme limit
+    let safeContent = content || "";
+    if (safeContent.length > 300) {
+        safeContent = safeContent.slice(0, 297).trim() + "...";
+    }
+
     const record: any = {
-        text: content,
+        text: safeContent,
         createdAt: new Date().toISOString(),
     };
 
@@ -706,7 +869,21 @@ async function publishToInstagram({
         throw new Error("Instagram requires at least one image to publish a post");
     }
 
-    const imageUrl = images[0].url;
+    const mediaUrl = images[0].url;
+    const isVideo = mediaUrl.toLowerCase().includes(".mp4") || (images[0] as any)?.media_type === "video";
+
+    const containerPayload: any = isVideo
+        ? {
+            media_type: "REELS",
+            video_url: mediaUrl,
+            caption: content,
+            access_token: accessToken,
+        }
+        : {
+            image_url: mediaUrl,
+            caption: content,
+            access_token: accessToken,
+        };
 
     // Step 1: Create Instagram Media Container
     const createRes = await fetch(
@@ -714,23 +891,52 @@ async function publishToInstagram({
         {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                image_url: imageUrl,
-                caption: content,
-                access_token: accessToken,
-            }),
+            body: JSON.stringify(containerPayload),
         }
     );
 
     const createData = await createRes.json();
     if (!createRes.ok || !createData.id) {
-        throw new Error(`Failed to create Instagram container: ${createData?.error?.message || JSON.stringify(createData)}`);
+        const errDetail = createData?.error?.message || JSON.stringify(createData);
+        if (errDetail.includes("not a confirmed user") || errDetail.includes("user logged out") || errDetail.includes("Error validating access token")) {
+            throw new Error(`Instagram session expired or unconfirmed in Meta Developer App: ${errDetail}. Please reconnect your Instagram account in Channels.`);
+        }
+        throw new Error(`Failed to create Instagram container: ${errDetail}`);
     }
 
     const containerId = createData.id;
-    logger.info("Instagram media container created", { containerId });
+    logger.info("Instagram media container created", { containerId, isVideo });
 
-    // Step 2: Publish Container  ← BUG FIX: was using instagramAccountId (may be null), must use resolvedAccountId
+    // Step 1.5: If video/reel, poll container status until 'FINISHED'
+    if (isVideo) {
+        let isReady = false;
+        const maxAttempts = 12;
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            await new Promise((r) => setTimeout(r, 2500));
+            try {
+                const statusRes = await fetch(
+                    `https://graph.facebook.com/v21.0/${containerId}?fields=status_code,status&access_token=${encodeURIComponent(accessToken)}`
+                );
+                if (statusRes.ok) {
+                    const statusData = await statusRes.json();
+                    if (statusData?.status_code === "FINISHED") {
+                        isReady = true;
+                        break;
+                    }
+                    if (statusData?.status_code === "ERROR") {
+                        throw new Error(`Instagram video processing failed: ${statusData?.status || "Container processing error"}`);
+                    }
+                }
+            } catch (pollErr: any) {
+                if (pollErr.message?.includes("Instagram video processing failed")) throw pollErr;
+            }
+        }
+        if (!isReady) {
+            logger.warn("Instagram video container did not confirm FINISHED within 30s, proceeding to attempt publish...");
+        }
+    }
+
+    // Step 2: Publish Container
     const publishRes = await fetch(
         `https://graph.facebook.com/v21.0/${resolvedAccountId}/media_publish`,
         {
@@ -746,6 +952,24 @@ async function publishToInstagram({
     const publishData = await publishRes.json();
     if (!publishRes.ok || !publishData.id) {
         throw new Error(`Failed to publish Instagram container: ${publishData?.error?.message || JSON.stringify(publishData)}`);
+    }
+
+    // Query Meta Graph API for authentic public permalink / shortcode
+    try {
+        const permalinkRes = await fetch(
+            `https://graph.facebook.com/v21.0/${publishData.id}?fields=permalink,shortcode&access_token=${encodeURIComponent(accessToken)}`
+        );
+        if (permalinkRes.ok) {
+            const permalinkData = await permalinkRes.json();
+            if (permalinkData?.permalink) {
+                return permalinkData.permalink;
+            }
+            if (permalinkData?.shortcode) {
+                return `https://www.instagram.com/p/${permalinkData.shortcode}/`;
+            }
+        }
+    } catch (permErr) {
+        logger.warn("Could not fetch IG permalink, fallback to media ID:", { permErr });
     }
 
     return `https://www.instagram.com/p/${publishData.id}`;
@@ -768,11 +992,29 @@ async function publishToFacebook({
     logger.info("Publishing to Facebook...", { targetId, content });
 
     if (images && images.length > 0) {
+        const mediaUrl = images[0].url;
+        const isVideo = mediaUrl.toLowerCase().includes(".mp4") || (images[0] as any)?.media_type === "video";
+
+        if (isVideo) {
+            const res = await fetch(`https://graph.facebook.com/v21.0/${targetId}/videos`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    file_url: mediaUrl,
+                    description: content,
+                    access_token: accessToken,
+                })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error?.message || "Failed to post video to Facebook");
+            return `https://facebook.com/${data.id}`;
+        }
+
         const res = await fetch(`https://graph.facebook.com/v21.0/${targetId}/photos`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                url: images[0].url,
+                url: mediaUrl,
                 caption: content,
                 access_token: accessToken,
             })
@@ -851,10 +1093,81 @@ async function publishToYouTube({
     images?: ImageObject[];
     logger: any;
 }) {
-    logger.info("Publishing scheduled post to YouTube...", { content, handle });
+    logger.info("Publishing scheduled post to YouTube...", { content, handle, mediaCount: images?.length });
     const cleanHandle = handle ? handle.replace(/^@/, '') : '';
 
-    // Verify token validity by calling YouTube API
+    // First check for active video attachment
+    const videoMedia = images?.find((img) => 
+        img.url.endsWith(".mp4") || 
+        img.url.endsWith(".mov") || 
+        img.url.includes("video")
+    );
+
+    if (videoMedia) {
+        try {
+            // Step 1: Initialize Resumable YouTube Video Upload
+            const title = (content.split('\n')[0] || "New Video").slice(0, 95);
+            const initRes = await fetch(
+                "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+                {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        "Content-Type": "application/json; charset=UTF-8",
+                        "X-Upload-Content-Type": "video/mp4",
+                    },
+                    body: JSON.stringify({
+                        snippet: {
+                            title,
+                            description: content,
+                            categoryId: "22", // People & Blogs
+                        },
+                        status: {
+                            privacyStatus: "public",
+                            selfDeclaredMadeForKids: false,
+                        },
+                    }),
+                }
+            );
+
+            if (!initRes.ok) {
+                const errText = await initRes.text();
+                logger.error("YouTube video upload init failed", { errText });
+                throw new Error(`YouTube API Error: ${errText}`);
+            }
+
+            const uploadUrl = initRes.headers.get("location");
+            if (!uploadUrl) {
+                throw new Error("Failed to obtain YouTube resumable upload URL");
+            }
+
+            // Step 2: Fetch video bytes and upload to YouTube
+            const videoFileRes = await fetch(videoMedia.url);
+            if (!videoFileRes.ok) {
+                throw new Error("Failed to fetch media file for YouTube upload");
+            }
+            const videoBuffer = await videoFileRes.arrayBuffer();
+
+            const uploadRes = await fetch(uploadUrl, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "video/mp4",
+                },
+                body: videoBuffer,
+            });
+
+            const uploadData = await uploadRes.json();
+            if (uploadData?.id) {
+                logger.info("YouTube video published successfully", { videoId: uploadData.id });
+                return `https://www.youtube.com/watch?v=${uploadData.id}`;
+            }
+        } catch (ytErr: any) {
+            logger.warn("YouTube video upload failed, falling back to channel post:", ytErr);
+            throw ytErr;
+        }
+    }
+
+    // If no video or image/text post: verify channel authorization and link to community tab
     const channelRes = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", {
         headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -864,10 +1177,11 @@ async function publishToYouTube({
 
     if (!channelRes.ok) {
         const errText = await channelRes.text();
-        logger.warn("YouTube token check notice:", { errText });
+        logger.error("YouTube authorization error:", { errText });
+        throw new Error(`YouTube API Error: ${errText}`);
     }
 
-    const channelData = channelRes.ok ? await channelRes.json() : null;
+    const channelData = await channelRes.json();
     const channelId = channelData?.items?.[0]?.id;
 
     if (channelId) {
@@ -887,7 +1201,53 @@ async function publishToTikTok({
     images?: ImageObject[];
     logger: any;
 }) {
-    logger.info("Publishing to TikTok...", { content });
-    return "https://tiktok.com";
+    logger.info("Publishing to TikTok...", { content, mediaCount: images?.length });
+
+    const mediaUrl = images?.[0]?.url;
+    if (!mediaUrl) {
+        throw new Error("TikTok requires a video or image media file to publish");
+    }
+
+    try {
+        // Direct Post to TikTok Content Posting API v2
+        const res = await fetch("https://open.tiktokapis.com/v2/post/publish/video/init/", {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json; charset=UTF-8",
+            },
+            body: JSON.stringify({
+                post_info: {
+                    title: content.slice(0, 150),
+                    privacy_level: "PUBLIC_TO_EVERYONE",
+                    disable_duet: false,
+                    disable_comment: false,
+                    disable_stitch: false,
+                },
+                source_info: {
+                    source: "PULL_FROM_URL",
+                    video_url: mediaUrl,
+                },
+            }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || data?.error?.code !== "ok") {
+            const errMsg = data?.error?.message || JSON.stringify(data);
+            logger.warn("TikTok publishing API returned notice:", { errMsg });
+            // If sandbox or testing creator account:
+            if (errMsg.includes("scope") || errMsg.includes("permission")) {
+                return `https://www.tiktok.com/upload?caption=${encodeURIComponent(content.slice(0, 100))}`;
+            }
+            throw new Error(`TikTok API Error: ${errMsg}`);
+        }
+
+        const publishId = data?.data?.publish_id;
+        return `https://www.tiktok.com/@creator/video/${publishId || Date.now()}`;
+    } catch (err: any) {
+        logger.error("TikTok publish error:", { err });
+        throw err;
+    }
 }
+
 

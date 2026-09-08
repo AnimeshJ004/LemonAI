@@ -19,7 +19,7 @@ const COOKIE_OPTIONS = {
  * Check if the current user has completed onboarding.
  * Returns { completed: boolean }
  */
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const { userId } = await auth();
     if (!userId) {
@@ -34,12 +34,25 @@ export async function GET() {
       .maybeSingle();
 
     if (error || !profile) {
+      if (req.nextUrl.searchParams.has("redirect")) {
+        return NextResponse.redirect(new URL("/onboarding", req.url));
+      }
       return NextResponse.json({ completed: false });
     }
 
     // Consider completed if they have onboarding_completed = true OR
     // if they already filled out the brand profile manually (business_name exists)
     const completed = Boolean(profile.onboarding_completed || profile.business_name?.trim());
+
+    if (req.nextUrl.searchParams.has("redirect")) {
+      const target = req.nextUrl.searchParams.get("redirect") || "/schedule";
+      const res = NextResponse.redirect(new URL(target, req.url));
+      if (completed) {
+        res.cookies.set(ONBOARDED_COOKIE, "1", COOKIE_OPTIONS);
+        res.cookies.set(`lemon_ai_onboarded_${userId}`, "1", COOKIE_OPTIONS);
+      }
+      return res;
+    }
 
     const res = NextResponse.json({ completed });
 
