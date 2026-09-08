@@ -1,7 +1,7 @@
 import { inngest } from "@/inngest/client";
 import { getInsforgeServerClient } from "@/lib/insforge-server";
+import { executePostPublishDirectly } from "@/inngest/functions/publish-scheduled-posts";
 import { NextResponse } from "next/server";
-
 
 export async function POST(
   request: Request,
@@ -24,37 +24,33 @@ export async function POST(
         if(postError || !post) {
             return NextResponse.json({error:"Post not found"}, {status:404});
         }
-        if(post.status === "published") {
-            return NextResponse.json({error:"Post already published"}, {status:400});
+
+        // Execute direct publish immediately
+        const publishResult = await executePostPublishDirectly(id);
+
+        try {
+            await inngest.send({
+                name: "post/publish.requested",
+                data: {
+                    postId: id
+                }
+            });
+        } catch {}
+
+        if (!publishResult.success) {
+            return NextResponse.json({
+                error: publishResult.error || "Publishing failed",
+                provider: publishResult.provider,
+            }, { status: 400 });
         }
 
-        const {error:updateError} = await insforge.database
-            .from("scheduled_posts")
-            .update({
-                status: "queue",
-                scheduled_at: new Date().toISOString()
-            })
-            .eq("id", id)
-            .eq("user_id", userId)
-            .single();
-
-            if(updateError){
-                return NextResponse.json({error:"Failed to update post"}, {status:500});
-            }
-            
-            try {
-                await inngest.send({
-                    name: "post/publish.requested",
-                    data: {
-                        postId: id
-                    }
-                });
-            } catch (inngestErr: any) {
-                console.warn("[Inngest] Post queued in database. Local inngest server not reachable:", inngestErr?.message || inngestErr);
-            }
-            return NextResponse.json({success:true});
+        return NextResponse.json({
+            success: true,
+            publishedUrl: publishResult.publishedUrl,
+            provider: publishResult.provider,
+        });
         
-    } catch (error) {
-        return NextResponse.json({error:"Internal server error"}, {status:500});
+    } catch (error: any) {
+        return NextResponse.json({ error: error?.message || "Internal server error" }, { status: 500 });
     }
 }

@@ -1,12 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CampaignStatusBadge } from "./campaign-status-badge";
 import { SyncToCalendarButton } from "./sync-to-calendar-button";
+import { EditCampaignDialog } from "./edit-campaign-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Megaphone,
   Search,
@@ -16,9 +27,13 @@ import {
   Sparkles,
   Plus,
   Rocket,
+  Pencil,
+  Trash2,
   Image as ImageIcon,
 } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
+import { Spinner } from "@/components/ui/spinner";
 
 const OBJECTIVE_LABELS: Record<string, string> = {
   OUTCOME_LEADS: "Lead Gen",
@@ -33,8 +48,11 @@ interface CampaignsTableProps {
 }
 
 export function CampaignsTable({ onCreateClick }: CampaignsTableProps) {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [editingCampaign, setEditingCampaign] = useState<any | null>(null);
+  const [campaignToDelete, setCampaignToDelete] = useState<any | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["meta-campaigns"],
@@ -42,6 +60,24 @@ export function CampaignsTable({ onCreateClick }: CampaignsTableProps) {
       const res = await fetch("/api/meta/campaigns");
       if (!res.ok) return { campaigns: [] };
       return res.json();
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/meta/campaigns/${id}`, { method: "DELETE" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to delete campaign");
+      return json;
+    },
+    onSuccess: () => {
+      toast.success("Campaign deleted successfully");
+      queryClient.invalidateQueries({ queryKey: ["meta-campaigns"] });
+      setCampaignToDelete(null);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Failed to delete campaign");
+      setCampaignToDelete(null);
     },
   });
 
@@ -216,15 +252,43 @@ export function CampaignsTable({ onCreateClick }: CampaignsTableProps) {
                       {/* Actions */}
                       <td className="py-3.5 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Edit Button */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2.5 text-xs gap-1 hover:border-primary hover:text-primary transition-all"
+                            onClick={() => setEditingCampaign(item)}
+                            title="Edit Campaign"
+                          >
+                            <Pencil className="size-3.5" />
+                            <span className="hidden sm:inline">Edit</span>
+                          </Button>
+
+                          {/* Delete Button */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-2.5 text-xs gap-1 text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/20 transition-all"
+                            onClick={() => setCampaignToDelete(item)}
+                            title="Delete Campaign"
+                          >
+                            <Trash2 className="size-3.5" />
+                            <span className="hidden sm:inline">Delete</span>
+                          </Button>
+
+                          {/* Ads Manager Link */}
                           <Button
                             variant="ghost"
                             size="sm"
                             className="h-8 px-2 text-xs gap-1"
                             onClick={() => window.open(previewUrl, "_blank")}
+                            title="Open in Meta Ads Manager"
                           >
                             <ExternalLink className="size-3.5" />
                             <span className="hidden sm:inline">Ads Manager</span>
                           </Button>
+
+                          {/* Sync to Calendar */}
                           <SyncToCalendarButton
                             content={`${item.ad_headline || item.name}\n\n${item.ad_primary_text || ""}`}
                             imageUrl={item.ad_image_url}
@@ -241,6 +305,51 @@ export function CampaignsTable({ onCreateClick }: CampaignsTableProps) {
           </div>
         )}
       </div>
+
+      {/* Edit Campaign Dialog */}
+      <EditCampaignDialog
+        open={Boolean(editingCampaign)}
+        onOpenChange={(open) => {
+          if (!open) setEditingCampaign(null);
+        }}
+        campaign={editingCampaign}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={Boolean(campaignToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setCampaignToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-base font-semibold">
+              Delete Meta Ad Campaign?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-xs text-muted-foreground">
+              Are you sure you want to delete{" "}
+              <strong className="text-foreground">{campaignToDelete?.name}</strong>?
+              This action cannot be undone and will remove it from your campaigns list.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="text-xs h-8">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90 text-destructive-foreground text-xs h-8 font-semibold gap-1.5"
+              disabled={deleteMutation.isPending}
+              onClick={() => {
+                if (campaignToDelete?.id) {
+                  deleteMutation.mutate(campaignToDelete.id);
+                }
+              }}
+            >
+              {deleteMutation.isPending && <Spinner className="size-3.5" />}
+              Delete Campaign
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

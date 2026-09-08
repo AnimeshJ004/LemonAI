@@ -28,11 +28,17 @@ export async function POST() {
             expiresInSeconds: 60 * 10,
         });
 
-        return NextResponse.json({
+        const res = NextResponse.json({
             token: tokenResponse.token,
             url: tokenResponse.url,
             userId: user.id,
         });
+
+        // Clear onboarding cookies so AI Engine wizard loads cleanly for testing
+        res.cookies.delete("lemon_ai_onboarded");
+        res.cookies.delete(`lemon_ai_onboarded_${user.id}`);
+
+        return res;
     } catch (error: any) {
         console.error("Quick login token generation error:", error);
         return NextResponse.json(

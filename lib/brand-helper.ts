@@ -51,3 +51,40 @@ export function formatBrandHashtags(brandProfile?: any): string[] {
 
   return Array.from(tags).slice(0, 5);
 }
+
+/**
+ * Returns comprehensive Business Brain context formatted for AI prompt injection.
+ * Injects products, pricing, location, audience, offer, and booking URL.
+ */
+export function getBrandBrainSummary(brandProfile?: any): string {
+  if (!brandProfile) {
+    return "Business Brain: General business growth and customer service.";
+  }
+
+  const parts = [
+    `Business Name: ${brandProfile.business_name || "Company"}`,
+    `Niche/Industry: ${brandProfile.niche || "General Business"}`,
+    `Target Audience: ${brandProfile.target_audience || "General Audience"}`,
+    `Brand Tone: ${brandProfile.brand_tone || "Professional and Authoritative"}`,
+    `Primary Offer: ${brandProfile.main_offer || "High-value professional services"}`,
+  ];
+
+  if (brandProfile.products_services) {
+    parts.push(`Products & Services: ${brandProfile.products_services}`);
+  }
+  if (brandProfile.pricing_details) {
+    parts.push(`Pricing & Packages: ${brandProfile.pricing_details}`);
+  }
+  if (brandProfile.location) {
+    parts.push(`Location/Region: ${brandProfile.location}`);
+  }
+  if (brandProfile.competitors) {
+    parts.push(`Key Competitors: ${brandProfile.competitors}`);
+  }
+  if (brandProfile.booking_url) {
+    parts.push(`Booking Calendar Link: ${brandProfile.booking_url}`);
+  }
+
+  return parts.join("\n");
+}
+

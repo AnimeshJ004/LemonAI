@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
-import { Calendar, CreditCard, Lightbulb, Plus, PlusCircleIcon, Settings, Building2, Megaphone, Brain, Kanban, Inbox } from 'lucide-react';
+import { Calendar, CreditCard, Lightbulb, Plus, PlusCircleIcon, Settings, Building2, Megaphone, Search, Clapperboard, LayoutTemplate, BookOpen, TrendingUp, Bot, Globe, MessageCircle, CalendarClock, Kanban, Inbox, BarChart3, Phone } from 'lucide-react';
 import { useSidebar } from '@/components/ui/sidebar';
 import Logo from '@/components/logo';
 import { Button } from '@/components/ui/button';
@@ -21,17 +21,42 @@ import CreatePostDialog from '@/components/schedule/create-post-dialog';
 import { Spinner } from '@/components/ui/spinner';
 
 import { ConnectChannelDialog } from '@/components/settings/connect-channel-dialog';
+import AutonomousCampaignDialog from '@/components/campaign/autonomous-campaign-dialog';
+import { Sparkles } from 'lucide-react';
 
 const mainNav = [
   { name: "Ideas", href: "/ideas", icon: Lightbulb },
   { name: "Schedule", href: "/schedule", icon: Calendar },
-  { name: "Pipeline", href: "/crm/pipeline", icon: Kanban },
-  { name: "Inbox", href: "/crm/inbox", icon: Inbox },
   { name: "Brand Profile", href: "/brand-profile", icon: Building2 },
   { name: "Meta Ads", href: "/meta-ads", icon: Megaphone },
-  { name: "AI Memory", href: "/ai-memory", icon: Brain },
+  { name: "Social Automation", href: "/social-automation", icon: Bot },
+  { name: "Website Bot", href: "/website-bot", icon: Globe },
+  { name: "WhatsApp Bot", href: "/whatsapp-bot", icon: MessageCircle },
+  { name: "Appointments", href: "/appointments", icon: CalendarClock },
   { name: "Billing", href: "/billing", icon: CreditCard },
   { name: "Settings", href: "/settings", icon: Settings },
+];
+
+// Member 1: Research nav
+const researchNav = [
+  { name: "Competition Research", href: "/competition-researcher", icon: Search },
+];
+
+// Member 1: Content Studio nav
+const studioNav = [
+  { name: "Reels Script", href: "/studio/reels", icon: Clapperboard },
+  { name: "Carousel Creator", href: "/studio/carousels", icon: LayoutTemplate },
+  { name: "Blog Writer", href: "/studio/blogs", icon: BookOpen },
+  { name: "Ad Creatives", href: "/studio/ad-creatives", icon: Megaphone },
+  { name: "Strategy Planner", href: "/studio/strategy", icon: TrendingUp },
+];
+
+// Member 3: CRM & Growth nav
+const crmNav = [
+  { name: "Pipeline", href: "/crm/pipeline", icon: Kanban },
+  { name: "Inbox", href: "/crm/inbox", icon: Inbox },
+  { name: "Analytics", href: "/analytics", icon: BarChart3 },
+  { name: "AI Calling", href: "/ai-calling", icon: Phone },
 ];
 
 const AppSidebar = () => {
@@ -43,6 +68,7 @@ const AppSidebar = () => {
   const [isCreatePostOpen, setIsCreatePostOpen] = useState<boolean>(false)
   const [selectedChannelForConnect, setSelectedChannelForConnect] = useState<ChannelType | null>(null)
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState<boolean>(false)
+  const [isAutonomousDialogOpen, setIsAutonomousDialogOpen] = useState<boolean>(false)
 
   const {data:channelsData, isPending} = useQuery({
     queryKey: ["channels"],
@@ -84,6 +110,16 @@ const AppSidebar = () => {
             <Plus className="size-4" />
            {!isCollapsed && <span>New Post</span>}
         </Button>
+        <Button
+          variant="outline"
+          className="mt-2 w-full border-primary/40 hover:bg-primary/10 hover:text-primary transition-colors text-xs font-semibold"
+          size={isCollapsed ? "icon" : "default"}
+          onClick={() => setIsAutonomousDialogOpen(true)}
+          title="Auto-Pilot Campaign"
+        >
+          <Sparkles className="size-3.5 text-primary shrink-0" />
+          {!isCollapsed && <span>Auto-Pilot Campaign</span>}
+        </Button>
       </SidebarHeader>
       <SidebarContent className={cn(!isCollapsed && "px-2")}>
         <SidebarGroup>
@@ -104,6 +140,72 @@ const AppSidebar = () => {
                     ))}
                 </SidebarMenu>
             </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Research Nav — Member 1 */}
+        <SidebarGroup>
+          <SidebarGroupLabel className='text-sm'>Research</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {researchNav.map((item) => (
+                <SidebarMenuItem key={item.name}>
+                  <SidebarMenuButton asChild
+                    isActive={pathname === item.href}
+                    tooltip={item.name}
+                  >
+                    <Link href={item.href}>
+                      <item.icon className="size-4" />
+                      <span className='text-sm'>{item.name}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Content Studio Nav — Member 1 */}
+        <SidebarGroup>
+          <SidebarGroupLabel className='text-sm'>Content Studio</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {studioNav.map((item) => (
+                <SidebarMenuItem key={item.name}>
+                  <SidebarMenuButton asChild
+                    isActive={pathname.startsWith(item.href)}
+                    tooltip={item.name}
+                  >
+                    <Link href={item.href}>
+                      <item.icon className="size-4" />
+                      <span className='text-sm'>{item.name}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* CRM & Growth Nav — Member 3 */}
+        <SidebarGroup>
+          <SidebarGroupLabel className='text-sm'>CRM & Growth</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {crmNav.map((item) => (
+                <SidebarMenuItem key={item.name}>
+                  <SidebarMenuButton asChild
+                    isActive={pathname === item.href || (item.href !== "/crm" && pathname.startsWith(item.href))}
+                    tooltip={item.name}
+                  >
+                    <Link href={item.href}>
+                      <item.icon className="size-4" />
+                      <span className='text-sm'>{item.name}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
         </SidebarGroup>
 
         {/* {connected channels} */}
@@ -244,6 +346,10 @@ const AppSidebar = () => {
       onSuccess={() => {
         queryClient.invalidateQueries({ queryKey: ["channels"] })
       }}
+    />
+    <AutonomousCampaignDialog
+      open={isAutonomousDialogOpen}
+      onOpenChange={setIsAutonomousDialogOpen}
     />
     </>
   )

@@ -31,7 +31,9 @@ import {
   ExternalLink,
   Loader2,
   IndianRupee,
+  TrendingUp,
 } from "lucide-react";
+import TrendingAdsDrawer from "./trending-ads-drawer";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface WizardData {
@@ -111,6 +113,7 @@ export function CampaignCreationWizard() {
 
   const [hasLoadedProfile, setHasLoadedProfile] = useState(false);
   const [showManualInputs, setShowManualInputs] = useState(false);
+  const [showAdsDrawer, setShowAdsDrawer] = useState(false);
 
   // Fetch ad accounts and brand profile on mount
   useEffect(() => {
@@ -348,6 +351,31 @@ export function CampaignCreationWizard() {
               </Select>
             </div>
           </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full gap-2 border-dashed hover:border-primary hover:text-primary transition-all"
+            onClick={() => setShowAdsDrawer(true)}
+          >
+            <TrendingUp className="size-4 text-primary" />
+            Inspect Competitor Meta Ads (Live)
+          </Button>
+
+          <TrendingAdsDrawer
+            open={showAdsDrawer}
+            onOpenChange={setShowAdsDrawer}
+            niche={data.niche || "ecommerce"}
+            country="IN"
+            onModelAd={(ad) => {
+              setData((prev) => ({
+                ...prev,
+                adHeadline: ad.headline || prev.adHeadline,
+                adPrimaryText: ad.primaryText || prev.adPrimaryText,
+              }));
+              setStep(2);
+            }}
+          />
 
           <Button
             id="wizard-next-step-1"

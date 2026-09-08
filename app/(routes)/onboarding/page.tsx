@@ -36,7 +36,8 @@ export default async function OnboardingPage() {
   }
 
   if (alreadyDone) {
-    redirect("/schedule");
+    // Delegate to route handler which has permission to set cookies and redirect to /schedule
+    redirect("/api/onboarding?redirect=/schedule");
   }
 
   return <OnboardingWizard />;
