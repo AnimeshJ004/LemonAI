@@ -72,7 +72,19 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    // Save immediately into server cache
+    // Base schema columns that exist in the core database table
+    const basePayload = {
+      user_id: userId,
+      business_name: payload.business_name,
+      niche: payload.niche,
+      target_audience: payload.target_audience,
+      brand_tone: payload.brand_tone,
+      main_offer: payload.main_offer,
+      competitors: payload.competitors,
+      updated_at: payload.updated_at,
+    };
+
+    // Save immediately into server cache with all extended attributes
     userBrandCache.set(userId, payload);
 
     // Persist into database
@@ -88,68 +100,62 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
 
       if (existing?.id) {
+        // Update core columns
         const { data: updated, error: updateErr } = await admin.database
           .from("brand_profiles")
-          .update(payload)
+          .update(basePayload)
           .eq("id", existing.id)
           .select()
           .maybeSingle();
-        
-        if (updateErr) {
-          // Schema fallback if new columns not yet in DB
-          console.warn("Retrying with base schema without extended columns:", updateErr.message);
-          const basePayload = {
-            user_id: userId,
-            business_name: payload.business_name,
-            niche: payload.niche,
-            target_audience: payload.target_audience,
-            brand_tone: payload.brand_tone,
-            main_offer: payload.main_offer,
-            competitors: payload.competitors,
-            updated_at: payload.updated_at,
-          };
-          const { data: fallbackUpdated } = await admin.database
+
+        savedData = updated || { ...basePayload, id: existing.id };
+
+        // Attempt extended columns silently if migration was applied
+        try {
+          await admin.database
             .from("brand_profiles")
-            .update(basePayload)
-            .eq("id", existing.id)
-            .select()
-            .maybeSingle();
-          savedData = { ...fallbackUpdated, ...payload };
-        } else {
-          savedData = updated;
+            .update({
+              products_services: payload.products_services,
+              pricing_details: payload.pricing_details,
+              location: payload.location,
+              booking_url: payload.booking_url,
+              auto_call_enabled: payload.auto_call_enabled,
+              auto_call_min_score: payload.auto_call_min_score,
+            })
+            .eq("id", existing.id);
+        } catch {
+          // Non-fatal if extended columns are not yet present in DB schema
         }
       } else {
+        // Insert core columns
         const { data: inserted, error: insertErr } = await admin.database
           .from("brand_profiles")
-          .insert(payload)
+          .insert(basePayload)
           .select()
           .maybeSingle();
-        
-        if (insertErr) {
-          // Schema fallback if new columns not yet in DB
-          console.warn("Retrying insert with base schema without extended columns:", insertErr.message);
-          const basePayload = {
-            user_id: userId,
-            business_name: payload.business_name,
-            niche: payload.niche,
-            target_audience: payload.target_audience,
-            brand_tone: payload.brand_tone,
-            main_offer: payload.main_offer,
-            competitors: payload.competitors,
-            updated_at: payload.updated_at,
-          };
-          const { data: fallbackInserted } = await admin.database
+
+        savedData = inserted || basePayload;
+
+        // Attempt extended columns silently if migration was applied
+        try {
+          await admin.database
             .from("brand_profiles")
-            .insert(basePayload)
-            .select()
-            .maybeSingle();
-          savedData = { ...fallbackInserted, ...payload };
-        } else {
-          savedData = inserted;
+            .update({
+              products_services: payload.products_services,
+              pricing_details: payload.pricing_details,
+              location: payload.location,
+              booking_url: payload.booking_url,
+              auto_call_enabled: payload.auto_call_enabled,
+              auto_call_min_score: payload.auto_call_min_score,
+            })
+            .eq("user_id", userId);
+        } catch {
+          // Non-fatal if extended columns are not yet present in DB schema
         }
       }
+
       if (savedData) {
-        userBrandCache.set(userId, savedData);
+        userBrandCache.set(userId, { ...savedData, ...payload });
       }
     } catch (dbErr: any) {
       console.warn("Notice saving to DB table brand_profiles:", dbErr?.message);

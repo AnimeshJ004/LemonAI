@@ -37,6 +37,7 @@ import {
   RotateCcw,
   BookOpen,
 } from "lucide-react";
+import AutonomousCampaignDialog from "@/components/campaign/autonomous-campaign-dialog";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface BrandProfile {
@@ -159,6 +160,7 @@ export function BrandProfileForm() {
   // Result state
   const [scheduleResult, setScheduleResult] = useState<any | null>(null);
   const [scheduleProgress, setScheduleProgress] = useState<string>("");
+  const [isAutonomousDialogOpen, setIsAutonomousDialogOpen] = useState<boolean>(false);
 
   const storageKey = user?.id ? `lemon_ai_brand_profile_${user.id}` : null;
 
@@ -489,7 +491,7 @@ export function BrandProfileForm() {
           <Button
             type="submit"
             size="sm"
-            variant="outline"
+            variant="default"
             disabled={saveMutation.isPending || isProfileLoading || isConfiguring}
             className="gap-1.5 text-xs font-semibold h-8"
           >
@@ -1096,6 +1098,14 @@ export function BrandProfileForm() {
           </div>
         )}
       </div>
+
+      <AutonomousCampaignDialog
+        open={isAutonomousDialogOpen}
+        onOpenChange={setIsAutonomousDialogOpen}
+        initialBusinessName={form.business_name}
+        initialNiche={form.niche}
+        initialAudience={form.target_audience}
+      />
     </div>
   );
 }

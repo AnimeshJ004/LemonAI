@@ -21,6 +21,8 @@ import CreatePostDialog from '@/components/schedule/create-post-dialog';
 import { Spinner } from '@/components/ui/spinner';
 
 import { ConnectChannelDialog } from '@/components/settings/connect-channel-dialog';
+import AutonomousCampaignDialog from '@/components/campaign/autonomous-campaign-dialog';
+import { Sparkles } from 'lucide-react';
 
 const mainNav = [
   { name: "Ideas", href: "/ideas", icon: Lightbulb },
@@ -66,6 +68,7 @@ const AppSidebar = () => {
   const [isCreatePostOpen, setIsCreatePostOpen] = useState<boolean>(false)
   const [selectedChannelForConnect, setSelectedChannelForConnect] = useState<ChannelType | null>(null)
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState<boolean>(false)
+  const [isAutonomousDialogOpen, setIsAutonomousDialogOpen] = useState<boolean>(false)
 
   const {data:channelsData, isPending} = useQuery({
     queryKey: ["channels"],
@@ -106,6 +109,16 @@ const AppSidebar = () => {
         >
             <Plus className="size-4" />
            {!isCollapsed && <span>New Post</span>}
+        </Button>
+        <Button
+          variant="outline"
+          className="mt-2 w-full border-primary/40 hover:bg-primary/10 hover:text-primary transition-colors text-xs font-semibold"
+          size={isCollapsed ? "icon" : "default"}
+          onClick={() => setIsAutonomousDialogOpen(true)}
+          title="Auto-Pilot Campaign"
+        >
+          <Sparkles className="size-3.5 text-primary shrink-0" />
+          {!isCollapsed && <span>Auto-Pilot Campaign</span>}
         </Button>
       </SidebarHeader>
       <SidebarContent className={cn(!isCollapsed && "px-2")}>
@@ -333,6 +346,10 @@ const AppSidebar = () => {
       onSuccess={() => {
         queryClient.invalidateQueries({ queryKey: ["channels"] })
       }}
+    />
+    <AutonomousCampaignDialog
+      open={isAutonomousDialogOpen}
+      onOpenChange={setIsAutonomousDialogOpen}
     />
     </>
   )

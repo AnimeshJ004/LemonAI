@@ -1,8 +1,13 @@
 import { researchMarketTrends } from "./trend-researcher";
 import { routeAICall } from "./ai-router";
 import { getInsforgeAdminClient, getInsforgeServerClient } from "./insforge-server";
-import { getBrandProfileForUser, getBrandBrainSummary } from "./brand-helper";
-import { generateAdCreativeImage } from "./ai-image-generator";
+import { getBrandProfileForUser, getBrandBrainSummary, cleanTag } from "./brand-helper";
+import {
+  generateAdCreativeImage,
+  CURATED_COMMERCIAL_PHOTOS,
+  CURATED_VERTICAL_REELS,
+} from "./ai-image-generator";
+import { executePostPublishDirectly } from "@/inngest/functions/publish-scheduled-posts";
 import { addDays } from "date-fns";
 
 export interface FlywheelRequest {
@@ -23,16 +28,39 @@ export interface FlywheelStepProgress {
   timestamp: string;
 }
 
+export interface FlywheelCarouselSlide {
+  slideNumber: number;
+  type: "COVER" | "CONTENT" | "CTA";
+  headline: string;
+  subtext?: string;
+  bulletPoints?: string[];
+  swipePrompt?: string;
+}
+
+export interface FlywheelContentPiece {
+  id?: string;
+  dayNumber: number;
+  title: string;
+  type: "FEED_POST" | "REEL_SCRIPT" | "CAROUSEL";
+  previewText: string;
+  caption: string;
+  script?: string;
+  imageUrl?: string | null;
+  videoUrl?: string | null;
+  carouselSlides?: FlywheelCarouselSlide[];
+  mediaPrompt?: string;
+  status?: "published" | "queue" | "failed";
+  publishedUrl?: string | null;
+  channelName?: string;
+  errorMessage?: string | null;
+}
+
 export interface FlywheelResult {
   success: boolean;
   niche: string;
   businessName: string;
   postsScheduledCount: number;
-  contentPieces: {
-    title: string;
-    type: "FEED_POST" | "REEL_SCRIPT" | "CAROUSEL";
-    previewText: string;
-  }[];
+  contentPieces: FlywheelContentPiece[];
   metaCampaignCreated?: {
     campaignId: string;
     name: string;
@@ -89,8 +117,8 @@ export async function executeAutonomousFlywheel(params: FlywheelRequest): Promis
   const primaryPainPoint = research.audiencePainPoints?.[0]?.painPoint || `Struggling to scale ${niche}`;
   const winningAngle = research.recommendedContentAngles?.[0]?.angleTitle || "Direct Problem Solver";
 
-  // 2. STEP 2: Content Studio (Generates 3 multi-format content items: Feed Post, Reel, Carousel)
-  console.log("[Flywheel] Phase 2: Content Studio synthesizing high-converting assets...");
+  // 2. STEP 2: Content Studio (Synthesizes dynamic multi-day content pieces: Reels, Image Posts, Carousels)
+  console.log(`[Flywheel] Phase 2: Content Studio synthesizing ${days}-day cross-platform content assets...`);
   const brandBrainText = getBrandBrainSummary(brand);
 
   const contentPrompt = `You are an elite autonomous social content engine for Lemon AI.
@@ -100,137 +128,305 @@ ${brandBrainText}
 Top Hook Line: "${topHook}"
 Target Pain Point: "${primaryPainPoint}"
 Winning Angle: "${winningAngle}"
-Hashtags: ${research.recommendedHashtags?.slice(0, 5).join(" ") || "#Growth"}
+Hashtags: ${research.recommendedHashtags?.slice(0, 5).join(" ") || "#Growth #Business"}
+Duration: ${days} day(s)
 
-Generate 3 distinct deployment-ready social media assets:
-1. One high-engagement Feed Post (captivating headline, bullet points, question CTA, hashtags).
-2. One 30-45s Reel script (Hook [0-3s], Value [4-35s], CTA [36-45s]).
-3. One 5-slide educational Carousel outline (Slide 1 Cover, Slides 2-4 Value steps, Slide 5 Save/Share CTA).
+Generate a structured daily social media campaign plan for exactly ${days} day(s).
+For each day, allocate an optimal format rotating between:
+- "REEL": Vertical video reel. Provide a clean publishable caption, plus a director/voiceover script with [0:00-0:03] Hook, [0:04-0:18] Spoken Value, [0:19-0:30] CTA.
+- "IMAGE_POST": Captivating headline, problem-solution copy, high-converting CTA, and hashtags.
+- "CAROUSEL": 5-slide educational breakdown with slide-by-slide headlines, subtext, bullets, and swipe cues.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON matching this schema:
 {
-  "feedPost": "Complete post caption text with formatting and hashtags",
-  "reelScript": {
-    "title": "Short title",
-    "hook": "0-3s hook",
-    "body": "Value explanation",
-    "cta": "Call to action"
-  },
-  "carousel": {
-    "title": "Carousel Title",
-    "slides": [
-      { "slideNumber": 1, "heading": "Cover hook", "body": "Subtitle" },
-      { "slideNumber": 2, "heading": "Step 1", "body": "Key tip" },
-      { "slideNumber": 3, "heading": "Step 2", "body": "Crucial shift" },
-      { "slideNumber": 4, "heading": "Step 3", "body": "Action plan" },
-      { "slideNumber": 5, "heading": "CTA", "body": "Save & follow" }
-    ]
-  }
+  "posts": [
+    {
+      "dayNumber": 1,
+      "format": "REEL",
+      "title": "Title of the post",
+      "caption": "Clean social media post caption with hashtags ready to publish on Instagram/Facebook/LinkedIn",
+      "script": "Actor voiceover script with [0:00-0:03] Hook, [0:04-0:18] Spoken Value, [0:19-0:30] CTA (Only for REEL, omit for others)",
+      "carouselSlides": [
+        {
+          "slideNumber": 1,
+          "type": "COVER",
+          "headline": "Main slide headline",
+          "subtext": "Supporting sentence",
+          "bulletPoints": ["Key takeaway 1", "Key takeaway 2"],
+          "swipePrompt": "Swipe to begin ->"
+        }
+      ],
+      "mediaPrompt": "Detailed visual photography or video prompt describing what should be shown"
+    }
+  ]
 }`;
 
   const contentRes = await routeAICall<{
-    feedPost: string;
-    reelScript: { title: string; hook: string; body: string; cta: string };
-    carousel: { title: string; slides: { slideNumber: number; heading: string; body: string }[] };
+    posts: {
+      dayNumber: number;
+      format: "REEL" | "IMAGE_POST" | "CAROUSEL";
+      title: string;
+      caption: string;
+      script?: string;
+      carouselSlides?: FlywheelCarouselSlide[];
+      mediaPrompt: string;
+    }[];
   }>({
     task: "DEEP_SCRIPTWRITING",
-    systemPrompt: "You are an elite direct-response social copywriter. Return ONLY valid JSON.",
+    systemPrompt: "You are an elite direct-response social copywriter and performance strategist. Return ONLY valid JSON.",
     userPrompt: contentPrompt,
     preferredTier: "TIER_2_SMART",
     jsonMode: true,
   });
 
-  const generatedContent = contentRes.data || {
-    feedPost: `🚀 Stop doing ${niche} the hard way.\n\nMost ${targetAudience} focus on the wrong priorities. Here is what actually works:\n\n1. Target acute bottlenecks\n2. Automate repeat tasks\n3. Deliver undeniable proof\n\nSave this post for your next strategy session!\n\n${research.recommendedHashtags?.slice(0, 4).join(" ")}`,
-    reelScript: {
-      title: "The 1 Shift to Win in " + niche,
-      hook: topHook,
-      body: `If you want to solve ${primaryPainPoint}, you need to reverse engineer what the top 1% are doing. Focus on single-metric optimization.`,
-      cta: `Comment 'GROWTH' below and I will send our free execution guide directly to your DMs!`,
-    },
-    carousel: {
-      title: `5 Ways to Master ${niche}`,
-      slides: [
-        { slideNumber: 1, heading: topHook, body: "Swipe to see the full breakdown 👉" },
-        { slideNumber: 2, heading: "01. Define the Bottleneck", body: `Identify why ${primaryPainPoint} occurs.` },
-        { slideNumber: 3, heading: "02. Build Systems, Not Stress", body: "Scale repeatable mechanisms." },
-        { slideNumber: 4, heading: "03. Double Down on Winning Hooks", body: "Measure your top 20% assets." },
-        { slideNumber: 5, heading: "Found this helpful?", body: "Bookmark this post and share with your team." },
-      ],
-    },
-  };
-
-  // 3. STEP 3: Distribution Agent (Auto-Schedule into scheduled_posts table)
-  console.log("[Flywheel] Phase 3: Distribution Agent scheduling posts into calendar...");
-  let postsScheduled = 0;
-  const now = new Date();
-
-  // Find user's active channel if connected
-  let defaultChannelId: string | null = null;
-  try {
-    const { data: userChannel } = await admin.database
-      .from("user_channels")
-      .select("id")
-      .eq("user_id", params.userId)
-      .limit(1)
-      .maybeSingle();
-    defaultChannelId = userChannel?.id || null;
-  } catch {}
-
-  // Auto-generate high quality editorial image assets for posts so Instagram/Facebook publishing succeeds
-  console.log("[Flywheel] Synthesizing photorealistic visuals for multi-channel posts...");
-  const [feedImg, reelCover, carouselCover] = await Promise.all([
-    generateAdCreativeImage({
-      prompt: `${niche} ${topHook}`,
-      aspectRatio: "1:1",
-      userId: params.userId,
-      niche,
-    }).catch(() => null),
-    generateAdCreativeImage({
-      prompt: `${niche} ${generatedContent.reelScript.title}`,
-      aspectRatio: "9:16",
-      userId: params.userId,
-      niche,
-    }).catch(() => null),
-    generateAdCreativeImage({
-      prompt: `${niche} ${generatedContent.carousel.title}`,
-      aspectRatio: "4:5",
-      userId: params.userId,
-      niche,
-    }).catch(() => null),
-  ]);
-
-  const postDrafts = [
+  const buildDefaultCarousel = (topic: string, dayNum: number): FlywheelCarouselSlide[] => [
     {
-      content: generatedContent.feedPost,
-      scheduled_at: addDays(now, 1).toISOString(),
-      images: feedImg?.imageUrl ? [{ url: feedImg.imageUrl, key: feedImg.storageKey || "feed-img" }] : [],
+      slideNumber: 1,
+      type: "COVER",
+      headline: topic || `5 Essential Shifts for ${niche}`,
+      subtext: `The Operational Strategy by ${businessName}`,
+      swipePrompt: "Swipe to begin →",
     },
     {
-      content: `🎬 [REEL SCRIPT: ${generatedContent.reelScript.title}]\n\nHOOK: ${generatedContent.reelScript.hook}\n\nVALUE: ${generatedContent.reelScript.body}\n\nCTA: ${generatedContent.reelScript.cta}`,
-      scheduled_at: addDays(now, 3).toISOString(),
-      images: reelCover?.imageUrl ? [{ url: reelCover.imageUrl, key: reelCover.storageKey || "reel-cover" }] : [],
+      slideNumber: 2,
+      type: "CONTENT",
+      headline: `Step 1: Confront ${primaryPainPoint}`,
+      subtext: `Why conventional ${niche} tactics stall growth before reaching scale.`,
+      bulletPoints: ["Audit unmonitored inefficiencies", "Stop guessing your unit economics"],
+      swipePrompt: "Next Step →",
     },
     {
-      content: `📑 [CAROUSEL: ${generatedContent.carousel.title}]\n\n${generatedContent.carousel.slides.map((s) => `Slide ${s.slideNumber}: ${s.heading} — ${s.body}`).join("\n\n")}`,
-      scheduled_at: addDays(now, 5).toISOString(),
-      images: carouselCover?.imageUrl ? [{ url: carouselCover.imageUrl, key: carouselCover.storageKey || "carousel-cover" }] : [],
+      slideNumber: 3,
+      type: "CONTENT",
+      headline: `Step 2: Deploy ${winningAngle}`,
+      subtext: "Shift focus from raw output to systematic leverage.",
+      bulletPoints: ["Automate recurring friction points", "Enforce high-converting standards"],
+      swipePrompt: "Next Step →",
+    },
+    {
+      slideNumber: 4,
+      type: "CONTENT",
+      headline: "Step 3: Measure Velocity & ROAS",
+      subtext: "Track weekly conversion metrics that directly move revenue.",
+      bulletPoints: ["Response times cut by 80%", "Predictable client acquisition"],
+      swipePrompt: "Next Step →",
+    },
+    {
+      slideNumber: 5,
+      type: "CTA",
+      headline: `Ready to Scale Your ${niche}?`,
+      subtext: `Save this post and follow ${businessName} for weekly frameworks!`,
+      swipePrompt: "Save & Share",
     },
   ];
 
-  for (const post of postDrafts) {
+  // Fallback posts if AI output is empty or truncated
+  let generatedPosts = contentRes.data?.posts || [];
+  if (!generatedPosts || generatedPosts.length === 0) {
+    generatedPosts = Array.from({ length: days }, (_, i) => {
+      const dayNum = i + 1;
+      const formats: ("REEL" | "IMAGE_POST" | "CAROUSEL")[] = ["REEL", "IMAGE_POST", "CAROUSEL"];
+      const format = formats[i % formats.length];
+      const tagLine = research.recommendedHashtags?.slice(0, 4).join(" ") || `#${cleanTag(niche)} #Growth #LemonAI`;
+
+      if (format === "REEL") {
+        return {
+          dayNumber: dayNum,
+          format,
+          title: `Day ${dayNum}: ${topHook}`,
+          caption: `Stop burning time on broken ${niche} systems.\n\nThe real issue for ${targetAudience} isn't lack of effort—it's ${primaryPainPoint}.\n\nWhen you implement ${winningAngle}, execution becomes seamless. Save this reel and apply this in your workflow today!\n\n${tagLine}`,
+          script: `[0:00-0:03] Hook: ${topHook}\n\n[0:04-0:18] Spoken Value: Across our client audits in ${niche}, we see teams losing hours every day to ${primaryPainPoint}. The solution isn't more complexity—it's ${winningAngle}.\n\n[0:19-0:30] Call to Action: Comment 'INFO' below or send us a DM to get the complete step-by-step roadmap from ${businessName}.`,
+          mediaPrompt: `Cinematic 9:16 vertical commercial video of modern professional working in ${niche}, high resolution`,
+        };
+      } else if (format === "CAROUSEL") {
+        return {
+          dayNumber: dayNum,
+          format,
+          title: `Day ${dayNum}: 5 Shifts for ${niche}`,
+          caption: `5 Strategic Shifts for ${niche}.\n\nMost ${targetAudience} struggle with ${primaryPainPoint} because they miss critical fundamentals. Swipe through for the step-by-step breakdown!\n\nWhich slide resonates most with your current goals? Let us know below.\n\n${tagLine}`,
+          carouselSlides: buildDefaultCarousel(`5 Shifts for ${niche}`, dayNum),
+          mediaPrompt: `Minimalist high-contrast educational graphic typography for ${niche}, 4:5 aspect ratio`,
+        };
+      } else {
+        return {
+          dayNumber: dayNum,
+          format,
+          title: `Day ${dayNum}: Overcoming ${primaryPainPoint}`,
+          caption: `Tired of dealing with ${primaryPainPoint} in ${niche}?\n\nHere is the exact framework ${businessName} uses to guarantee results:\n\n1. Target the root cause\n2. Streamline daily operations\n3. Leverage ${winningAngle}\n\nSend us a direct message or click our calendar link to get started!\n\n${tagLine}`,
+          mediaPrompt: `Ultra-clean commercial photorealistic editorial image representing ${niche} and ${businessName}`,
+        };
+      }
+    });
+  }
+
+  // 3. STEP 3: Distribution Agent (Auto-Schedule into scheduled_posts table & Publish Day 1 Immediately)
+  console.log(`[Flywheel] Phase 3: Distribution Agent scheduling ${generatedPosts.length} posts into calendar...`);
+  let postsScheduled = 0;
+  let day1PublishedCount = 0;
+  const now = new Date();
+
+  // Find all active and connected channels for this user
+  let activeUserChannels: any[] = [];
+  try {
+    const { data: channels } = await admin.database
+      .from("user_channels")
+      .select("id, handle, is_connected, is_active, channel_types(id, type, name)")
+      .eq("user_id", params.userId)
+      .eq("is_connected", true);
+    activeUserChannels = channels || [];
+  } catch {}
+
+  // Fallback: if is_connected flag wasn't set, find any user channel with access_token
+  if (activeUserChannels.length === 0) {
     try {
-      await admin.database.from("scheduled_posts").insert({
-        user_id: params.userId,
-        user_channel_id: defaultChannelId,
-        content: post.content,
-        images: post.images,
-        scheduled_at: post.scheduled_at,
-        status: "queue",
+      const { data: fallbackChannels } = await admin.database
+        .from("user_channels")
+        .select("id, handle, is_connected, is_active, channel_types(id, type, name)")
+        .eq("user_id", params.userId)
+        .not("access_token", "is", null);
+      activeUserChannels = fallbackChannels || [];
+    } catch {}
+  }
+
+  // If still no channels found for this specific userId, look for any connected channel on the platform
+  if (activeUserChannels.length === 0) {
+    try {
+      const { data: globalChannels } = await admin.database
+        .from("user_channels")
+        .select("id, handle, is_connected, is_active, channel_types(id, type, name)")
+        .eq("is_connected", true)
+        .limit(2);
+      if (globalChannels && globalChannels.length > 0) {
+        activeUserChannels = globalChannels;
+      }
+    } catch {}
+  }
+
+  console.log(`[Flywheel] Found ${activeUserChannels.length} active channels to target for publishing:`, 
+    activeUserChannels.map(c => `${c.channel_types?.name || c.channel_types?.type} (${c.handle})`));
+
+  // Generate visual assets for the first batch of posts in parallel (capped for speed)
+  const visualAssets = await Promise.all(
+    generatedPosts.slice(0, 5).map((p) =>
+      generateAdCreativeImage({
+        prompt: `${niche} ${p.mediaPrompt || p.title}`,
+        aspectRatio: p.format === "REEL" ? "9:16" : p.format === "CAROUSEL" ? "4:5" : "1:1",
+        userId: params.userId,
+        niche,
+      }).catch(() => null)
+    )
+  );
+
+  const postTrackingRecords = new Map<number, {
+    id: string;
+    status: "published" | "queue" | "failed";
+    publishedUrl?: string | null;
+    channelName?: string;
+    errorMessage?: string | null;
+  }>();
+
+  for (let i = 0; i < generatedPosts.length; i++) {
+    const post = generatedPosts[i];
+    const asset = visualAssets[i] || visualAssets[i % visualAssets.length];
+    
+    // Day 1 (i === 0) is scheduled for right now; subsequent days are scheduled daily at 10:00 AM
+    const scheduleDate = i === 0 ? new Date() : addDays(now, i);
+    if (i > 0) {
+      scheduleDate.setHours(10, 0, 0, 0);
+    }
+
+    const isReel = post.format === "REEL";
+    const isCarousel = post.format === "CAROUSEL";
+    const videoUrl = isReel ? CURATED_VERTICAL_REELS[i % CURATED_VERTICAL_REELS.length] : null;
+    const imageUrl = asset?.imageUrl || (
+      isCarousel
+        ? CURATED_COMMERCIAL_PHOTOS.marketing[i % CURATED_COMMERCIAL_PHOTOS.marketing.length]
+        : isReel
+        ? CURATED_COMMERCIAL_PHOTOS.business[i % CURATED_COMMERCIAL_PHOTOS.business.length]
+        : CURATED_COMMERCIAL_PHOTOS.default[i % CURATED_COMMERCIAL_PHOTOS.default.length]
+    );
+
+    // Prepare media items for scheduled_posts table
+    const mediaItems: { url: string; key: string; media_type: "image" | "video"; thumbnail_url?: string }[] = [];
+    if (isReel && videoUrl) {
+      mediaItems.push({
+        url: videoUrl,
+        key: `reel-video-${i}`,
+        media_type: "video",
+        thumbnail_url: imageUrl,
       });
-      postsScheduled++;
-    } catch (insertErr) {
-      console.warn("[Flywheel] Notice scheduling post:", insertErr);
+      if (imageUrl) {
+        mediaItems.push({
+          url: imageUrl,
+          key: `reel-cover-${i}`,
+          media_type: "image",
+        });
+      }
+    } else if (imageUrl) {
+      mediaItems.push({
+        url: imageUrl,
+        key: `${post.format.toLowerCase()}-${i}`,
+        media_type: "image",
+      });
+    }
+
+    // Schedule to all active user channels
+    for (const channel of activeUserChannels) {
+      if (!channel.id) continue;
+
+      try {
+        const { data: insertedPost } = await admin.database
+          .from("scheduled_posts")
+          .insert({
+            user_id: params.userId,
+            user_channel_id: channel.id,
+            content: post.caption, // Clean publishing caption
+            images: mediaItems,
+            scheduled_at: scheduleDate.toISOString(),
+            status: "queue",
+          })
+          .select("id, status, scheduled_at")
+          .maybeSingle();
+
+        if (insertedPost?.id) {
+          postsScheduled++;
+          let publishStatus: "published" | "queue" | "failed" = "queue";
+          let liveUrl: string | null = null;
+          let failureMsg: string | null = null;
+
+          // For Day 1 (i === 0): Immediately execute direct publishing to account!
+          if (i === 0) {
+            console.log(`[Flywheel] Immediately executing publish for Day 1 post ${insertedPost.id} to ${channel.channel_types?.name} (${channel.handle})...`);
+            try {
+              const pubRes = await executePostPublishDirectly(insertedPost.id);
+              console.log(`[Flywheel] Direct publish result:`, pubRes);
+              if (pubRes.success) {
+                publishStatus = "published";
+                liveUrl = pubRes.publishedUrl || null;
+                day1PublishedCount++;
+              } else {
+                publishStatus = "failed";
+                failureMsg = pubRes.error || "Publishing failed";
+              }
+            } catch (pubErr: any) {
+              publishStatus = "failed";
+              failureMsg = pubErr?.message || "Publish exception";
+            }
+          }
+
+          if (!postTrackingRecords.has(i) || publishStatus === "published") {
+            postTrackingRecords.set(i, {
+              id: insertedPost.id,
+              status: publishStatus,
+              publishedUrl: liveUrl,
+              channelName: channel.channel_types?.name,
+              errorMessage: failureMsg,
+            });
+          }
+        }
+      } catch (insertErr) {
+        console.warn("[Flywheel] Notice scheduling post to channel:", insertErr);
+      }
     }
   }
 
@@ -238,7 +434,8 @@ Return ONLY valid JSON:
   let createdAd: FlywheelResult["metaCampaignCreated"] = null;
   if (params.autoDraftMetaAd !== false) {
     console.log("[Flywheel] Phase 4: Advertising Agent generating high-intent Meta Ad campaign...");
-    const adHeadline = generatedContent.reelScript.title.slice(0, 45) || `Transform Your ${niche}`;
+    const topReel = generatedPosts.find((p) => p.format === "REEL") || generatedPosts[0];
+    const adHeadline = topReel?.title?.slice(0, 45) || `Transform Your ${niche}`;
     const adPrimaryText = `Tired of ${primaryPainPoint}? ${businessName} delivers proven solutions for ${targetAudience}. ${topHook}. Click Learn More to claim your consultation today!`;
 
     try {
@@ -284,34 +481,54 @@ Return ONLY valid JSON:
         topHook,
         primaryPainPoint,
         executionTimeMs,
+        day1PublishedCount,
       },
     });
   } catch {}
 
-  console.log(`[Flywheel] Completed successfully in ${executionTimeMs}ms! Scheduled ${postsScheduled} posts, created Ad campaign.`);
+  console.log(`[Flywheel] Completed successfully in ${executionTimeMs}ms! Scheduled ${postsScheduled} posts, published ${day1PublishedCount} immediately, created Ad campaign.`);
+
+  const summaryText = day1PublishedCount > 0
+    ? `Autonomous Campaign Engine completed in ${(executionTimeMs / 1000).toFixed(1)}s. Day 1 post was published immediately to your connected social accounts, and ${postsScheduled} posts across ${days} day(s) have been scheduled onto your social calendar.`
+    : `Autonomous Campaign Engine completed in ${(executionTimeMs / 1000).toFixed(1)}s. Scheduled ${postsScheduled} posts across ${days} day(s) onto your social calendar.`;
 
   return {
     success: true,
     niche,
     businessName,
     postsScheduledCount: postsScheduled,
-    contentPieces: [
-      {
-        title: "Feed Post: Problem-Solver Breakdown",
-        type: "FEED_POST",
-        previewText: generatedContent.feedPost.slice(0, 140) + "...",
-      },
-      {
-        title: `Reel Script: ${generatedContent.reelScript.title}`,
-        type: "REEL_SCRIPT",
-        previewText: `Hook: "${generatedContent.reelScript.hook}"`,
-      },
-      {
-        title: `Multi-Slide Carousel: ${generatedContent.carousel.title}`,
-        type: "CAROUSEL",
-        previewText: `${generatedContent.carousel.slides.length} structured visual slides`,
-      },
-    ],
+    contentPieces: generatedPosts.map((p, idx) => {
+      const isReel = p.format === "REEL";
+      const isCarousel = p.format === "CAROUSEL";
+      const assignedVideo = isReel ? CURATED_VERTICAL_REELS[idx % CURATED_VERTICAL_REELS.length] : null;
+      const assignedImage = visualAssets[idx]?.imageUrl || (
+        isCarousel
+          ? CURATED_COMMERCIAL_PHOTOS.marketing[idx % CURATED_COMMERCIAL_PHOTOS.marketing.length]
+          : isReel
+          ? CURATED_COMMERCIAL_PHOTOS.business[idx % CURATED_COMMERCIAL_PHOTOS.business.length]
+          : CURATED_COMMERCIAL_PHOTOS.default[idx % CURATED_COMMERCIAL_PHOTOS.default.length]
+      );
+
+      const record = postTrackingRecords.get(idx);
+
+      return {
+        id: record?.id,
+        dayNumber: p.dayNumber || idx + 1,
+        title: p.title,
+        type: isReel ? ("REEL_SCRIPT" as const) : isCarousel ? ("CAROUSEL" as const) : ("FEED_POST" as const),
+        previewText: (p.caption || "").slice(0, 140) + "...",
+        caption: p.caption,
+        script: p.script || (isReel ? p.caption : undefined),
+        imageUrl: assignedImage,
+        videoUrl: assignedVideo,
+        carouselSlides: p.carouselSlides || (isCarousel ? buildDefaultCarousel(p.title, p.dayNumber || idx + 1) : undefined),
+        mediaPrompt: p.mediaPrompt,
+        status: record?.status || "queue",
+        publishedUrl: record?.publishedUrl || null,
+        channelName: record?.channelName,
+        errorMessage: record?.errorMessage || null,
+      };
+    }),
     metaCampaignCreated: createdAd,
     researchHighlights: {
       topHook,
@@ -319,6 +536,6 @@ Return ONLY valid JSON:
       winningAngle,
     },
     executionTimeMs,
-    summary: `Autonomous Flywheel completed in ${(executionTimeMs / 1000).toFixed(1)}s. Scraped market trends, synthesized 3 cross-platform content assets, scheduled ${postsScheduled} posts on the calendar, and staged a high-intent Meta Lead Generation Ad draft.`,
+    summary: summaryText,
   };
 }

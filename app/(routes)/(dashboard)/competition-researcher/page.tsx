@@ -31,7 +31,7 @@ import {
   Zap,
 } from "lucide-react";
 import ScheduleFromResearchDialog from "@/components/competition/schedule-from-research-dialog";
-import FlywheelLauncherDialog from "@/components/competition/flywheel-launcher-dialog";
+import AutonomousCampaignDialog from "@/components/campaign/autonomous-campaign-dialog";
 import Link from "next/link";
 
 export default function CompetitionResearcherPage() {
@@ -151,9 +151,9 @@ export default function CompetitionResearcherPage() {
         </div>
         <Button
           onClick={() => setIsFlywheelOpen(true)}
-          className="gap-2 bg-gradient-to-r from-amber-500 to-primary text-primary-foreground font-bold shadow-sm"
+          className="gap-2 font-semibold shadow-xs text-xs sm:text-sm h-9"
         >
-          <Zap className="size-4" /> Run Autonomous Flywheel
+          <Layers className="size-4 text-primary-foreground" /> Autonomous Campaign Generator
         </Button>
       </div>
 
@@ -532,13 +532,13 @@ export default function CompetitionResearcherPage() {
         }}
       />
 
-      {/* Autonomous Multi-Agent Flywheel Launcher */}
-      <FlywheelLauncherDialog
+      {/* Autonomous Campaign Generator Dialog */}
+      <AutonomousCampaignDialog
         open={isFlywheelOpen}
         onOpenChange={setIsFlywheelOpen}
-        defaultNiche={form.niche}
-        defaultAudience={form.targetAudience}
-        defaultBusinessName={form.businessName}
+        initialNiche={form.niche}
+        initialAudience={form.targetAudience}
+        initialBusinessName={form.businessName}
       />
     </div>
   );
