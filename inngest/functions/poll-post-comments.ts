@@ -12,7 +12,7 @@ export const pollPostComments = inngest.createFunction(
     name: "Poll & Auto-Reply to Post Comments",
     triggers: [
       {
-        cron: "*/15 * * * *",
+        cron: "*/2 * * * *", // Polling backup runs every 2 minutes (Meta webhook is real-time)
       },
     ],
   },
@@ -150,27 +150,41 @@ Return ONLY valid JSON:
                   } catch {}
 
                   // Post public reply to Instagram
-                  await fetch(`https://graph.facebook.com/v22.0/${commentId}/replies`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ message: aiResult.reply, access_token: accessToken }),
-                  });
+                  let replyOk = false;
+                  try {
+                    const replyRes = await fetch(`https://graph.facebook.com/v22.0/${commentId}/replies`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ message: aiResult.reply, access_token: accessToken }),
+                    });
+                    const replyJson = await replyRes.json().catch(() => ({}));
+                    if (replyRes.ok && replyJson?.id) {
+                      replyOk = true;
+                      console.log(`[Comment Poller] Successfully posted reply to comment ${commentId}: ${replyJson.id}`);
+                    } else {
+                      console.error(`[Comment Poller] Error replying to comment ${commentId}:`, replyJson);
+                    }
+                  } catch (err) {
+                    console.error(`[Comment Poller] Network error replying to comment ${commentId}:`, err);
+                  }
 
-                  // Log to database
-                  await admin.database.from("social_comments").insert({
-                    user_id: post.user_id,
-                    post_id: post.id,
-                    platform: channelType || "INSTAGRAM",
-                    platform_comment_id: commentId,
-                    commenter_handle: commenterHandle,
-                    comment_text: commentText,
-                    sentiment: aiResult.sentiment,
-                    reply_text: aiResult.reply,
-                    dm_sent: aiResult.shouldSendDM,
-                    status: "replied",
-                  });
+                  // Log to database only if successfully posted
+                  if (replyOk) {
+                    await admin.database.from("social_comments").insert({
+                      user_id: post.user_id,
+                      post_id: post.id,
+                      platform: channelType || "INSTAGRAM",
+                      platform_comment_id: commentId,
+                      commenter_handle: commenterHandle,
+                      comment_text: commentText,
+                      sentiment: aiResult.sentiment,
+                      reply_text: aiResult.reply,
+                      dm_sent: aiResult.shouldSendDM,
+                      status: "replied",
+                    });
 
-                  postReplies++;
+                    postReplies++;
+                  }
                 }
               }
             } catch (err) {
