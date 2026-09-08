@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
             provider_account_id: profile.providerAccountId ?? null,
             handle: profile.handle ?? null,
             profile_image: profile.profileImage ?? null,
-            access_token: encrypt(token.accessToken),
+            access_token: encrypt((profile as any).pageAccessToken || token.accessToken),
             refresh_token: encrypt(token.refreshToken ?? null),
             token_expires_at: token.expiresAt ?? null,
             is_connected: true,

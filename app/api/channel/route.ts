@@ -1,4 +1,6 @@
 import { getInsforgeServerClient } from "@/lib/insforge-server";
+import { isProviderConfigured } from "@/lib/social-oauth";
+import { ChannelTypeEnum } from "@/constants/channels";
 import { NextRequest, NextResponse } from "next/server";
 
 // In-memory cache for static channel types (1 hour TTL)
@@ -76,7 +78,9 @@ export async function GET(request: NextRequest) {
               profile_image: userChannel?.profile_image ?? null,
               profile_url: userChannel?.profile_url ?? null,
               provider_account_id: userChannel?.provider_account_id ?? null,
-              connected: Boolean(userChannel?.is_connected)
+              connected: Boolean(userChannel?.is_connected),
+              oauth_configured: isProviderConfigured(channel_type.type as ChannelTypeEnum),
+              has_token: Boolean(userChannel?.access_token && userChannel.access_token.length > 5)
             };
         });
 

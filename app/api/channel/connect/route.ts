@@ -25,32 +25,52 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Channel type not found' }, { status: 404 });
         }
 
+        // Query existing user channel to support non-destructive updates
+        const { data: existingChannel } = await insforge.database
+            .from("user_channels")
+            .select("id, access_token, profile_image, provider_account_id, handle")
+            .eq("user_id", userId)
+            .eq("channel_type_id", channelType.id)
+            .maybeSingle();
+
+        const hasExistingToken = Boolean(existingChannel?.access_token && existingChannel.access_token.length > 5);
+
         // 1. Bluesky Verification & Direct Connection
         if (channelType.type === ChannelTypeEnum.BLUESKY) {
             const rawIdentifier = (handle || "").trim();
             const rawPassword = (password || "").trim();
 
-            if (!rawIdentifier || !rawPassword) {
+            if (!rawIdentifier) {
                 return NextResponse.json({ 
-                    error: "Please enter both your Bluesky Handle (e.g. username.bsky.social) and App Password." 
+                    error: "Please enter your Bluesky Handle (e.g. username.bsky.social)." 
+                }, { status: 400 });
+            }
+
+            if (!rawPassword && !hasExistingToken) {
+                return NextResponse.json({ 
+                    error: "Please enter your Bluesky App Password." 
                 }, { status: 400 });
             }
 
             const cleanIdentifier = rawIdentifier.replace(/^@/, '').trim();
-            const agent = new BskyAgent({ service: "https://bsky.social" });
+            const formattedHandle = cleanIdentifier.startsWith("@") ? cleanIdentifier : `@${cleanIdentifier}`;
 
             try {
-                await agent.login({
-                    identifier: cleanIdentifier,
-                    password: rawPassword,
-                });
+                let profileImage = existingChannel?.profile_image || null;
+                let encryptedPass = existingChannel?.access_token;
 
-                const profileRes = await agent.getProfile({ actor: cleanIdentifier }).catch(() => null);
-                const profileImage = profileRes?.data?.avatar || null;
-                const formattedHandle = cleanIdentifier.startsWith("@") ? cleanIdentifier : `@${cleanIdentifier}`;
-                const encryptedPass = encrypt(rawPassword);
+                if (rawPassword) {
+                    const agent = new BskyAgent({ service: "https://bsky.social" });
+                    await agent.login({
+                        identifier: cleanIdentifier,
+                        password: rawPassword,
+                    });
+                    const profileRes = await agent.getProfile({ actor: cleanIdentifier }).catch(() => null);
+                    profileImage = profileRes?.data?.avatar || profileImage;
+                    encryptedPass = encrypt(rawPassword);
+                }
 
-                await insforge.database
+                const { error: bskyUpsertErr } = await insforge.database
                     .from("user_channels")
                     .upsert([
                         {
@@ -65,6 +85,11 @@ export async function POST(request: NextRequest) {
                         }
                     ], { onConflict: "user_id,channel_type_id" });
 
+                if (bskyUpsertErr) {
+                    console.error("Bluesky upsert error:", bskyUpsertErr);
+                    return NextResponse.json({ error: `Database error: ${bskyUpsertErr.message || "Failed to save"}` }, { status: 500 });
+                }
+
                 return NextResponse.json({
                     success: true,
                     connected: true,
@@ -74,8 +99,8 @@ export async function POST(request: NextRequest) {
                 });
             } catch (bskyErr: any) {
                 console.error("Bluesky login failed:", bskyErr);
-                return NextResponse.json({
-                    error: bskyErr?.message || "Invalid Bluesky handle or app password. Please check and try again."
+                return NextResponse.json({ 
+                    error: bskyErr?.message || "Invalid Bluesky handle or app password. Please check and try again." 
                 }, { status: 400 });
             }
         }
@@ -91,14 +116,14 @@ export async function POST(request: NextRequest) {
             }, { status: 400 });
         }
 
-        if (!rawToken) {
+        if (!rawToken && !hasExistingToken) {
             return NextResponse.json({ 
                 error: `Please enter your ${channelType.name} Access Token or API Key.` 
             }, { status: 400 });
         }
 
-        let profileImage: string | null = null;
-        let verifiedAccountId = rawAccountId || null;
+        let profileImage: string | null = existingChannel?.profile_image || null;
+        let verifiedAccountId = rawAccountId || existingChannel?.provider_account_id || null;
         let formattedHandle = rawHandle.startsWith("@") ? rawHandle : `@${rawHandle}`;
 
         // 1. YouTube Verification & Real Channel Info Fetching
@@ -350,9 +375,9 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        const encryptedToken = encrypt(rawToken);
+        const encryptedToken = rawToken ? encrypt(rawToken) : (existingChannel?.access_token || null);
 
-        await insforge.database
+        const { error: upsertErr } = await insforge.database
             .from("user_channels")
             .upsert([
                 {
@@ -367,6 +392,11 @@ export async function POST(request: NextRequest) {
                     updated_at: new Date().toISOString(),
                 }
             ], { onConflict: "user_id,channel_type_id" });
+
+        if (upsertErr) {
+            console.error("Upsert error:", upsertErr);
+            return NextResponse.json({ error: `Database error: ${upsertErr.message || "Failed to save channel"}` }, { status: 500 });
+        }
 
         return NextResponse.json({
             success: true,
