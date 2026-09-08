@@ -37,7 +37,14 @@ export async function POST(req: NextRequest) {
       const changes = entry.changes || [];
 
       for (const change of changes) {
-        if (change.field === "comments" || change.field === "feed") {
+        // Handle all Meta comment event field types:
+        // "comments" = Instagram post comments
+        // "feed" = Facebook Page post comments (only shows in FB webhooks, not IG)
+        // "live_comments" = Instagram/Facebook Live stream comments
+        // "mentions" = when someone tags your account in a comment
+        const COMMENT_FIELDS = ["comments", "feed", "live_comments", "mentions"];
+        if (COMMENT_FIELDS.includes(change.field)) {
+
           const value = change.value;
           if (!value) continue;
 
