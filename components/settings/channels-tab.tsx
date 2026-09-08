@@ -52,7 +52,14 @@ function ChannelTabContent() {
             }
         }
         if (error) {
-            toast.error(`Failed to connect to ${channelType || 'channel'}: ${error}`)
+            const targetChannel = channelType || searchParams.get("channel") || "channel"
+            if (error === "oauth_not_configured") {
+                toast.error(`1-Click OAuth is not configured for ${targetChannel}. Please use the "Manual Token" tab to connect, or add ${targetChannel}_CLIENT_ID in your .env.local file.`, {
+                    duration: 6000,
+                })
+            } else {
+                toast.error(`Failed to connect to ${targetChannel}: ${error}`)
+            }
         }
 
         // Clean up URL query parameters
@@ -60,6 +67,8 @@ function ChannelTabContent() {
         url.searchParams.delete("connected")
         url.searchParams.delete("error")
         url.searchParams.delete("channelType")
+        url.searchParams.delete("channel")
+        url.searchParams.delete("help")
         url.searchParams.delete("demo")
         window.history.replaceState({}, "", url.toString())
     }, [queryClient, searchParams])

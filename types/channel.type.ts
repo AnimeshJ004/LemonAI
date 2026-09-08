@@ -12,5 +12,7 @@ export type ChannelType = {
     profile_image?: string | null
     profile_url?: string | null
     provider_account_id?: string | null
+    oauth_configured?: boolean
+    has_token?: boolean
 }
 

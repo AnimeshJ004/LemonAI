@@ -9,7 +9,7 @@ import { ChannelTypeEnum, getChannelIcon } from "@/constants/channels"
 import { HugeiconsIcon } from "@hugeicons/react"
 import { Spinner } from "@/components/ui/spinner"
 import { toast } from "sonner"
-import { KeyRound, ShieldCheck, ExternalLink, HelpCircle } from "lucide-react"
+import { KeyRound, ShieldCheck, ExternalLink, HelpCircle, AlertCircle } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -39,8 +39,12 @@ export function ConnectChannelDialog({
             setProviderAccountId((channel as any).provider_account_id || "")
             setAccessToken("")
             setPassword("")
-            // If channel is already connected, default to manual tab so user sees their saved fields
-            setConnectMode(channel.connected ? "manual" : "oauth")
+            // If OAuth is not configured in .env.local, default to manual tab; otherwise if connected default to manual else oauth
+            if (channel.oauth_configured === false) {
+                setConnectMode("manual")
+            } else {
+                setConnectMode(channel.connected ? "manual" : "oauth")
+            }
         }
     }, [channel, open])
 
@@ -60,12 +64,14 @@ export function ConnectChannelDialog({
     const handleConnect = async (e: React.FormEvent) => {
         e.preventDefault()
 
+        const hasExistingToken = Boolean(channel.connected && (channel as any).has_token);
+
         if (isBluesky) {
             if (!handle.trim()) {
                 toast.error("Please enter your Bluesky Handle (e.g. username.bsky.social)")
                 return
             }
-            if (!password.trim()) {
+            if (!password.trim() && !hasExistingToken) {
                 toast.error("Please enter your Bluesky App Password")
                 return
             }
@@ -74,7 +80,7 @@ export function ConnectChannelDialog({
                 toast.error(`Please enter your ${channel.name} handle, username, or page name`)
                 return
             }
-            if (!accessToken.trim()) {
+            if (!accessToken.trim() && !hasExistingToken) {
                 toast.error(`Please enter your ${channel.name} Access Token or API Key`)
                 return
             }
@@ -186,42 +192,69 @@ export function ConnectChannelDialog({
                                         <ShieldCheck className="size-4 text-emerald-500" />
                                         Official {channel.name} OAuth 2.0
                                     </span>
-                                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold px-2 py-0.5 bg-emerald-500/10 rounded-full border border-emerald-500/20">
-                                        Official
+                                    <span className="text-[10px] text-muted-foreground font-semibold px-2 py-0.5 bg-muted rounded-full border">
+                                        {channel.oauth_configured === false ? "Setup Required" : "Official"}
                                     </span>
                                 </div>
-                                <p className="text-xs text-muted-foreground leading-relaxed">
-                                    Authorize directly through official {channel.name} authentication. No manual developer token copy-pasting required.
-                                </p>
 
-                                {channel.connected && channel.handle && (
-                                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300">
-                                        <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-                                        <span>Currently linked to: <strong className="font-semibold">{channel.handle}</strong></span>
+                                {channel.oauth_configured === false ? (
+                                    <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/60 dark:border-amber-950 dark:bg-amber-950/30 space-y-2.5 text-xs text-amber-900 dark:text-amber-200">
+                                        <div className="flex items-center gap-1.5 font-semibold">
+                                            <AlertCircle className="size-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                                            <span>OAuth Client ID Required in .env.local</span>
+                                        </div>
+                                        <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-amber-300/80">
+                                            1-Click OAuth requires <code className="font-mono font-semibold text-foreground">{channel.type}_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">{channel.type}_CLIENT_SECRET</code> to be added in your <code className="font-mono font-semibold text-foreground">.env.local</code> file.
+                                        </p>
+                                        <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-amber-300/80">
+                                            You can connect immediately without any developer setup using your Page Access Token in the <strong className="font-semibold text-foreground">Manual Token</strong> tab.
+                                        </p>
+                                        <Button
+                                            type="button"
+                                            size="sm"
+                                            onClick={() => setConnectMode("manual")}
+                                            className="w-full text-xs font-semibold gap-1.5 h-8.5 bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
+                                        >
+                                            <KeyRound className="size-3.5" />
+                                            Switch to Manual Token (Ready to Use)
+                                        </Button>
                                     </div>
+                                ) : (
+                                    <>
+                                        <p className="text-xs text-muted-foreground leading-relaxed">
+                                            Authorize directly through official {channel.name} authentication. No manual developer token copy-pasting required.
+                                        </p>
+
+                                        {channel.connected && channel.handle && (
+                                            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300">
+                                                <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                                                <span>Currently linked to: <strong className="font-semibold">{channel.handle}</strong></span>
+                                            </div>
+                                        )}
+
+                                        <Button
+                                            type="button"
+                                            className="w-full text-xs font-semibold gap-2 h-10 text-white shadow-xs hover:opacity-90 transition-opacity"
+                                            style={{ backgroundColor: channel.color || "#2563eb" }}
+                                            onClick={() => {
+                                                window.location.href = `/api/channel/oauth?channelTypeId=${channel.id}`;
+                                            }}
+                                        >
+                                            <HugeiconsIcon icon={icon} className="size-4" />
+                                            {channel.connected ? `Re-authorize with ${channel.name}` : `Connect with ${channel.name}`}
+                                        </Button>
+
+                                        <div className="pt-1 text-center">
+                                            <button
+                                                type="button"
+                                                onClick={() => setConnectMode("manual")}
+                                                className="text-[11px] text-muted-foreground hover:text-primary transition-colors underline underline-offset-4 cursor-pointer"
+                                            >
+                                                Or configure with manual Page Access Token / API Key
+                                            </button>
+                                        </div>
+                                    </>
                                 )}
-
-                                <Button
-                                    type="button"
-                                    className="w-full text-xs font-semibold gap-2 h-10 text-white shadow-xs hover:opacity-90 transition-opacity"
-                                    style={{ backgroundColor: channel.color || "#2563eb" }}
-                                    onClick={() => {
-                                        window.location.href = `/api/channel/oauth?channelTypeId=${channel.id}`;
-                                    }}
-                                >
-                                    <HugeiconsIcon icon={icon} className="size-4" />
-                                    {channel.connected ? `Re-authorize with ${channel.name}` : `Connect with ${channel.name}`}
-                                </Button>
-
-                                <div className="pt-1 text-center">
-                                    <button
-                                        type="button"
-                                        onClick={() => setConnectMode("manual")}
-                                        className="text-[11px] text-muted-foreground hover:text-primary transition-colors underline underline-offset-4 cursor-pointer"
-                                    >
-                                        Or configure with manual Page Access Token / API Key
-                                    </button>
-                                </div>
                             </div>
                         )}
 
@@ -352,88 +385,103 @@ export function ConnectChannelDialog({
                                 </div>
 
                                 {/* Bluesky App Password */}
-                                {isBluesky ? (
-                                    <div className="space-y-1.5">
-                                        <Label htmlFor="channel-password" className="text-xs font-semibold">
-                                            App Password *
-                                        </Label>
-                                        <Input
-                                            id="channel-password"
-                                            type="password"
-                                            placeholder="xxxx-xxxx-xxxx-xxxx"
-                                            value={password}
-                                            onChange={(e) => setPassword(e.target.value)}
-                                            disabled={isLoading}
-                                            required
-                                            className="h-9 text-xs"
-                                        />
-                                    </div>
-                                ) : (
-                                    <>
-                                        {/* Provider Account / Page ID */}
-                                        {(isInstagram || isFacebook || isLinkedIn) && (
-                                            <div className="space-y-1.5">
-                                                <div className="flex items-center justify-between">
-                                                    <Label htmlFor="channel-account-id" className="text-xs font-semibold">
-                                                        {isInstagram
-                                                            ? "Instagram Business Account ID"
-                                                            : isFacebook
-                                                            ? "Facebook Page ID"
-                                                            : "LinkedIn Author URN / ID"}
-                                                    </Label>
-                                                    {!isInstagram && (
-                                                        <span className="text-[10px] text-muted-foreground">
-                                                            Optional
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                <Input
-                                                    id="channel-account-id"
-                                                    placeholder={
-                                                        isInstagram
-                                                            ? "e.g. 17841433178455433"
-                                                            : isFacebook
-                                                            ? "e.g. 1000854321..."
-                                                            : "e.g. 12345678"
-                                                    }
-                                                    value={providerAccountId}
-                                                    onChange={(e) => setProviderAccountId(e.target.value)}
-                                                    disabled={isLoading}
-                                                    className="h-9 text-xs"
-                                                />
-                                            </div>
-                                        )}
+                                 {isBluesky ? (
+                                     <div className="space-y-1.5">
+                                         <div className="flex items-center justify-between">
+                                             <Label htmlFor="channel-password" className="text-xs font-semibold">
+                                                 App Password {channel.has_token ? "" : "*"}
+                                             </Label>
+                                             {channel.has_token && (
+                                                 <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                                                     Password saved in DB
+                                                 </span>
+                                             )}
+                                         </div>
+                                         <Input
+                                             id="channel-password"
+                                             type="password"
+                                             placeholder={channel.has_token ? "Password stored securely. Leave blank to keep." : "xxxx-xxxx-xxxx-xxxx"}
+                                             value={password}
+                                             onChange={(e) => setPassword(e.target.value)}
+                                             disabled={isLoading}
+                                             required={!channel.has_token}
+                                             className="h-9 text-xs"
+                                         />
+                                     </div>
+                                 ) : (
+                                     <>
+                                         {/* Provider Account / Page ID */}
+                                         {(isInstagram || isFacebook || isLinkedIn) && (
+                                             <div className="space-y-1.5">
+                                                 <div className="flex items-center justify-between">
+                                                     <Label htmlFor="channel-account-id" className="text-xs font-semibold">
+                                                         {isInstagram
+                                                             ? "Instagram Business Account ID"
+                                                             : isFacebook
+                                                             ? "Facebook Page ID"
+                                                             : "LinkedIn Author URN / ID"}
+                                                     </Label>
+                                                     {!isInstagram && (
+                                                         <span className="text-[10px] text-muted-foreground">
+                                                             Optional
+                                                         </span>
+                                                     )}
+                                                 </div>
+                                                 <Input
+                                                     id="channel-account-id"
+                                                     placeholder={
+                                                         isInstagram
+                                                             ? "e.g. 17841433178455433"
+                                                             : isFacebook
+                                                             ? "e.g. 1000854321..."
+                                                             : "e.g. 12345678"
+                                                     }
+                                                     value={providerAccountId}
+                                                     onChange={(e) => setProviderAccountId(e.target.value)}
+                                                     disabled={isLoading}
+                                                     className="h-9 text-xs"
+                                                 />
+                                             </div>
+                                         )}
 
-                                        {/* Access Token / API Key */}
-                                        <div className="space-y-1.5">
-                                            <Label htmlFor="channel-token" className="text-xs font-semibold">
-                                                {isMeta
-                                                    ? "Page / Profile Access Token *"
-                                                    : isTwitter
-                                                    ? "Twitter / X User Access Token or Bearer Token *"
-                                                    : isThreads
-                                                    ? "Threads User Access Token *"
-                                                    : isYouTube
-                                                    ? "YouTube / Google OAuth Access Token *"
-                                                    : isLinkedIn
-                                                    ? "LinkedIn Member Access Token *"
-                                                    : isTikTok
-                                                    ? "TikTok User Access Token *"
-                                                    : `${channel.name} Access Token / API Key *`}
-                                            </Label>
-                                            <Input
-                                                id="channel-token"
-                                                type="password"
-                                                placeholder="Paste your token or key here..."
-                                                value={accessToken}
-                                                onChange={(e) => setAccessToken(e.target.value)}
-                                                disabled={isLoading}
-                                                required
-                                                className="h-9 text-xs"
-                                            />
-                                        </div>
-                                    </>
-                                )}
+                                         {/* Access Token / API Key */}
+                                         <div className="space-y-1.5">
+                                             <div className="flex items-center justify-between">
+                                                 <Label htmlFor="channel-token" className="text-xs font-semibold">
+                                                     {isMeta
+                                                         ? "Page / Profile Access Token"
+                                                         : isTwitter
+                                                         ? "Twitter / X User Access Token or Bearer Token"
+                                                         : isThreads
+                                                         ? "Threads User Access Token"
+                                                         : isYouTube
+                                                         ? "YouTube / Google OAuth Access Token"
+                                                         : isLinkedIn
+                                                         ? "LinkedIn Member Access Token"
+                                                         : isTikTok
+                                                         ? "TikTok User Access Token"
+                                                         : `${channel.name} Access Token / API Key`} {channel.has_token ? "" : "*"}
+                                                 </Label>
+                                                 {channel.has_token && (
+                                                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                                                         <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                                         Token saved in DB
+                                                     </span>
+                                                 )}
+                                             </div>
+                                             <Input
+                                                 id="channel-token"
+                                                 type="password"
+                                                 placeholder={channel.has_token ? "Token stored securely. Leave blank to keep." : "Paste your token or key here..."}
+                                                 value={accessToken}
+                                                 onChange={(e) => setAccessToken(e.target.value)}
+                                                 disabled={isLoading}
+                                                 required={!channel.has_token}
+                                                 className="h-9 text-xs"
+                                             />
+                                         </div>
+                                     </>
+                                 )}
                             </div>
                         )}
                     </div>
@@ -472,6 +520,16 @@ export function ConnectChannelDialog({
                                         {channel.connected ? `Update ${channel.name}` : `Verify & Connect ${channel.name}`}
                                     </span>
                                 )}
+                            </Button>
+                        ) : channel.oauth_configured === false ? (
+                            <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => setConnectMode("manual")}
+                                className="text-xs font-semibold min-w-[140px] h-9 text-white shadow-xs hover:opacity-90 transition-opacity bg-primary"
+                            >
+                                <KeyRound className="size-3.5 mr-1.5 text-white" />
+                                <span className="text-white font-medium">Use Manual Token</span>
                             </Button>
                         ) : (
                             <Button
