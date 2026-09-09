@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getInsforgeAdminClient, getInsforgeServerClient } from "@/lib/insforge-server";
+import { isValidUuid, normalizeSentiment } from "@/lib/social-comments-service";
 
 export const maxDuration = 30;
 
@@ -102,13 +103,16 @@ Return ONLY valid JSON:
   // Save to DB (resilient if table not yet migrated)
   try {
     const admin = getInsforgeAdminClient();
+    const safePostId = isValidUuid(postId) ? postId : null;
+    const safeSentiment = normalizeSentiment(aiResult.sentiment);
+
     await admin.database.from("social_comments").insert({
       user_id: userId,
-      post_id: postId || null,
+      post_id: safePostId,
       platform: platform || "INSTAGRAM",
       commenter_handle: commenterHandle || "@user",
       comment_text: commentText,
-      sentiment: aiResult.sentiment,
+      sentiment: safeSentiment,
       reply_text: aiResult.reply,
       dm_sent: aiResult.shouldSendDM,
       status: "replied",
