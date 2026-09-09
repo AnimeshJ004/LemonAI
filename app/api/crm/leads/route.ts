@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
     // Compute pipeline summary stats
     const totalLeads = leads.length;
     const totalPipelineValue = leads.reduce((sum, l) => sum + (Number(l.deal_value) || 0), 0);
-    const qualifiedCount = leads.filter((l) => l.score >= 7 || l.stage === "qualified" || l.stage === "booked").length;
+    const qualifiedCount = leads.filter((l) => ["qualified", "booked", "closed_won"].includes(l.stage)).length;
     const wonCount = leads.filter((l) => l.stage === "closed_won").length;
     const conversionRate = totalLeads > 0 ? Math.round((wonCount / totalLeads) * 100) : 0;
 
@@ -91,7 +91,32 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    return NextResponse.json({ lead: newLead }, { status: 201 });
+    // Auto-score lead with BANT intelligence
+    let finalizedLead = newLead;
+    try {
+      const scoreContext = notes || `New prospect ${name || ""} from ${source || "inbound"}. Company: ${company || "Unspecified"}. Deal: $${deal_value || 0}`;
+      const scored = await scoreAndUpdateLead(newLead, scoreContext);
+      finalizedLead = scored.lead;
+    } catch (scoreErr) {
+      console.warn("[CRM Leads] Auto-scoring notice:", scoreErr);
+    }
+
+    // Log lead created activity
+    try {
+      const admin = (await import("@/lib/insforge-server")).getInsforgeAdminClient();
+      await admin.database.from("crm_activities").insert({
+        user_id: targetUserId,
+        lead_id: finalizedLead.id,
+        type: "lead_created",
+        title: `New lead created: ${finalizedLead.name || "Prospect"}`,
+        description: `Source: ${finalizedLead.source} | Initial BANT Score: ${finalizedLead.score}/10`,
+        metadata: { source: finalizedLead.source, score: finalizedLead.score },
+      });
+    } catch (actErr) {
+      console.warn("[CRM Leads] Activity log notice:", actErr);
+    }
+
+    return NextResponse.json({ lead: finalizedLead }, { status: 201 });
   } catch (error: any) {
     console.error("Error creating lead:", error);
     return NextResponse.json({ error: error.message || "Failed to create lead" }, { status: 500 });
@@ -127,10 +152,27 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Lead not found" }, { status: 404 });
     }
 
-    // Optional on-demand BANT re-scoring
-    if (triggerScoring && transcript) {
-      const result = await scoreAndUpdateLead(updated, transcript);
+    // On-demand BANT re-scoring (via button or transcript)
+    if (triggerScoring) {
+      const scoringContext =
+        transcript ||
+        updated.metadata?.notes ||
+        `Prospect ${updated.name} via ${updated.source}. Deal value: $${updated.deal_value}. Company: ${updated.metadata?.company || "Direct"}`;
+      const result = await scoreAndUpdateLead(updated, scoringContext);
       updated = result.lead;
+
+      // Log score activity
+      try {
+        const admin = (await import("@/lib/insforge-server")).getInsforgeAdminClient();
+        await admin.database.from("crm_activities").insert({
+          user_id: targetUserId,
+          lead_id: updated.id,
+          type: "score_updated",
+          title: `BANT AI score evaluated: ${updated.score}/10`,
+          description: result.evaluation.reasoning || "Lead re-scored via AI auditor.",
+          metadata: { score: updated.score, bant: updated.metadata?.bant },
+        });
+      } catch {}
     }
 
     return NextResponse.json({ lead: updated });

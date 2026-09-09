@@ -43,15 +43,17 @@ export async function POST(req: NextRequest) {
 
     const admin = getInsforgeAdminClient();
 
-    // 1. Multi-Tenant Lookup: Match phoneNumberId to user_channels or brand_profiles
-    let tenantUserId: string | null = null;
+    // 1. Multi-Tenant Lookup: Match via query parameter or provider_account_id
+    const { searchParams } = new URL(req.url);
+    let tenantUserId: string | null = searchParams.get("userId") || searchParams.get("tenantId");
     let brand: any = null;
 
-    if (phoneNumberId) {
+    if (!tenantUserId && phoneNumberId) {
       const { data: channel } = await admin.database
         .from("user_channels")
         .select("user_id")
         .eq("provider_account_id", phoneNumberId)
+        .limit(1)
         .maybeSingle();
 
       if (channel?.user_id) {
@@ -59,29 +61,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // If resolved, fetch brand profile for this tenant
-    if (tenantUserId) {
-      const { data } = await admin.database
-        .from("brand_profiles")
-        .select("user_id, business_name, niche, main_offer, brand_tone, booking_url, products_services, pricing_details, location")
-        .eq("user_id", tenantUserId)
-        .maybeSingle();
-      brand = data;
+    // Gated development fallback only
+    if (!tenantUserId && process.env.NODE_ENV === "development") {
+      tenantUserId = "user_lemon_default";
     }
 
-    // Fallback: If no channel matched by phoneNumberId, query latest active brand profile
-    if (!brand) {
-      const { data } = await admin.database
-        .from("brand_profiles")
-        .select("user_id, business_name, niche, main_offer, brand_tone, booking_url, products_services, pricing_details, location")
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (data) {
-        brand = data;
-        tenantUserId = data.user_id;
-      }
+    if (!tenantUserId) {
+      console.warn(`[WhatsApp Webhook] Ignored message: No tenant registered for phone number ID ${phoneNumberId}`);
+      return NextResponse.json({ status: "unregistered_tenant" }, { status: 200 });
     }
+
+    // Fetch brand profile for the resolved tenant
+    const { data } = await admin.database
+      .from("brand_profiles")
+      .select("user_id, business_name, niche, main_offer, brand_tone, booking_url, products_services, pricing_details, location")
+      .eq("user_id", tenantUserId)
+      .maybeSingle();
+    brand = data;
+
 
     const bookingLink = brand?.booking_url || "";
     const products = brand?.products_services || "";

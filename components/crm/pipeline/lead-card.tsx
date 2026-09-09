@@ -93,16 +93,35 @@ export function LeadCard({ lead, index, onClick }: LeadCardProps) {
                   )}
                 </div>
 
-                <div
-                  className={cn(
-                    "text-[11px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1",
-                    scoreBadgeColor
-                  )}
-                  title={`BANT Score: ${score}/10`}
-                >
-                  <span>{score}/10</span>
+                <div className="flex items-center gap-1.5">
+                  <div
+                    className={cn(
+                      "text-[11px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1",
+                      scoreBadgeColor
+                    )}
+                    title={
+                      lead.metadata?.bant
+                        ? `BANT: Budget ${lead.metadata.bant.budgetScore}, Authority ${lead.metadata.bant.authorityScore}, Need ${lead.metadata.bant.needScore}, Timing ${lead.metadata.bant.timingScore}`
+                        : `BANT Score: ${score}/10`
+                    }
+                  >
+                    <Sparkles className="size-2.5" />
+                    <span>{score}/10</span>
+                  </div>
                 </div>
               </div>
+
+              {lead.metadata?.bant && (
+                <div className="flex items-center gap-1 text-[9px] text-muted-foreground font-mono bg-muted/30 px-2 py-0.5 rounded border border-border/40">
+                  <span>B:{lead.metadata.bant.budgetScore}</span>
+                  <span>•</span>
+                  <span>A:{lead.metadata.bant.authorityScore}</span>
+                  <span>•</span>
+                  <span>N:{lead.metadata.bant.needScore}</span>
+                  <span>•</span>
+                  <span>T:{lead.metadata.bant.timingScore}</span>
+                </div>
+              )}
 
               {/* Lead Name & Company */}
               <div>

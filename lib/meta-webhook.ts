@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { callResilientCompletion } from "@/lib/ai-gateway";
 import { decrypt } from "@/lib/encryption";
+import crypto from "crypto";
 
 export const maxDuration = 60;
 
@@ -36,7 +37,25 @@ export async function handleMetaWebhookGet(req: NextRequest) {
  */
 export async function handleMetaWebhookPost(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}));
+    const rawBody = await req.text();
+
+    // ─── 0. Cryptographic Signature Verification (X-Hub-Signature-256) ───
+    const appSecret = process.env.META_APP_SECRET || process.env.META_CLIENT_SECRET;
+    const signature = req.headers.get("x-hub-signature-256");
+
+    if (appSecret && signature) {
+      const expected = `sha256=${crypto.createHmac("sha256", appSecret).update(rawBody).digest("hex")}`;
+      const sigBuf = Buffer.from(signature);
+      const expBuf = Buffer.from(expected);
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+        console.warn("[Meta Webhook] Signature verification failed.");
+        return NextResponse.json({ error: "Invalid webhook signature" }, { status: 401 });
+      }
+    } else if (process.env.NODE_ENV === "production" && !appSecret) {
+      console.warn("[Meta Webhook Warning] META_APP_SECRET is not configured for signature verification.");
+    }
+
+    const body = JSON.parse(rawBody || "{}");
     const entries = body?.entry || [];
 
     if (entries.length === 0) {
@@ -49,8 +68,7 @@ export async function handleMetaWebhookPost(req: NextRequest) {
       const targetAccountId = String(entry.id || "").trim();
 
       // ─── 1. Robust Multi-Tenant Channel Resolution ─────────────────────────
-      // NEVER use raw .single() or naked .maybeSingle() without .limit(1)
-      // to avoid PGRST116 when multiple rows match the same provider_account_id.
+      // Match strictly by provider_account_id to prevent cross-tenant message contamination
       let userId: string | null = null;
       let accessToken: string | null = null;
       let channelId: string | null = null;
@@ -59,7 +77,6 @@ export async function handleMetaWebhookPost(req: NextRequest) {
       try {
         let channelRecord: any = null;
 
-        // A. Primary: Match by provider_account_id for INSTAGRAM or FACEBOOK
         if (targetAccountId) {
           const { data: matched } = await admin.database
             .from("user_channels")
@@ -75,44 +92,17 @@ export async function handleMetaWebhookPost(req: NextRequest) {
           }
         }
 
-        // B. Fallback: Most recently updated connected INSTAGRAM channel
+        // Never assign incoming events to another random user's channel.
         if (!channelRecord) {
-          const { data: igFallback } = await admin.database
-            .from("user_channels")
-            .select("id, user_id, handle, access_token, channel_types!inner(type)")
-            .eq("channel_types.type", "INSTAGRAM")
-            .eq("is_connected", true)
-            .order("updated_at", { ascending: false })
-            .limit(1);
-
-          if (igFallback && igFallback.length > 0) {
-            channelRecord = igFallback[0];
-            console.warn(`[Meta Webhook] Used fallback Instagram channel ${channelRecord.id} for target ${targetAccountId}`);
-          }
+          console.log(`[Meta Webhook] Ignored event for unregistered/unconnected account: ${targetAccountId}`);
+          continue;
         }
 
-        // C. Secondary Fallback: Most recently updated connected FACEBOOK channel
-        if (!channelRecord) {
-          const { data: fbFallback } = await admin.database
-            .from("user_channels")
-            .select("id, user_id, handle, access_token, channel_types!inner(type)")
-            .eq("channel_types.type", "FACEBOOK")
-            .eq("is_connected", true)
-            .order("updated_at", { ascending: false })
-            .limit(1);
-
-          if (fbFallback && fbFallback.length > 0) {
-            channelRecord = fbFallback[0];
-          }
-        }
-
-        if (channelRecord) {
-          channelId = channelRecord.id;
-          userId = channelRecord.user_id;
-          channelHandle = channelRecord.handle;
-          const rawToken = channelRecord.access_token;
-          accessToken = decrypt(rawToken) || rawToken;
-        }
+        channelId = channelRecord.id;
+        userId = channelRecord.user_id;
+        channelHandle = channelRecord.handle;
+        const rawToken = channelRecord.access_token;
+        accessToken = decrypt(rawToken) || rawToken;
 
         // D. Environment fallback if token missing
         if (!accessToken && process.env.META_ADS_ACCESS_TOKEN) {
@@ -400,7 +390,7 @@ Customer message: "${msgText}"`,
 
           const replyText = aiResponse.content || `Hi there! Thanks for reaching out to ${brandName}. How can we best help you today?`;
 
-          await fetch(`https://graph.facebook.com/v22.0/me/messages`, {
+          const sendRes = await fetch(`https://graph.facebook.com/v22.0/me/messages`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -409,6 +399,57 @@ Customer message: "${msgText}"`,
               access_token: accessToken,
             }),
           });
+
+          // Persist DM thread in social_dms table
+          try {
+            await admin.database.from("social_dms").upsert(
+              {
+                user_id: userId,
+                platform: "FACEBOOK",
+                conversation_id: `dm_${senderId}`,
+                sender_id: senderId,
+                sender_name: `Customer (${senderId.slice(-4)})`,
+                last_message: msgText,
+                last_message_at: new Date().toISOString(),
+                last_reply: sendRes.ok ? replyText : undefined,
+                last_replied_at: sendRes.ok ? new Date().toISOString() : undefined,
+                is_read: true,
+                messages_count: 2,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "conversation_id" }
+            );
+
+            // If buying / inquiry intent, record lead in CRM and log activity
+            const lower = msgText.toLowerCase();
+            if (lower.includes("price") || lower.includes("cost") || lower.includes("buy") || lower.includes("quote") || lower.includes("hire") || lower.includes("book")) {
+              const { data: newLead } = await admin.database.from("leads").insert({
+                user_id: userId,
+                name: `DM Prospect (${senderId.slice(-4)})`,
+                source: "meta_dm",
+                stage: "new",
+                score: 8,
+                deal_value: 2000,
+                metadata: {
+                  sender_id: senderId,
+                  inquiry: msgText,
+                },
+              }).select("id").maybeSingle();
+
+              if (newLead?.id) {
+                await admin.database.from("crm_activities").insert({
+                  user_id: userId,
+                  lead_id: newLead.id,
+                  type: "direct_message",
+                  title: "Direct message received via Meta",
+                  description: `Inquiry: "${msgText.slice(0, 100)}..."`,
+                  metadata: { sender_id: senderId },
+                });
+              }
+            }
+          } catch (storageErr) {
+            console.warn("[Meta Webhook] DM persistence notice:", storageErr);
+          }
         } catch (dmErr) {
           console.warn("[Meta Webhook] Error responding to direct DM:", dmErr);
         }

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Bot, MessageSquare, Zap, CheckCircle, Send, RefreshCw, Sparkles, ShieldAlert, Heart, HelpCircle } from "lucide-react";
+import { Bot, MessageSquare, Zap, CheckCircle, Send, RefreshCw, Sparkles, ShieldAlert, Heart, HelpCircle, Inbox, Clock } from "lucide-react";
 
 export default function SocialAutomationPage() {
   const [testComment, setTestComment] = useState({ text: "", platform: "INSTAGRAM" });
@@ -17,6 +18,19 @@ export default function SocialAutomationPage() {
 
   const queryClient = useQueryClient();
 
+  // Fetch comment logs — declared BEFORE handleSyncLiveComments to prevent ReferenceError
+  const { data: commentsData, isLoading, refetch } = useQuery({
+    queryKey: ["social-comments"],
+    queryFn: async () => {
+      const res = await fetch("/api/social/comments");
+      if (!res.ok) throw new Error("Failed to load comment history");
+      return res.json();
+    },
+    // Auto-refresh every 30 seconds to keep comment log fresh
+    refetchInterval: 30000,
+  });
+
+  // Bug fix: moved BELOW useQuery so `refetch` is in scope
   const handleSyncLiveComments = async () => {
     setIsSyncing(true);
     try {
@@ -29,23 +43,14 @@ export default function SocialAutomationPage() {
       } else {
         toast.info("Scanned latest posts — all comments are already replied to! 👍");
       }
-      refetch();
     } catch (e) {
       toast.error("Network error syncing comments from Instagram");
     } finally {
+      // Race condition fix: refetch THEN clear loading state
+      await refetch();
       setIsSyncing(false);
     }
   };
-
-  // Fetch comment logs
-  const { data: commentsData, isLoading, refetch } = useQuery({
-    queryKey: ["social-comments"],
-    queryFn: async () => {
-      const res = await fetch("/api/social/comments");
-      if (!res.ok) throw new Error("Failed to load comment history");
-      return res.json();
-    },
-  });
 
   // Test comment AI reply
   const { mutate: testCommentReply, isPending } = useMutation({
@@ -96,7 +101,12 @@ export default function SocialAutomationPage() {
             Autonomous 24/7 AI engagement for Instagram & Facebook comments and DM conversions
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button asChild variant="outline" size="sm" className="gap-2 text-xs border-purple-300 text-purple-600 hover:bg-purple-50">
+            <Link href="/social-automation/dm-inbox">
+              <Inbox className="size-3.5" /> DM Inbox
+            </Link>
+          </Button>
           <Button
             variant="default"
             size="sm"
@@ -332,6 +342,76 @@ export default function SocialAutomationPage() {
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Platform Expansion Roadmap (as per LEMON AI spec: LinkedIn, YouTube, X) */}
+      <Card className="border-dashed border-border/60">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Clock className="size-4 text-muted-foreground" /> Expanding Platforms — Coming Soon
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Lemon AI is adding LinkedIn, YouTube, and X automation in the next release cycle
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {[
+              { name: "LinkedIn", icon: "💼", desc: "Company page posts, comment replies, professional DM automation", color: "border-blue-200 dark:border-blue-800" },
+              { name: "YouTube", icon: "▶️", desc: "Video comment automation, subscriber engagement & reply management", color: "border-red-200 dark:border-red-800" },
+              { name: "X (Twitter)", icon: "✖️", desc: "Thread replies, DM automation, trending hashtag post scheduling", color: "border-slate-200 dark:border-slate-700" },
+            ].map((platform) => (
+              <div key={platform.name} className={`p-4 rounded-xl border ${platform.color} bg-muted/20 space-y-2 opacity-80`}>
+                <div className="flex items-center justify-between">
+                  <span className="text-lg">{platform.icon}</span>
+                  <Badge variant="outline" className="text-[10px]">Coming Soon</Badge>
+                </div>
+                <p className="text-sm font-semibold">{platform.name}</p>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">{platform.desc}</p>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* DM Auto-Reply Settings */}
+      <Card className="border-purple-200/60 dark:border-purple-900/50 bg-purple-50/20 dark:bg-purple-950/10">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Send className="size-4 text-purple-500" /> DM Auto-Reply Bot Settings
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Configure your Social DM Bot — automatically qualifies and nurtures prospects who DM your page
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between p-3 rounded-lg border bg-background">
+            <div>
+              <p className="text-sm font-medium">Auto-Reply on Instagram DMs</p>
+              <p className="text-xs text-muted-foreground">Respond to new DMs within 30 seconds using brand-trained AI</p>
+            </div>
+            <Badge className="bg-emerald-600 text-white text-xs">Active</Badge>
+          </div>
+          <div className="flex items-center justify-between p-3 rounded-lg border bg-background">
+            <div>
+              <p className="text-sm font-medium">Auto-Reply on Facebook Messenger DMs</p>
+              <p className="text-xs text-muted-foreground">Qualify leads and collect contact info automatically</p>
+            </div>
+            <Badge className="bg-emerald-600 text-white text-xs">Active</Badge>
+          </div>
+          <div className="flex items-center justify-between p-3 rounded-lg border bg-background opacity-60">
+            <div>
+              <p className="text-sm font-medium">WhatsApp Business DM Bot</p>
+              <p className="text-xs text-muted-foreground">Configured in WhatsApp Bot settings</p>
+            </div>
+            <Button asChild variant="outline" size="sm" className="text-xs h-7">
+              <Link href="/whatsapp-bot">Configure →</Link>
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground pt-1">
+            💡 All captured DM leads are automatically saved to your <Link href="/crm/pipeline" className="text-primary underline">CRM Pipeline</Link> and the <Link href="/crm/inbox" className="text-primary underline">Unified Inbox</Link>.
+          </p>
         </CardContent>
       </Card>
     </div>

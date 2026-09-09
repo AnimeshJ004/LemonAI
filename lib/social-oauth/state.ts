@@ -2,7 +2,23 @@ import { ChannelTypeEnum } from "@/constants/channels"
 import { createHmac, timingSafeEqual } from "crypto"
 
 
-const OAUTH_STATE_SECRET = process.env.CHANNEL_OAUTH_STATE_SECRET || "default_oauth_state_secret_key_32chars_lemon";
+function getOAuthStateSecret(): string {
+  const secret = process.env.CHANNEL_OAUTH_STATE_SECRET;
+  if (secret && secret.trim().length >= 16) {
+    return secret.trim();
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "[SECURITY FATAL] CHANNEL_OAUTH_STATE_SECRET must be set in production with at least 16 characters."
+    );
+  }
+  console.warn(
+    "[SECURITY WARNING] CHANNEL_OAUTH_STATE_SECRET not set. Using fallback development secret."
+  );
+  return "LemonAI_DevOnly_OAuthSecret_ReplaceInProduction_32chars";
+}
+
+const OAUTH_STATE_SECRET = getOAuthStateSecret();
 
 export type OAuthStatePayload = {
   userId: string
