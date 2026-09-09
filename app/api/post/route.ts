@@ -89,6 +89,7 @@ export async function POST(request: NextRequest) {
         const {
             posts,
             scheduledAt,
+            scheduledDates,
             status
         } = await request.json()
 
@@ -155,20 +156,26 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "No active channel found for channel type" }, { status: 404 })
         }
 
-        if (!scheduledAt) {
-            return NextResponse.json({ error: "Scheduled at is required" }, { status: 400 })
+        const effectiveDates: string[] = Array.isArray(scheduledDates) && scheduledDates.length > 0
+            ? scheduledDates.filter((d: any) => typeof d === "string" && Boolean(d.trim()))
+            : (scheduledAt ? [scheduledAt] : []);
+
+        if (effectiveDates.length === 0) {
+            return NextResponse.json({ error: "Scheduled at or scheduled dates is required" }, { status: 400 })
         }
 
         const postStatus = status === POST_STATUS.DRAFT ? POST_STATUS.DRAFT : POST_STATUS.QUEUE;
 
-        const payload = normalizedPosts.map((post) => ({
-            user_id: userId,
-            user_channel_id: connectedChannels.get(post.channelTypeId),
-            content: post.content,
-            images: post.images,
-            scheduled_at: scheduledAt,
-            status: postStatus
-        }))
+        const payload = effectiveDates.flatMap((dateStr) =>
+            normalizedPosts.map((post) => ({
+                user_id: userId,
+                user_channel_id: connectedChannels.get(post.channelTypeId),
+                content: post.content,
+                images: post.images,
+                scheduled_at: dateStr,
+                status: postStatus
+            }))
+        )
 
         // console.log(payload,"payload")
 
@@ -184,19 +191,29 @@ export async function POST(request: NextRequest) {
 
         // Publish immediately across all selected channels if scheduled for now, or queue
         if (postStatus === POST_STATUS.QUEUE && data && data.length > 0) {
-            const isDueNow = new Date(scheduledAt).getTime() <= Date.now() + 120_000;
+            const dueNowPosts: any[] = [];
+            const futurePosts: any[] = [];
 
-            if (isDueNow) {
-                // Publish all selected channels at the exact same time concurrently
-                console.log(`[Publisher] Immediately publishing ${data.length} post(s) simultaneously across all channels`);
+            data.forEach((post: any) => {
+                const isDueNow = new Date(post.scheduled_at).getTime() <= Date.now() + 120_000;
+                if (isDueNow) {
+                    dueNowPosts.push(post);
+                } else {
+                    futurePosts.push(post);
+                }
+            });
+
+            if (dueNowPosts.length > 0) {
+                console.log(`[Publisher] Immediately publishing ${dueNowPosts.length} post(s) simultaneously across channels`);
                 await Promise.allSettled(
-                    data.map((post: any) => publishPostDirectly(post.id))
+                    dueNowPosts.map((post: any) => publishPostDirectly(post.id))
                 );
-            } else {
-                // Send Inngest event for future scheduled posts
+            }
+
+            if (futurePosts.length > 0) {
                 try {
                     await inngest.send(
-                        data.map((post: any) => ({
+                        futurePosts.map((post: any) => ({
                             name: "post/publish.requested",
                             data: { postId: post.id }
                         }))
@@ -215,7 +232,7 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        return NextResponse.json({ posts: data }, { status: 201 })
+        return NextResponse.json({ posts: data, count: data?.length || 0, scheduledDates: effectiveDates }, { status: 201 })
 
 
     } catch (error) {

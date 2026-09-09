@@ -20,10 +20,14 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { AdOptimizerBanner } from "@/components/meta-ads/ad-optimizer-banner";
 import { AudienceBuilder } from "@/components/meta-ads/audience-builder";
+import { AdIntelligenceCard } from "@/components/meta-ads/ad-intelligence-card";
+import TrendingAdsDrawer from "@/components/meta-ads/trending-ads-drawer";
 
 export default function MetaAdsPage() {
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
   const [activeTab, setActiveTab] = useState<"campaigns" | "audiences">("campaigns");
+  const [showAdsDrawer, setShowAdsDrawer] = useState(false);
+  const [modelledAd, setModelledAd] = useState<any>(null);
 
   // Check Meta connection status
   const { data: channelsData } = useQuery({
@@ -209,33 +213,57 @@ export default function MetaAdsPage() {
 
       {/* Main View: List (with Tabs) or Create Wizard */}
       {viewMode === "list" ? (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between border-b pb-3">
-            <div className="flex items-center gap-2">
-              <Button
-                variant={activeTab === "campaigns" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setActiveTab("campaigns")}
-                className="h-8 text-xs font-semibold"
-              >
-                Campaigns & Creatives ({campaigns.length})
-              </Button>
-              <Button
-                variant={activeTab === "audiences" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setActiveTab("audiences")}
-                className="h-8 text-xs font-semibold gap-1.5"
-              >
-                <Users className="size-3.5" /> Audience Builder
-              </Button>
-            </div>
-          </div>
+        <div className="space-y-6">
+          {/* Live Competitor Ad Intelligence — Member 2 Feature */}
+          <AdIntelligenceCard
+            onModelAd={(ad) => {
+              setModelledAd(ad);
+              setViewMode("create");
+            }}
+            onOpenDrawer={() => setShowAdsDrawer(true)}
+          />
 
-          {activeTab === "campaigns" ? (
-            <CampaignsTable onCreateClick={() => setViewMode("create")} />
-          ) : (
-            <AudienceBuilder />
-          )}
+          {/* Full Competitor Ads Drawer */}
+          <TrendingAdsDrawer
+            open={showAdsDrawer}
+            onOpenChange={setShowAdsDrawer}
+            niche=""
+            country="IN"
+            onModelAd={(ad) => {
+              setModelledAd(ad);
+              setShowAdsDrawer(false);
+              setViewMode("create");
+            }}
+          />
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={activeTab === "campaigns" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setActiveTab("campaigns")}
+                  className="h-8 text-xs font-semibold"
+                >
+                  Campaigns & Creatives ({campaigns.length})
+                </Button>
+                <Button
+                  variant={activeTab === "audiences" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setActiveTab("audiences")}
+                  className="h-8 text-xs font-semibold gap-1.5"
+                >
+                  <Users className="size-3.5" /> Audience Builder
+                </Button>
+              </div>
+            </div>
+
+            {activeTab === "campaigns" ? (
+              <CampaignsTable onCreateClick={() => setViewMode("create")} />
+            ) : (
+              <AudienceBuilder />
+            )}
+          </div>
         </div>
       ) : (
         <div className="rounded-2xl border bg-card shadow-xs">

@@ -6,6 +6,7 @@ import { auth } from "@clerk/nextjs/server";
 import { inngest } from "@/inngest/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getUserMemoryContext, buildMemoryPromptBlock } from "@/lib/ai-memory";
+import { getPlatformPeakTime, adaptCaptionForPlatform } from "@/lib/platform-adapt-helper";
 
 const ACTIONS = ["generate", "rephrase", "shorten", "expand"] as const;
 type ActionType = (typeof ACTIONS)[number];
@@ -171,10 +172,13 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
                     scheduledDate.setHours(hour, min, 0, 0);
                 }
 
-                // Clean plain text without emojis or symbols and guarantee 4-6 hashtags
+                const targetChannelType = channelType || targetChannel || "TWITTER";
+                const peak = getPlatformPeakTime(targetChannelType, slotIndex);
+                scheduledDate.setHours(peak.hour, peak.minute, 0, 0);
+
+                // Silently adapt caption according to the specific social media platform rules
                 let rawContent = item?.content || `Update from ${brandProfile?.business_name || "our team"}: We deliver top quality ${brandProfile?.niche || "solutions"} designed to give you the best results. Contact us today to learn more.`;
-                rawContent = rawContent.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, "").trim();
-                const postContent = cleanAndEnsureHashtags(rawContent, brandProfile);
+                const postContent = adaptCaptionForPlatform(rawContent, targetChannelType, brandProfile);
 
                 let imageObj: { url: string; key: string } | null = null;
                 const imgPrompt = item?.imagePrompt || `${brandProfile?.business_name || "Professional"} ${brandProfile?.niche || "commercial"} showcase photo`;

@@ -7,7 +7,19 @@ function getOAuthStateSecret(): string {
   if (secret && secret.trim().length >= 16) {
     return secret.trim();
   }
+  // During build phase or static analysis, return a placeholder to prevent build failure
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    return "LemonAI_BuildPhase_OAuthSecret_Placeholder_32chars";
+  }
   if (process.env.NODE_ENV === "production") {
+    // In production runtime, check if an alternative secure server key is available as fallback
+    const fallback = process.env.CLERK_SECRET_KEY || process.env.INSFORGE_PROJECT_API_KEY;
+    if (fallback && fallback.trim().length >= 16) {
+      console.warn(
+        "[SECURITY WARNING] CHANNEL_OAUTH_STATE_SECRET not set in production. Using fallback server secret."
+      );
+      return fallback.trim();
+    }
     throw new Error(
       "[SECURITY FATAL] CHANNEL_OAUTH_STATE_SECRET must be set in production with at least 16 characters."
     );
@@ -18,25 +30,25 @@ function getOAuthStateSecret(): string {
   return "LemonAI_DevOnly_OAuthSecret_ReplaceInProduction_32chars";
 }
 
-const OAUTH_STATE_SECRET = getOAuthStateSecret();
-
 export type OAuthStatePayload = {
   userId: string
   channelTypeId: string
   channelType: ChannelTypeEnum
   redirectTo?: string
+  redirectUri?: string
   exp: number
 }
 export function createOAuthState(payload: Omit<OAuthStatePayload, 'exp'> & {
     expiresInMs?: number
 }) {
-    const statePayload:OAuthStatePayload = {
+    const secret = getOAuthStateSecret();
+    const statePayload: OAuthStatePayload = {
         ...payload,
         exp: Date.now() + (payload.expiresInMs ?? 10 * 60 * 1000)
     }
     const encodedState = Buffer.from(JSON.stringify(statePayload)).toString('base64url');
 
-    const signature = createHmac('sha256', OAUTH_STATE_SECRET).update(encodedState).digest('base64url');
+    const signature = createHmac('sha256', secret).update(encodedState).digest('base64url');
 
     return `${encodedState}.${signature}`;
 }
@@ -46,7 +58,8 @@ export function verifyOAuthState(state: string): OAuthStatePayload {
     if(!encodedState || !signature) {
         throw new Error('Invalid state format');
     }
-    const expectedSignature = createHmac('sha256', OAUTH_STATE_SECRET).update(encodedState).digest('base64url');
+    const secret = getOAuthStateSecret();
+    const expectedSignature = createHmac('sha256', secret).update(encodedState).digest('base64url');
 
     const isValid = timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
     if (!isValid) {

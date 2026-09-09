@@ -9,6 +9,7 @@ import {
 } from "./ai-image-generator";
 import { executePostPublishDirectly } from "@/inngest/functions/publish-scheduled-posts";
 import { addDays } from "date-fns";
+import { getPlatformPeakTime, adaptCaptionForPlatform } from "./platform-adapt-helper";
 
 export interface FlywheelRequest {
   userId: string;
@@ -366,8 +367,28 @@ Return ONLY valid JSON matching this schema:
     }
 
     // Schedule to all active user channels
-    for (const channel of activeUserChannels) {
+    for (let cIdx = 0; cIdx < activeUserChannels.length; cIdx++) {
+      const channel = activeUserChannels[cIdx];
       if (!channel.id) continue;
+
+      const rawType = channel.channel_types?.type || "TWITTER";
+      const chType = String(rawType).toUpperCase();
+
+      // 1. Silently adapt caption specifically for this social media platform
+      const platformCaption = adaptCaptionForPlatform(post.caption, chType, {
+        business_name: businessName,
+        niche,
+      });
+
+      // 2. Silently schedule at platform's distinct peak engagement time
+      const peak = getPlatformPeakTime(chType, 0);
+      const chScheduleDate =
+        i === 0
+          ? new Date(now.getTime() + (cIdx * 60 + 2) * 60 * 1000)
+          : addDays(now, i);
+      if (i > 0) {
+        chScheduleDate.setHours(peak.hour, peak.minute, 0, 0);
+      }
 
       try {
         const { data: insertedPost } = await admin.database
@@ -375,9 +396,9 @@ Return ONLY valid JSON matching this schema:
           .insert({
             user_id: params.userId,
             user_channel_id: channel.id,
-            content: post.caption, // Clean publishing caption
+            content: platformCaption,
             images: mediaItems,
-            scheduled_at: scheduleDate.toISOString(),
+            scheduled_at: chScheduleDate.toISOString(),
             status: "queue",
           })
           .select("id, status, scheduled_at")

@@ -10,7 +10,7 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
   [ChannelTypeEnum.TWITTER]: {
     authUrl: "https://twitter.com/i/oauth2/authorize",
     tokenUrl: "https://api.twitter.com/2/oauth2/token",
-    profileUrl: "https://api.twitter.com/2/users/me",
+    profileUrl: "https://api.twitter.com/2/users/me?user.fields=profile_image_url,name,username",
     scope: ["tweet.read", "tweet.write", "users.read", "offline.access"],
   },
   [ChannelTypeEnum.LINKEDIN]: {
@@ -101,81 +101,156 @@ function getConfig(type: ChannelTypeEnum) {
 
 
 async function requestToken(
-    type:ChannelTypeEnum,
+    type: ChannelTypeEnum,
     body: URLSearchParams,
-){
-    const config = getConfig(type);
-const headers: Record<string, string> = {
+) {
+  const config = getConfig(type);
+  const headers: Record<string, string> = {
     "Content-Type": "application/x-www-form-urlencoded",
     Accept: "application/json",
+  };
+
+  if (type === ChannelTypeEnum.TWITTER && config.clientSecret) {
+    const auth_header = Buffer.from(`${config.clientId}:${config.clientSecret}`).toString('base64');
+    headers.Authorization = `Basic ${auth_header}`;
   }
 
-  if(type === ChannelTypeEnum.TWITTER && config.clientSecret){
-     const auth_header = Buffer.from(`${config.clientId}:${config.clientSecret}`).toString('base64')
-     headers.Authorization = `Basic ${auth_header}`
+  let response: Response;
+  const isMeta = type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.INSTAGRAM;
+
+  // Meta Graph API official spec recommends GET request for /oauth/access_token
+  if (isMeta) {
+    try {
+      const getUrl = `${config.tokenUrl}?${body.toString()}`;
+      response = await fetch(getUrl, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
+      // Fallback to POST if GET fails
+      if (!response.ok) {
+        const postRes = await fetch(config.tokenUrl, {
+          method: "POST",
+          headers,
+          body,
+        });
+        if (postRes.ok) {
+          response = postRes;
+        }
+      }
+    } catch {
+      response = await fetch(config.tokenUrl, {
+        method: "POST",
+        headers,
+        body,
+      });
+    }
+  } else {
+    response = await fetch(config.tokenUrl, {
+      method: "POST",
+      headers,
+      body,
+    });
   }
 
-  const response = await fetch(config.tokenUrl, {
-    method: 'POST',
-    headers,
-    body,
-  })
-  const data = await response.json()
+  const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(data?.error_description || data?.error || `Token exchange failed: ${response.statusText}`)
+    const errorMsg =
+      data?.error?.message ||
+      data?.error_description ||
+      (typeof data?.error === "string" ? data?.error : null) ||
+      JSON.stringify(data?.error || data) ||
+      `Token exchange failed: ${response.statusText}`;
+    throw new Error(errorMsg);
   }
 
-  return data
+  return data;
 }
 
-
-function createProvider(type:ChannelTypeEnum,opts: { pkce?: boolean} = {}): OAuthProvider {
-   return {
+function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): OAuthProvider {
+  return {
     type,
-    getAuthorizationUrl: ({state, redirectUri, codeChallenge, codeChallengeMethod}) => {
-       const config = getConfig(type)
-        const isMeta = type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.INSTAGRAM;
-        const scopeStr = isMeta ? config.scope.join(',') : config.scope.join(' ');
-        const params = new URLSearchParams({
-          client_id: config.clientId,
-          redirect_uri: redirectUri,
-          response_type: 'code',
-          scope: scopeStr,
-          state,
-        })
-       if (opts.pkce && codeChallenge && codeChallengeMethod) {
-         params.append('code_challenge', codeChallenge)
-         params.append('code_challenge_method', codeChallengeMethod)
-       }
-       return `${config.authUrl}?${params.toString()}`
+    getAuthorizationUrl: ({ state, redirectUri, codeChallenge, codeChallengeMethod }) => {
+      const config = getConfig(type);
+      const isMeta = type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.INSTAGRAM;
+      const scopeStr = isMeta ? config.scope.join(',') : config.scope.join(' ');
+      const params = new URLSearchParams({
+        client_id: config.clientId,
+        redirect_uri: redirectUri,
+        response_type: 'code',
+        scope: scopeStr,
+        state,
+      });
+
+      if (opts.pkce && codeChallenge && codeChallengeMethod) {
+        params.append('code_challenge', codeChallenge);
+        params.append('code_challenge_method', codeChallengeMethod);
+      }
+
+      // YouTube requires offline access to issue a refresh token
+      if (type === ChannelTypeEnum.YOUTUBE) {
+        params.append('access_type', 'offline');
+        params.append('prompt', 'consent');
+      }
+
+      // TikTok v2 OAuth requires client_key in auth query
+      if (type === ChannelTypeEnum.TIKTOK) {
+        params.append('client_key', config.clientId);
+      }
+
+      return `${config.authUrl}?${params.toString()}`;
     },
-    exchangeCodeForToken: async ({ code, redirectUri, codeVerifier }):Promise<OAuthTokenResponse> => {
-       const params = new URLSearchParams({
-         grant_type: 'authorization_code',
-         code,
-         redirect_uri: redirectUri,
-         client_id: getConfig(type).clientId,
-       })
+    exchangeCodeForToken: async ({ code, redirectUri, codeVerifier }): Promise<OAuthTokenResponse> => {
+      const config = getConfig(type);
+      const params = new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        client_id: config.clientId,
+      });
 
-       if(!opts.pkce){
-         params.append('client_secret', getConfig(type).clientSecret)
-       }
-       if(codeVerifier){
-         params.append('code_verifier', codeVerifier)
-       }
+      if (!opts.pkce) {
+        params.append('client_secret', config.clientSecret);
+      }
+      if (codeVerifier) {
+        params.append('code_verifier', codeVerifier);
+      }
+      // TikTok v2 requires client_key
+      if (type === ChannelTypeEnum.TIKTOK) {
+        params.append('client_key', config.clientId);
+      }
 
-       const data = await requestToken(type, params)
+      const data = await requestToken(type, params);
 
-       const seconds = Number(data.expires_in)
-       const expiresAt = seconds > 0 ? new Date(Date.now() + seconds * 1000).toISOString(): null
+      let finalAccessToken = data.access_token;
+      let finalExpiresIn = Number(data.expires_in);
 
-       return {
-        accessToken: data.access_token,
+      // Meta: exchange short-lived user token (1-2 hr) for long-lived user token (60 days)
+      if ((type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.INSTAGRAM) && finalAccessToken && config.clientSecret) {
+        try {
+          const exchangeUrl = `https://graph.facebook.com/v22.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${encodeURIComponent(config.clientId)}&client_secret=${encodeURIComponent(config.clientSecret)}&fb_exchange_token=${encodeURIComponent(finalAccessToken)}`;
+          const exchangeRes = await fetch(exchangeUrl);
+          if (exchangeRes.ok) {
+            const exchangeData = await exchangeRes.json();
+            if (exchangeData?.access_token) {
+              finalAccessToken = exchangeData.access_token;
+              if (exchangeData.expires_in) {
+                finalExpiresIn = Number(exchangeData.expires_in);
+              }
+            }
+          }
+        } catch (exchangeErr) {
+          console.warn(`[${type} OAuth] Notice during long-lived token exchange:`, exchangeErr);
+        }
+      }
+
+      const expiresAt = finalExpiresIn > 0 ? new Date(Date.now() + finalExpiresIn * 1000).toISOString() : null;
+
+      return {
+        accessToken: finalAccessToken,
         refreshToken: data.refresh_token ?? null,
         expiresAt,
-       }
-      
+      };
     },
     refreshToken: async ({ refreshToken, redirectUri }) => {
       const config = getConfig(type);
@@ -183,25 +258,28 @@ function createProvider(type:ChannelTypeEnum,opts: { pkce?: boolean} = {}): OAut
         grant_type: 'refresh_token',
         refresh_token: refreshToken,
         client_id: config.clientId,
-      })
+      });
 
-      if(config.clientSecret){
-        params.append('client_secret', config.clientSecret)
+      if (config.clientSecret) {
+        params.append('client_secret', config.clientSecret);
       }
-      if(redirectUri){
-        params.append('redirect_uri', redirectUri)
+      if (redirectUri) {
+        params.append('redirect_uri', redirectUri);
+      }
+      if (type === ChannelTypeEnum.TIKTOK) {
+        params.append('client_key', config.clientId);
       }
 
-      const data = await requestToken(type, params)
-      
-      const seconds = Number(data.expires_in)
-      const expiresAt = seconds > 0 ? new Date(Date.now() + seconds * 1000).toISOString(): null
-      
+      const data = await requestToken(type, params);
+
+      const seconds = Number(data.expires_in);
+      const expiresAt = seconds > 0 ? new Date(Date.now() + seconds * 1000).toISOString() : null;
+
       return {
-       accessToken: data.access_token,
-       refreshToken: data.refresh_token ?? null,
-       expiresAt,
-      }
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token ?? null,
+        expiresAt,
+      };
     },
     getProfile: async ({ accessToken }) => {
       const config = getConfig(type);
@@ -209,7 +287,7 @@ function createProvider(type:ChannelTypeEnum,opts: { pkce?: boolean} = {}): OAut
       // Resolve linked Instagram Business Account from user's Facebook Pages
       if (type === ChannelTypeEnum.INSTAGRAM) {
         try {
-          const igRes = await fetch("https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,profile_picture_url}", {
+          const igRes = await fetch(`https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`, {
             headers: {
               Authorization: `Bearer ${accessToken}`,
               Accept: "application/json",
@@ -237,7 +315,7 @@ function createProvider(type:ChannelTypeEnum,opts: { pkce?: boolean} = {}): OAut
       // Resolve user's primary Facebook Page and Page Access Token for Facebook
       if (type === ChannelTypeEnum.FACEBOOK) {
         try {
-          const fbRes = await fetch("https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,picture{url}", {
+          const fbRes = await fetch(`https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,picture{url}&access_token=${encodeURIComponent(accessToken)}`, {
             headers: {
               Authorization: `Bearer ${accessToken}`,
               Accept: "application/json",
@@ -261,31 +339,37 @@ function createProvider(type:ChannelTypeEnum,opts: { pkce?: boolean} = {}): OAut
         }
       }
 
-      const response = await fetch(config.profileUrl,{
-        headers:{
-            Authorization: `Bearer ${accessToken}`,
-            Accept: 'application/json',
+      // General fallback to profileUrl
+      const profileUrlWithToken = (type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.INSTAGRAM)
+        ? `${config.profileUrl}&access_token=${encodeURIComponent(accessToken)}`
+        : config.profileUrl;
+
+      const response = await fetch(profileUrlWithToken, {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          Accept: 'application/json',
         }
-      })
-      if(!response.ok){
-        throw new Error('Failed to fetch profile')
+      });
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => "");
+        throw new Error(`Failed to fetch profile from ${type}: ${response.status} ${errText || response.statusText}`);
       }
-      const data = await response.json()
 
-      const profileData = data?.data ?? data?.user ?? data
+      const data = await response.json();
+      const profileData = data?.data ?? data?.user ?? data;
       const providerAccountId = profileData?.id ?? profileData?.sub ?? profileData?.user_id ?? null;
-      
-      const handle = profileData?.username ?? profileData?.screen_name ?? profileData?.handle  ?? profileData?.name ?? null;
-
-      const profileImage = profileData?.thread_profile_picture ?? profileData?.profile_image_url ?? profileData?.avatar_url ?? profileData?.profile_image ?? profileData?.picture?.data?.url ?? profileData?.picture?.url ?? profileData?.picture ?? null
+      const handle = profileData?.username ?? profileData?.screen_name ?? profileData?.handle ?? profileData?.name ?? null;
+      const profileImage = profileData?.thread_profile_picture ?? profileData?.profile_image_url ?? profileData?.avatar_url ?? profileData?.profile_image ?? profileData?.picture?.data?.url ?? profileData?.picture?.url ?? profileData?.picture ?? null;
 
       return {
         providerAccountId,
         handle,
         profileImage,
-      }
+        pageAccessToken: accessToken,
+      };
     },
-   }
+  };
 }
 
 

@@ -32,7 +32,6 @@ const mainNav = [
   { name: "Social Automation", href: "/social-automation", icon: Bot },
   { name: "Website Bot", href: "/website-bot", icon: Globe },
   { name: "WhatsApp Bot", href: "/whatsapp-bot", icon: MessageCircle },
-  { name: "Appointments", href: "/appointments", icon: CalendarClock },
   { name: "Billing", href: "/billing", icon: CreditCard },
   { name: "Settings", href: "/settings", icon: Settings },
 ];
@@ -55,6 +54,7 @@ const studioNav = [
 const crmNav = [
   { name: "Pipeline", href: "/crm/pipeline", icon: Kanban },
   { name: "Inbox", href: "/crm/inbox", icon: Inbox },
+  { name: "Appointments", href: "/appointments", icon: CalendarClock },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "AI Calling", href: "/ai-calling", icon: Phone },
 ];

@@ -36,15 +36,21 @@ export default function SocialAutomationPage() {
     try {
       const res = await fetch("/api/social/sync-now", { method: "POST" });
       const data = await res.json();
-      if (!res.ok) {
-        toast.error(data?.error || "Failed to sync comments from Instagram");
+
+      if (!res.ok || data?.success === false) {
+        // Show the specific actionable error from the server
+        toast.error(data?.error || "Failed to sync comments. Please reconnect your Instagram account in Settings.");
+      } else if (data.skipped) {
+        toast.info(data.message || "No active Instagram or Facebook account connected. Connect one in Settings.");
       } else if (data.repliedCount > 0) {
-        toast.success(`Successfully replied to ${data.repliedCount} new comment(s) on Instagram! 🎉`);
+        toast.success(`Replied to ${data.repliedCount} new comment(s) across ${data.scannedPostsCount} post(s)! 🎉`);
+      } else if (data.scannedPostsCount > 0) {
+        toast.info(`Scanned ${data.scannedPostsCount} post(s) — all comments already replied to! 👍`);
       } else {
-        toast.info("Scanned latest posts — all comments are already replied to! 👍");
+        toast.info("No recent posts found to scan. Publish some posts first!");
       }
     } catch (e) {
-      toast.error("Network error syncing comments from Instagram");
+      toast.error("Network error syncing comments. Please try again.");
     } finally {
       // Race condition fix: refetch THEN clear loading state
       await refetch();

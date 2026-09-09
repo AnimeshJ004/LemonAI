@@ -8,6 +8,7 @@ import { inngest } from "@/inngest/client";
 import { publishPostDirectly } from "@/lib/direct-publisher";
 import { getUserMemoryContext, buildMemoryPromptBlock } from "@/lib/ai-memory";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { getPlatformPeakTime, adaptCaptionForPlatform } from "@/lib/platform-adapt-helper";
 
 export const maxDuration = 120; // Support extended AI batch generation
 
@@ -237,92 +238,91 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
       generatedPosts = completion.data.posts || completion.data.socialCalendar || (Array.isArray(completion.data) ? completion.data : []);
     }
 
-    // 5. Structure Post Payloads for every Day & Time Slot (STARTS TODAY: Day 0)
+    // 5. Structure Post Payloads for every Day & Channel (STARTS TODAY: Day 0)
+    // Silently adapts copy to each distinct social network (Twitter, LinkedIn, Instagram, Facebook)
+    // and schedules them at each platform's distinct algorithmic peak engagement time.
     const now = new Date();
     const payloadItems: any[] = [];
     let postCounter = 0;
 
+    const channelsToSchedule = targetChannels.length > 0 ? targetChannels : [null];
+
     for (let d = 0; d < days; d++) {
-      for (let p = 0; p < postsPerDay; p++) {
-        const slot = timeSlotsPerDay[p] || "10:00 AM";
-        const aiPost = generatedPosts[postCounter] || generatedPosts[postCounter % (generatedPosts.length || 1)];
-
-        // Compute scheduled date & time
-        let scheduledDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
-        const timeMatch = slot.match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/i);
-        if (timeMatch) {
-          let hour = parseInt(timeMatch[1], 10);
-          const min = parseInt(timeMatch[2], 10) || 0;
-          const meridiem = timeMatch[3]?.toUpperCase();
-          if (meridiem === "PM" && hour < 12) hour += 12;
-          if (meridiem === "AM" && hour === 12) hour = 0;
-          scheduledDate.setHours(hour, min, 0, 0);
-        }
-
-        // For TODAY (d === 0):
-        // If the slot has already passed or is the first post of the campaign, schedule for right now
-        if (d === 0) {
-          if (p === 0 || scheduledDate.getTime() <= now.getTime()) {
-            // First post is scheduled for right now (+ 1 minute)
-            // Subsequent posts today are spaced out later today
-            const offsetMinutes = p === 0 ? 1 : Math.max(120, (p * 180));
-            scheduledDate = new Date(now.getTime() + offsetMinutes * 60 * 1000);
-          }
-        }
-
-        // Clean content & ensure hashtags
-        let cleanContent = (
-          aiPost?.content ||
-          `Excited to share insights from ${businessName}. Discover leading solutions tailored for ${niche} success.`
-        )
-          .replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}]/gu, "")
-          .replace(/^#+\s+/gm, "")
-          .replace(/\*\*(.*?)\*\*/g, "$1")
-          .trim();
-
-        const existingTags = cleanContent.match(/#[a-zA-Z0-9_]+/g) || [];
-        cleanContent = cleanContent.replace(/#[a-zA-Z0-9_]+/g, "").trim();
-
-        const mergedTags = new Set<string>();
-        for (const t of brandTags) if (t) mergedTags.add(t);
-        for (const t of existingTags) if (t && t.length > 1) mergedTags.add(t);
-        const tagLine = Array.from(mergedTags).slice(0, 5).join(" ");
-        const finalContent = `${cleanContent}\n\n${tagLine}`;
-
-        // Distribute across available target channels
-        const targetChannel =
-          targetChannels.length > 0
-            ? targetChannels[postCounter % targetChannels.length]
-            : null;
+      for (let cIdx = 0; cIdx < channelsToSchedule.length; cIdx++) {
+        const targetChannel = channelsToSchedule[cIdx];
         const channelId = targetChannel?.id || defaultChannelId;
 
-        const visualPrompt =
-          aiPost?.visualPrompt ||
-          `Authentic commercial photography of ${niche} professional services for ${businessName}`;
+        const rawType = targetChannel
+          ? (Array.isArray(targetChannel.channel_types)
+              ? targetChannel.channel_types[0]?.type
+              : (targetChannel.channel_types as any)?.type)
+          : "TWITTER";
+        const channelType = String(rawType || "TWITTER").toUpperCase();
 
-        payloadItems.push({
-          user_id: userId,
-          user_channel_id: channelId,
-          content: finalContent,
-          visualPrompt,
-          aspectRatio: aiPost?.aspectRatio || "1:1",
-          scheduled_at: scheduledDate.toISOString(),
-          status: targetStatus,
-          dayOffset: d,
-          timeSlot: slot,
-          pillar: aiPost?.pillar || (d === 0 ? "Announcement" : "Brand Update"),
-          targetChannel,
-          channelInfo: targetChannel
-            ? {
-                id: targetChannel.id,
-                name: (Array.isArray(targetChannel.channel_types) ? targetChannel.channel_types[0]?.name : (targetChannel.channel_types as any)?.name) || "Social Channel",
-                type: (Array.isArray(targetChannel.channel_types) ? targetChannel.channel_types[0]?.type : (targetChannel.channel_types as any)?.type) || "TWITTER",
-                color: (Array.isArray(targetChannel.channel_types) ? targetChannel.channel_types[0]?.color : (targetChannel.channel_types as any)?.color) || "#000000",
-              }
-            : null,
-        });
+        for (let p = 0; p < postsPerDay; p++) {
+          const aiPost =
+            generatedPosts[postCounter % (generatedPosts.length || 1)] ||
+            generatedPosts[0] ||
+            null;
 
-        postCounter++;
+          // 1. Silently calculate platform-specific optimal peak engagement time
+          const peak = getPlatformPeakTime(channelType, p);
+          let scheduledDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
+          scheduledDate.setHours(peak.hour, peak.minute, 0, 0);
+
+          // For TODAY (d === 0): if peak time already passed, space out starting shortly from now
+          if (d === 0) {
+            if (scheduledDate.getTime() <= now.getTime()) {
+              const offsetMinutes = cIdx * 75 + p * 120 + 2;
+              scheduledDate = new Date(now.getTime() + offsetMinutes * 60 * 1000);
+            }
+          }
+
+          // 2. Silently adapt caption according to this specific social media platform's rules
+          const baseText =
+            aiPost?.content ||
+            `Excited to share insights from ${businessName}. Discover leading solutions tailored for ${niche} success.`;
+
+          const tailoredContent = adaptCaptionForPlatform(baseText, channelType, {
+            business_name: businessName,
+            niche,
+            brand_tone: brandTone,
+          });
+
+          const visualPrompt =
+            aiPost?.visualPrompt ||
+            `Authentic commercial photography of ${niche} professional services for ${businessName}`;
+
+          payloadItems.push({
+            user_id: userId,
+            user_channel_id: channelId,
+            content: tailoredContent,
+            visualPrompt,
+            aspectRatio: aiPost?.aspectRatio || "1:1",
+            scheduled_at: scheduledDate.toISOString(),
+            status: targetStatus,
+            dayOffset: d,
+            timeSlot: peak.timeSlot,
+            pillar: aiPost?.pillar || (d === 0 ? "Announcement" : "Brand Update"),
+            targetChannel,
+            channelInfo: targetChannel
+              ? {
+                  id: targetChannel.id,
+                  name:
+                    (Array.isArray(targetChannel.channel_types)
+                      ? targetChannel.channel_types[0]?.name
+                      : (targetChannel.channel_types as any)?.name) || "Social Channel",
+                  type: channelType,
+                  color:
+                    (Array.isArray(targetChannel.channel_types)
+                      ? targetChannel.channel_types[0]?.color
+                      : (targetChannel.channel_types as any)?.color) || "#000000",
+                }
+              : null,
+          });
+
+          postCounter++;
+        }
       }
     }
 

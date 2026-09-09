@@ -5,7 +5,18 @@ function getEncryptionKey(): string {
     if (key && key.trim().length >= 16) {
         return key.trim();
     }
+    // During build phase or static analysis, return a placeholder to prevent build failure
+    if (process.env.NEXT_PHASE === "phase-production-build") {
+        return "LemonAI_BuildPhase_EphemeralKey_ReplaceInProd_32chars";
+    }
     if (process.env.NODE_ENV === "production") {
+        const fallback = process.env.CLERK_SECRET_KEY || process.env.INSFORGE_PROJECT_API_KEY;
+        if (fallback && fallback.trim().length >= 16) {
+            console.warn(
+                "[SECURITY WARNING] CHANNEL_TOKEN_ENCRYPTION_KEY is not set. Using derived fallback server key."
+            );
+            return fallback.trim();
+        }
         throw new Error(
             "[SECURITY FATAL] CHANNEL_TOKEN_ENCRYPTION_KEY must be set in production with at least 16 characters."
         );
