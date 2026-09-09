@@ -746,10 +746,11 @@ export async function getConversationWithMessages(
   }
 
   if (conv) {
-    const effectiveUserId = userId || conv.user_id;
+    const currentConv = conv;
+    const effectiveUserId = userId || currentConv.user_id;
     const leads = memoryLeads.get(effectiveUserId) || memoryLeads.get("user_lemon_default") || [];
-    const lead = leads.find((l) => l.id === conv.lead_id) || null;
-    conv = { ...conv, lead };
+    const lead = leads.find((l) => l.id === currentConv.lead_id) || null;
+    conv = { ...currentConv, lead };
   }
 
   const messages = memoryMessages.get(conversationId) || [];
