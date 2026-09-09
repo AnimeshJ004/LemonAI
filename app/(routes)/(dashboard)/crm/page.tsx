@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Zap,
   CheckCircle,
+  CalendarClock,
 } from "lucide-react";
 
 export const metadata: Metadata = {
@@ -45,6 +46,18 @@ const CRM_MODULES = [
     badgeColor: "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-400",
     description: "Consolidated real-time inbox for customer inquiries across Instagram DMs, Facebook Messenger, WhatsApp, and Website Live Chat with 1-click Human Takeover.",
     actionText: "Open Unified Inbox",
+  },
+  {
+    title: "Calendar & Appointments",
+    href: "/appointments",
+    icon: CalendarClock,
+    color: "text-rose-500",
+    bg: "bg-rose-500/10",
+    border: "border-rose-500/20",
+    badge: "Cal.com & Calendly Sync",
+    badgeColor: "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400",
+    description: "Connect your calendar, set up booking links, and let AI automatically schedule qualified appointments with prospects 24/7.",
+    actionText: "Manage Appointments",
   },
   {
     title: "Autonomous AI Calling Agent",
