@@ -70,6 +70,18 @@ const CRM_MODULES = [
     description: "Complete funnel attribution tracking: Social Reach → Inbound Chats → Qualified Leads → Cal.com Bookings → Closed Won Revenue.",
     actionText: "View Growth Funnel",
   },
+  {
+    title: "Activity Log & Touchpoints",
+    href: "/crm/activities",
+    icon: CheckCircle,
+    color: "text-sky-500",
+    bg: "bg-sky-500/10",
+    border: "border-sky-500/20",
+    badge: "Full Audit Trail",
+    badgeColor: "bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-400",
+    description: "Complete chronological log of every lead touchpoint — voice calls, DMs, stage changes, WhatsApp messages, chatbot conversations, and manual notes.",
+    actionText: "View Activity Log",
+  },
 ];
 
 export default function CRMHubPage() {

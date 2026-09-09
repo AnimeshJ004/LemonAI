@@ -19,9 +19,11 @@ import {
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { AdOptimizerBanner } from "@/components/meta-ads/ad-optimizer-banner";
+import { AudienceBuilder } from "@/components/meta-ads/audience-builder";
 
 export default function MetaAdsPage() {
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
+  const [activeTab, setActiveTab] = useState<"campaigns" | "audiences">("campaigns");
 
   // Check Meta connection status
   const { data: channelsData } = useQuery({
@@ -205,15 +207,35 @@ export default function MetaAdsPage() {
       {/* Autonomous AI Ad Optimizer (Sir's Flywheel Requirement) */}
       <AdOptimizerBanner />
 
-      {/* Main View: List or Create Wizard */}
+      {/* Main View: List (with Tabs) or Create Wizard */}
       {viewMode === "list" ? (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">
-              Campaigns & Creatives ({campaigns.length})
-            </h2>
+          <div className="flex items-center justify-between border-b pb-3">
+            <div className="flex items-center gap-2">
+              <Button
+                variant={activeTab === "campaigns" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveTab("campaigns")}
+                className="h-8 text-xs font-semibold"
+              >
+                Campaigns & Creatives ({campaigns.length})
+              </Button>
+              <Button
+                variant={activeTab === "audiences" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setActiveTab("audiences")}
+                className="h-8 text-xs font-semibold gap-1.5"
+              >
+                <Users className="size-3.5" /> Audience Builder
+              </Button>
+            </div>
           </div>
-          <CampaignsTable onCreateClick={() => setViewMode("create")} />
+
+          {activeTab === "campaigns" ? (
+            <CampaignsTable onCreateClick={() => setViewMode("create")} />
+          ) : (
+            <AudienceBuilder />
+          )}
         </div>
       ) : (
         <div className="rounded-2xl border bg-card shadow-xs">

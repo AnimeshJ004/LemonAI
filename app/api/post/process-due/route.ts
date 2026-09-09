@@ -1,7 +1,10 @@
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { publishPostDirectly } from "@/lib/direct-publisher";
 import { inngest } from "@/inngest/client";
+import { pollConnectedChannelsComments } from "@/lib/social-comments-service";
 import { NextResponse } from "next/server";
+
+export const maxDuration = 60;
 
 export async function GET() {
     return handleProcessDue();
@@ -16,7 +19,7 @@ async function handleProcessDue() {
         const insforge = getInsforgeAdminClient();
         const now = new Date().toISOString();
 
-        // Fetch all posts in queue whose scheduled time has arrived
+        // 1. Fetch all posts in queue whose scheduled time has arrived
         const { data: duePosts, error } = await insforge.database
             .from("scheduled_posts")
             .select("id, status, scheduled_at")
@@ -25,43 +28,56 @@ async function handleProcessDue() {
             .order("scheduled_at", { ascending: true });
 
         if (error) {
-            return NextResponse.json({ error: error.message }, { status: 500 });
+            console.error("[Publisher] Error fetching due posts:", error.message);
         }
 
-        if (!duePosts || duePosts.length === 0) {
-            return NextResponse.json({ message: "No due posts found", count: 0 });
-        }
+        let publishedCount = 0;
+        let dueCount = 0;
 
-        console.log(`[Publisher] Processing ${duePosts.length} due post(s) simultaneously across channels`);
+        if (duePosts && duePosts.length > 0) {
+            dueCount = duePosts.length;
+            console.log(`[Publisher] Processing ${duePosts.length} due post(s) simultaneously across channels`);
 
-        // 1. Directly execute publication across all channels concurrently
-        const publishResults = await Promise.allSettled(
-            duePosts.map((post) => publishPostDirectly(post.id))
-        );
-
-        // 2. Also trigger Inngest as secondary fallback
-        try {
-            await inngest.send(
-                duePosts.map((post) => ({
-                    name: "post/publish.requested",
-                    data: { postId: post.id }
-                }))
+            // Directly execute publication across all channels concurrently
+            const publishResults = await Promise.allSettled(
+                duePosts.map((post) => publishPostDirectly(post.id))
             );
-        } catch {}
 
-        const successful = publishResults.filter(
-            (r) => r.status === "fulfilled" && (r as any).value?.success
-        ).length;
+            // Also trigger Inngest as secondary fallback
+            try {
+                await inngest.send(
+                    duePosts.map((post) => ({
+                        name: "post/publish.requested",
+                        data: { postId: post.id }
+                    }))
+                );
+            } catch {}
+
+            publishedCount = publishResults.filter(
+                (r) => r.status === "fulfilled" && (r as any).value?.success
+            ).length;
+        }
+
+        // 2. Autonomous Comment Engagement Backup
+        // Guarantees comments are polled and answered every 60 seconds even if webhooks or Inngest are idle
+        let commentSyncStats = { scannedChannels: 0, scannedPosts: 0, repliedCount: 0 };
+        try {
+            commentSyncStats = await pollConnectedChannelsComments(5);
+        } catch (commentErr: any) {
+            console.warn("[Process Due] Background comment polling notice:", commentErr?.message);
+        }
 
         return NextResponse.json({
             success: true,
-            processedCount: duePosts.length,
-            successfulCount: successful,
-            postIds: duePosts.map((p) => p.id),
+            posts: {
+                processedCount: dueCount,
+                successfulCount: publishedCount,
+                postIds: duePosts?.map((p) => p.id) || [],
+            },
+            comments: commentSyncStats,
         });
     } catch (error: any) {
-        console.error("Error processing due posts:", error);
+        console.error("Error processing due posts & comments:", error);
         return NextResponse.json({ error: error?.message || "Internal server error" }, { status: 500 });
     }
 }
-

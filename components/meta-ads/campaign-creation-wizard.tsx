@@ -51,6 +51,7 @@ interface WizardData {
   adPrimaryText: string;
   adImageUrl: string;
   callToAction: string;
+  competitorInsight: string; // Competitor ad inspiration for differentiated copy
 }
 
 interface DeployResult {
@@ -105,6 +106,7 @@ export function CampaignCreationWizard() {
     adPrimaryText: "",
     adImageUrl: "",
     callToAction: "LEARN_MORE",
+    competitorInsight: "", // Optional competitor URL or ad description for differentiated copy
   });
 
   const set = useCallback(<K extends keyof WizardData>(key: K, val: WizardData[K]) => {
@@ -164,6 +166,7 @@ export function CampaignCreationWizard() {
           productOffer: data.adHeadline || `Exclusive offer for ${data.niche}`,
           goal: data.objective === "OUTCOME_SALES" ? "SALES" : "LEADS",
           generateImages: true,
+          competitorSampleText: data.competitorInsight || undefined,
         }),
       });
 
@@ -350,6 +353,24 @@ export function CampaignCreationWizard() {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* Competitor Ad Inspiration — per LEMON AI spec: Competitor Ad Research */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+              <TrendingUp className="size-3.5 text-amber-500" />
+              Competitor Ad Inspiration <span className="font-normal text-muted-foreground">(Optional)</span>
+            </label>
+            <Input
+              id="wizard-competitor-insight"
+              placeholder="e.g. competitor.com/ads or describe what their best-performing ad says..."
+              value={data.competitorInsight}
+              onChange={(e) => set("competitorInsight", e.target.value)}
+              className="text-xs"
+            />
+            <p className="text-[10px] text-muted-foreground">
+              Lemon AI will analyze competitor positioning to create differentiated, higher-converting copy.
+            </p>
           </div>
 
           <Button

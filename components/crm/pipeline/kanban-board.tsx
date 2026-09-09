@@ -44,6 +44,12 @@ export const CRM_STAGES: StageConfig[] = [
     color: "emerald",
     dotColor: "bg-emerald-500",
   },
+  {
+    id: "closed_lost",
+    label: "Closed Lost",
+    color: "rose",
+    dotColor: "bg-rose-500",
+  },
 ];
 
 interface KanbanBoardProps {
@@ -102,6 +108,18 @@ export function KanbanBoard({ initialLeads, onLeadsChange }: KanbanBoardProps) {
         throw new Error("Failed to save new stage");
       }
       toast.success(`Moved ${targetLead.name || "lead"} to ${newStage.replace("_", " ")}`);
+
+      // Log stage-change activity (fire and forget)
+      fetch("/api/crm/activities", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          lead_id: draggableId,
+          type: "stage_change",
+          title: `Pipeline moved to ${newStage.replace("_", " ")}`,
+          description: `Drag-and-drop: ${source.droppableId.replace("_", " ")} → ${newStage.replace("_", " ")}`,
+        }),
+      }).catch(() => {});
     } catch (err: any) {
       toast.error("Could not persist stage change. Reverting.");
       // Rollback

@@ -68,7 +68,9 @@ export const publishScheduledPost = inngest.createFunction(
     {
         id:"publish-scheduled-post",
         name:"Publish Scheduled Post",
-        idempotency: "event.data.postId",
+        // NOTE: idempotency intentionally removed — the DB-level status lock (queue → publishing)
+        // prevents double-publishing. idempotency was blocking the every-minute cron from
+        // re-delivering events for posts whose prior sleepUntil had timed out.
         retries: 0,
         triggers:{
             event:"post/publish.requested"
@@ -105,22 +107,23 @@ export const publishScheduledPost = inngest.createFunction(
         return { skipped: true, reason: "post_not_found_or_already_publishing" }
        }
 
-       if (post.scheduled_at && new Date(post.scheduled_at).getTime() > Date.now()) {
+       // Safety guard: if this event was dispatched early (e.g. race condition), skip publishing
+       // and revert the lock so the every-minute cron can pick it up at the correct time.
+       // We never sleep here — long sleepUntil calls timeout for 7-30 day scheduled posts.
+       if (post.scheduled_at && new Date(post.scheduled_at).getTime() > Date.now() + 60_000) {
         const admin = getInsforgeAdminClient();
-        // Keep status as queue while waiting so it remains visible as scheduled
+        logger.info("Post is not yet due — reverting lock so cron can retry at the right time", {
+            postId: event.data.postId,
+            scheduled_at: post.scheduled_at,
+            nowUtc: new Date().toISOString(),
+        });
+        // Revert status back to queue so cron picks it up at scheduled time
         await admin.database
             .from("scheduled_posts")
             .update({ status: "queue" })
             .eq("id", event.data.postId)
             .eq("status", "publishing");
-
-        await step.sleepUntil("wait-for-scheduled-time", post.scheduled_at);
-
-        // Lock again to publishing when the scheduled time arrives
-        await admin.database
-            .from("scheduled_posts")
-            .update({ status: "publishing" })
-            .eq("id", event.data.postId);
+        return { skipped: true, reason: "post_not_yet_due", scheduled_at: post.scheduled_at };
        }
 
        const userChannel = post.user_channels

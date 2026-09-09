@@ -402,9 +402,8 @@ async function publishToFacebookDirect({
   const targetId = pageId || "me";
 
   if (images && images.length > 0) {
-    const mediaUrl = images[0].url;
     const isVideo =
-      mediaUrl.toLowerCase().includes(".mp4") ||
+      images[0].url.toLowerCase().includes(".mp4") ||
       (images[0] as any)?.media_type === "video";
 
     if (isVideo) {
@@ -414,7 +413,7 @@ async function publishToFacebookDirect({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            file_url: mediaUrl,
+            file_url: images[0].url,
             description: content,
             access_token: accessToken,
           }),
@@ -429,13 +428,57 @@ async function publishToFacebookDirect({
       return `https://facebook.com/${data.id}`;
     }
 
+    // Multi-photo Carousel/Album for Facebook
+    if (images.length > 1) {
+      const photoIds: string[] = [];
+      for (const img of images.slice(0, 10)) {
+        const photoRes = await fetch(
+          `https://graph.facebook.com/v22.0/${targetId}/photos`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              url: img.url,
+              published: false,
+              access_token: accessToken,
+            }),
+          }
+        );
+        const photoData = await photoRes.json();
+        if (photoRes.ok && photoData.id) {
+          photoIds.push(photoData.id);
+        }
+      }
+
+      if (photoIds.length > 0) {
+        const attachedMedia = photoIds.map((id) => ({ media_fbid: id }));
+        const feedRes = await fetch(
+          `https://graph.facebook.com/v22.0/${targetId}/feed`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: content,
+              attached_media: attachedMedia,
+              access_token: accessToken,
+            }),
+          }
+        );
+        const feedData = await feedRes.json();
+        if (feedRes.ok && feedData.id) {
+          return `https://facebook.com/${feedData.id}`;
+        }
+      }
+    }
+
+    // Single photo fallback
     const res = await fetch(
       `https://graph.facebook.com/v22.0/${targetId}/photos`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          url: mediaUrl,
+          url: images[0].url,
           caption: content,
           access_token: accessToken,
         }),

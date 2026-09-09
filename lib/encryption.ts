@@ -1,15 +1,36 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto"
 
+function getEncryptionKey(): string {
+    const key = process.env.CHANNEL_TOKEN_ENCRYPTION_KEY;
+    if (key && key.trim().length >= 16) {
+        return key.trim();
+    }
+    if (process.env.NODE_ENV === "production") {
+        throw new Error(
+            "[SECURITY FATAL] CHANNEL_TOKEN_ENCRYPTION_KEY must be set in production with at least 16 characters."
+        );
+    }
+    console.warn(
+        "[SECURITY WARNING] CHANNEL_TOKEN_ENCRYPTION_KEY is not set. Using ephemeral development key."
+    );
+    return "LemonAI_DevOnly_EphemeralKey_ReplaceInProduction_32chars";
+}
+
 const KNOWN_KEYS = [
     process.env.CHANNEL_TOKEN_ENCRYPTION_KEY,
-    "LemonAISuperSecretTokenEncryptKey",
-    "default_token_encryption_key_32chars_lemon"
+    ...(process.env.NODE_ENV === "development"
+        ? [
+            "LemonAI_DevOnly_EphemeralKey_ReplaceInProduction_32chars",
+            "LemonAISuperSecretTokenEncryptKey",
+            "default_token_encryption_key_32chars_lemon"
+        ]
+        : [])
 ].filter(Boolean) as string[];
 
 export function encrypt(text: string | null | undefined){
     if(!text) return null
     const iv = randomBytes(12);
-    const keyString = process.env.CHANNEL_TOKEN_ENCRYPTION_KEY || "LemonAISuperSecretTokenEncryptKey";
+    const keyString = getEncryptionKey();
     const encryptionKey = createHash("sha256").update(keyString).digest();
     const cipher = createCipheriv("aes-256-gcm", encryptionKey, iv)
 
@@ -36,7 +57,7 @@ export function decrypt(encrypted: string | null | undefined){
     const [iv, tag, encryted] = parts;
     if(!iv || !tag || !encryted) return encrypted;
 
-    // Try decrypting with all known keys
+    // Try decrypting with verified keys
     for (const keyStr of KNOWN_KEYS) {
         try {
             const encryptionKey = createHash("sha256").update(keyStr).digest();
@@ -54,6 +75,6 @@ export function decrypt(encrypted: string | null | undefined){
         }
     }
 
-    console.warn("[Encryption] Could not decrypt token with known keys. Returning raw string.");
+    console.warn("[Encryption] Could not decrypt token with active keys. Returning raw string.");
     return encrypted;
-}
+}

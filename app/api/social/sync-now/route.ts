@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
-import { callResilientCompletion } from "@/lib/ai-gateway";
 import { decrypt } from "@/lib/encryption";
+import { processSingleComment } from "@/lib/social-comments-service";
 
 export const maxDuration = 60;
 
 /**
  * POST /api/social/sync-now
  * Directly scans the user's recent Instagram posts for unreplied comments,
- * generates AI responses, and posts them via Meta Graph API in real-time.
+ * generates AI responses, and posts them via Meta Graph API with strict deduplication.
  */
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
 
     const accessToken = decrypt(channel.access_token) || channel.access_token;
     const igAccountId = channel.provider_account_id;
-    const igHandle = channel.handle?.replace(/^@/, "").toLowerCase() || "";
+    const igHandle = channel.handle?.replace(/^@/, "") || "";
 
     if (!igAccountId) {
       return NextResponse.json({
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
 
     // 2. Fetch recent media from Instagram (latest 5 posts for rapid scanning)
     const mediaRes = await fetch(
-      `https://graph.facebook.com/v22.0/${igAccountId}/media?fields=id,caption,comments{id,text,from,timestamp}&limit=5&access_token=${accessToken}`
+      `https://graph.facebook.com/v22.0/${igAccountId}/media?fields=id,caption,comments{id,text,from,timestamp,comments{id,from,text}}&limit=5&access_token=${encodeURIComponent(accessToken)}`
     );
 
     if (!mediaRes.ok) {
@@ -71,114 +71,43 @@ export async function POST(req: NextRequest) {
       .eq("user_id", userId)
       .maybeSingle();
 
-    const brandName = brand?.business_name || "Our Business";
-    const brandTone = brand?.brand_tone || "Friendly and professional";
-
     for (const post of posts) {
       const comments = post.comments?.data || [];
 
       for (const item of comments) {
         const commentId = item.id;
         const commentText = item.text;
-        const commenterHandle = item.from?.username || "@user";
+        const commenterHandle = item.from?.username || item.from?.name || "@user";
         const commenterId = item.from?.id;
+        const childReplies = item.comments?.data || [];
 
-        // Skip self-comments
-        if (commenterId === igAccountId || commenterHandle.toLowerCase() === igHandle) {
-          continue;
-        }
+        if (!commentId || !commentText) continue;
 
-        // Check if already replied
-        const { data: existing } = await admin.database
-          .from("social_comments")
-          .select("id")
-          .eq("platform_comment_id", commentId)
-          .eq("status", "replied")
-          .limit(1);
+        // Process with unified deduplicating comment service
+        const res = await processSingleComment({
+          userId,
+          commentId,
+          commentText,
+          commenterHandle,
+          commenterId,
+          mediaId: post.id,
+          platform: "INSTAGRAM",
+          accessToken,
+          igAccountId,
+          channelHandle: igHandle,
+          brand,
+          childReplies,
+        });
 
-        if (existing && existing.length > 0) {
-          continue;
-        }
-
-        // Generate AI reply
-        let replyText = `Thanks for connecting with ${brandName}! 🙏`;
-        let sentiment = "NEUTRAL";
-        let shouldSendDM = false;
-        let dmMessage = "";
-
-        try {
-          const completion = await callResilientCompletion({
-            jsonMode: true,
-            messages: [
-              {
-                role: "user",
-                content: `You are the autonomous social media AI manager for ${brandName}.
-Brand Tone: ${brandTone}
-Niche: ${brand?.niche || "Business"}
-Main Offer: ${brand?.main_offer || "Premium solutions"}
-
-Generate a quick public reply to this comment (under 140 chars).
-Comment: "${commentText}"
-User: @${commenterHandle}
-
-Return ONLY valid JSON:
-{
-  "sentiment": "INQUIRY|PRAISE|COMPLAINT|SPAM|NEUTRAL",
-  "reply": "Short brand reply",
-  "shouldSendDM": true/false,
-  "dmMessage": "Private message if buying intent"
-}`,
-              },
-            ],
+        if (res.success && !res.skipped) {
+          repliedComments.push({
+            commentId,
+            commenterHandle,
+            commentText,
+            replyText: res.replyText,
+            replyId: res.replyId,
+            dmSent: res.dmSent,
           });
-
-          if (completion.data && typeof completion.data === "object") {
-            sentiment = completion.data.sentiment || "NEUTRAL";
-            replyText = completion.data.reply || replyText;
-            shouldSendDM = Boolean(completion.data.shouldSendDM);
-            dmMessage = completion.data.dmMessage || "";
-          }
-        } catch (e) {
-          console.warn("[Sync Now] AI error, using fallback:", e);
-        }
-
-        // Post reply via Graph API
-        try {
-          const replyRes = await fetch(`https://graph.facebook.com/v22.0/${commentId}/replies`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              message: replyText,
-              access_token: accessToken,
-            }),
-          });
-
-          const replyData = await replyRes.json().catch(() => ({}));
-          if (replyRes.ok && replyData?.id) {
-            // Save to DB
-            await admin.database.from("social_comments").insert({
-              user_id: userId,
-              post_id: post.id,
-              platform: "INSTAGRAM",
-              platform_comment_id: commentId,
-              commenter_handle: commenterHandle,
-              comment_text: commentText,
-              sentiment,
-              reply_text: replyText,
-              dm_sent: shouldSendDM,
-              status: "replied",
-            });
-
-            repliedComments.push({
-              commentId,
-              commenterHandle,
-              commentText,
-              replyText,
-              replyId: replyData.id,
-            });
-          }
-        } catch (postErr) {
-          console.error(`[Sync Now] Failed to reply to ${commentId}:`, postErr);
         }
       }
     }

@@ -14,10 +14,14 @@ export type ChannelSource =
   | "website"
   | "whatsapp"
   | "instagram"
+  | "instagram_dm"
   | "facebook"
+  | "facebook_dm"
   | "voice"
+  | "inbound_call"
   | "organic"
-  | "meta_ads";
+  | "meta_ads"
+  | "manual";
 
 export interface BANTBreakdown {
   budgetScore: number;
@@ -72,7 +76,7 @@ export interface CRMConversation {
   user_id: string;
   lead_id: string | null;
   channel: ChannelSource | string;
-  status: "open" | "resolved" | "snoozed";
+  status: "open" | "ai_handling" | "human_takeover" | "resolved";
   is_ai_active: boolean;
   last_message_at: string;
   created_at: string;

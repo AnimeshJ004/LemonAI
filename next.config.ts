@@ -10,9 +10,9 @@ const nextConfig: NextConfig = {
       },
     ],    
   },
-  allowedDevOrigins:[
+  allowedDevOrigins: [
     "yolande-sistroid-jenee.ngrok-free.dev"
-  ]
+  ],
 };
 
 export default nextConfig;

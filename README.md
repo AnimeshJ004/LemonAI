@@ -1,4 +1,4 @@
-# 🍋 Lemon AI – AI Social Media Scheduling Platform
+# 🍋 Lemon AI Post – AI Social Media Scheduling Platform
 
 > ### Commercial License Required
 >

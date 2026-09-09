@@ -7,15 +7,16 @@ const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/auth/(.*)",
-  "/api/chat/(.*)",
+  "/api/chat/(.*)",            // Public website embed chat
   "/api/webhooks/(.*)",        // Meta, WhatsApp, Calcom, Clerk, Voice webhooks
   "/api/social/webhook(.*)",   // Instagram/Facebook comment webhook (Meta pushes here)
   "/api/social/whatsapp(.*)",  // WhatsApp Cloud API webhook
   "/api/chatbot(.*)",          // Public website chatbot widget
   "/api/crm/(.*)",
   "/api/voice/(.*)",
-  "/api/inngest(.*)",
+  "/api/inngest(.*)",          // Inngest background job runner
 ]);
+
 
 // The onboarding page itself (authenticated but skip the onboarding check)
 const isOnboardingRoute = createRouteMatcher(["/onboarding(.*)"]);

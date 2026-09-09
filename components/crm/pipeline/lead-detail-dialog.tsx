@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+
 import {
   Dialog,
   DialogContent,
@@ -48,16 +49,51 @@ export function LeadDetailDialog({
   onClose,
   onUpdate,
 }: LeadDetailDialogProps) {
-  if (!lead) return null;
-
-  const [stage, setStage] = useState<LeadStage>(lead.stage);
-  const [dealValue, setDealValue] = useState<string>(String(lead.deal_value || 0));
-  const [notes, setNotes] = useState<string>(lead.metadata?.notes || "");
+  const [stage, setStage] = useState<LeadStage>("new");
+  const [dealValue, setDealValue] = useState<string>("0");
+  const [notes, setNotes] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
   const [isCalling, setIsCalling] = useState(false);
+  const [isRescoring, setIsRescoring] = useState(false);
+
+  // Sync local state when a different lead is selected (fixes stale data bug)
+  useEffect(() => {
+    if (lead) {
+      setStage(lead.stage);
+      setDealValue(String(lead.deal_value || 0));
+      setNotes(lead.metadata?.notes || "");
+    }
+  }, [lead?.id]);
+
+  if (!lead) return null;
 
   const bant = lead.metadata?.bant;
   const callLogs: VoiceCallLog[] = lead.metadata?.callLogs || [];
+
+  const handleRescore = async () => {
+    setIsRescoring(true);
+    try {
+      const res = await fetch("/api/crm/leads", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: lead.id,
+          triggerScoring: true,
+          transcript: notes || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to score lead");
+      if (data.lead) {
+        onUpdate(data.lead);
+        toast.success(`Lead re-scored: ${data.lead.score}/10!`);
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to re-score");
+    } finally {
+      setIsRescoring(false);
+    }
+  };
 
   const calLink = generateCalcomBookingUrl({
     leadName: lead.name || undefined,
@@ -84,6 +120,35 @@ export function LeadDetailDialog({
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to update lead");
+
+      // Log stage change activity if stage changed
+      if (stage !== lead.stage) {
+        fetch("/api/crm/activities", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lead_id: lead.id,
+            type: "stage_change",
+            title: `Moved to ${stage.replace("_", " ")}`,
+            description: `Stage changed from ${lead.stage.replace("_", " ")} → ${stage.replace("_", " ")}`,
+          }),
+        }).catch(() => {});
+      }
+
+      // Log manual note if notes changed
+      const prevNotes = lead.metadata?.notes || "";
+      if (notes.trim() && notes !== prevNotes) {
+        fetch("/api/crm/activities", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lead_id: lead.id,
+            type: "note",
+            title: "Internal note updated",
+            description: notes,
+          }),
+        }).catch(() => {});
+      }
 
       toast.success("Lead details updated successfully");
       onUpdate(data.lead);
@@ -217,9 +282,22 @@ export function LeadDetailDialog({
                 <Sparkles className="size-3.5 text-primary" />
                 BANT Lead Intelligence
               </h4>
-              <span className="text-[11px] text-muted-foreground">
-                {bant?.evaluatedAt ? `Scored ${new Date(bant.evaluatedAt).toLocaleDateString()}` : "AI Baseline"}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">
+                  {bant?.evaluatedAt ? `Scored ${new Date(bant.evaluatedAt).toLocaleDateString()}` : "AI Baseline"}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={handleRescore}
+                  disabled={isRescoring}
+                  className="h-6 text-[11px] px-2 gap-1 border-primary/30 text-primary hover:bg-primary/10"
+                >
+                  <Sparkles className={`size-3 ${isRescoring ? "animate-spin" : ""}`} />
+                  {isRescoring ? "Scoring..." : "Re-Score AI"}
+                </Button>
+              </div>
             </div>
 
             {bant ? (

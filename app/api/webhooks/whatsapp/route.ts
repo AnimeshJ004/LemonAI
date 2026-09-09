@@ -44,21 +44,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: "ignored_or_ack" });
     }
 
+    const { searchParams } = new URL(request.url);
+    const queryUserId = searchParams.get("userId") || searchParams.get("tenantId");
+
     // Process each inbound message
     for (const msg of parsedMessages) {
-      let targetUserId = "user_lemon_default";
-      try {
-        const { data: latestBrand } = await getBrandProfileForUser("");
-        // Query latest brand profile from DB
-        const admin = (await import("@/lib/insforge-server")).getInsforgeAdminClient();
-        const { data: b } = await admin.database
-          .from("brand_profiles")
-          .select("user_id")
-          .order("updated_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (b?.user_id) targetUserId = b.user_id;
-      } catch {}
+      let targetUserId: string | null = queryUserId;
+
+      if (!targetUserId) {
+        try {
+          const admin = (await import("@/lib/insforge-server")).getInsforgeAdminClient();
+          const { data: matchedChannel } = await admin.database
+            .from("user_channels")
+            .select("user_id")
+            .eq("channel_types.type", "WHATSAPP")
+            .eq("is_connected", true)
+            .limit(1)
+            .maybeSingle();
+          if (matchedChannel?.user_id) targetUserId = matchedChannel.user_id;
+        } catch {}
+      }
+
+      // Development fallback only
+      if (!targetUserId && process.env.NODE_ENV === "development") {
+        targetUserId = "user_lemon_default";
+      }
+
+      if (!targetUserId) {
+        console.warn("[WhatsApp Webhook] Discarding message: No registered tenant for WhatsApp message from:", msg.from);
+        continue;
+      }
+
 
       // 1. Find or create lead
       const lead = await findOrCreateLeadByContact({

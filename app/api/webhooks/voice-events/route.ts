@@ -7,6 +7,18 @@ import { getInsforgeAdminClient } from "@/lib/insforge-server";
  */
 export async function POST(request: NextRequest) {
   try {
+    // 0. Secret verification if configured
+    const voiceSecret = process.env.VOICE_WEBHOOK_SECRET || process.env.VAPI_WEBHOOK_SECRET;
+    if (voiceSecret) {
+      const headerSecret =
+        request.headers.get("x-vapi-secret") ||
+        request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+      if (headerSecret !== voiceSecret) {
+        console.warn("[Voice Webhook] Invalid voice webhook authorization header.");
+        return NextResponse.json({ error: "Unauthorized webhook" }, { status: 401 });
+      }
+    }
+
     const body = await request.json().catch(() => ({}));
     const message = body.message || body;
     const type = message.type || body.type || "status-update";
@@ -22,20 +34,39 @@ export async function POST(request: NextRequest) {
     let matchedLead: any = null;
     const cleanPhone = customerPhone ? customerPhone.replace(/\D/g, "") : null;
 
-    // 1. Dynamic Tenant Resolution: Query leads by phone or callId
-    if (cleanPhone) {
-      const { data: leadsByPhone } = await admin.database
-        .from("leads")
-        .select("*")
+    // 1. Dynamic Tenant Resolution: Query leads by callId first (most specific)
+    if (callId) {
+      try {
+        const { data: callMatches } = await admin.database
+          .from("leads")
+          .select("*")
+          .order("updated_at", { ascending: false })
+          .limit(50);
+        matchedLead = callMatches?.find((l: any) =>
+          l.metadata?.callLogs?.some((c: VoiceCallLog) => c.callId === callId)
+        );
+      } catch {}
+    }
+
+    // 2. Fallback: Query by phone if not matched by callId
+    if (!matchedLead && cleanPhone) {
+      const { searchParams } = new URL(request.url);
+      const queryUserId = searchParams.get("userId") || searchParams.get("tenantId");
+
+      let leadQuery = admin.database.from("leads").select("*");
+      if (queryUserId) {
+        leadQuery = leadQuery.eq("user_id", queryUserId);
+      }
+
+      const { data: leadsByPhone } = await leadQuery
         .order("updated_at", { ascending: false })
-        .limit(100);
+        .limit(20);
 
       matchedLead = leadsByPhone?.find(
-        (l: any) =>
-          (l.phone && l.phone.replace(/\D/g, "") === cleanPhone) ||
-          (l.metadata?.callLogs && l.metadata.callLogs.some((c: VoiceCallLog) => c.callId === callId))
+        (l: any) => l.phone && l.phone.replace(/\D/g, "") === cleanPhone
       );
     }
+
 
     if (matchedLead) {
       const currentLogs: VoiceCallLog[] = matchedLead.metadata?.callLogs || [];
