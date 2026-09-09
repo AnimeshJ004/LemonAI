@@ -11,6 +11,7 @@ import { useQueryClient } from "@tanstack/react-query";
 export function ScheduledPostsPoller() {
   const queryClient = useQueryClient();
   const isRunningRef = useRef(false);
+  const isRunningCommentsRef = useRef(false);
 
   useEffect(() => {
     async function checkDuePosts() {
@@ -41,6 +42,9 @@ export function ScheduledPostsPoller() {
 
     // Check for new Instagram comments to auto-reply immediately
     async function syncLiveComments() {
+      if (isRunningCommentsRef.current) return;
+      isRunningCommentsRef.current = true;
+
       try {
         const res = await fetch("/api/social/sync-now", {
           method: "POST",
@@ -49,6 +53,10 @@ export function ScheduledPostsPoller() {
 
         if (res.ok) {
           const data = await res.json();
+          if (data.skipped) {
+            // No Instagram/Facebook accounts connected; quietly do nothing
+            return;
+          }
           if (data.repliedCount && data.repliedCount > 0) {
             console.log(`[Auto-Reply Poller] Answered ${data.repliedCount} new comment(s) on Instagram.`);
             queryClient.invalidateQueries({
@@ -58,6 +66,8 @@ export function ScheduledPostsPoller() {
         }
       } catch {
         // Silent catch in background poller
+      } finally {
+        isRunningCommentsRef.current = false;
       }
     }
 

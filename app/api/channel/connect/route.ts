@@ -210,7 +210,7 @@ export async function POST(request: NextRequest) {
 
             try {
                 // Try 1: Graph API me with instagram_business_account
-                const metaRes = await fetch(`https://graph.facebook.com/v21.0/me?fields=id,name,picture,username,instagram_business_account{id,username,profile_picture_url}&access_token=${encodeURIComponent(rawToken)}`);
+                const metaRes = await fetch(`https://graph.facebook.com/v22.0/me?fields=id,name,picture,username,instagram_business_account{id,username,profile_picture_url}&access_token=${encodeURIComponent(rawToken)}`);
                 if (metaRes.ok) {
                     const metaData = await metaRes.json();
                     profileImage = metaData?.instagram_business_account?.profile_picture_url || metaData?.picture?.data?.url || null;
@@ -226,7 +226,7 @@ export async function POST(request: NextRequest) {
 
                 // Try 2: me/accounts
                 if (!verifiedAccountId || !profileImage) {
-                    const accRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,picture,instagram_business_account{id,username,profile_picture_url}&access_token=${encodeURIComponent(rawToken)}`);
+                    const accRes = await fetch(`https://graph.facebook.com/v22.0/me/accounts?fields=id,name,picture,instagram_business_account{id,username,profile_picture_url}&access_token=${encodeURIComponent(rawToken)}`);
                     if (accRes.ok) {
                         const accData = await accRes.json();
                         const pageItem = accData?.data?.find((p: any) => p.instagram_business_account?.id) || accData?.data?.[0];

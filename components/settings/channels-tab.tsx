@@ -57,8 +57,14 @@ function ChannelTabContent() {
                 toast.error(`1-Click OAuth is not configured for ${targetChannel}. Please use the "Manual Token" tab to connect, or add ${targetChannel}_CLIENT_ID in your .env.local file.`, {
                     duration: 6000,
                 })
+            } else if (error.toLowerCase().includes("redirect_uri") || error.toLowerCase().includes("url blocked") || error.toLowerCase().includes("whitelisted")) {
+                toast.error(`OAuth Redirect URI mismatch: Ensure "${window.location.origin}/api/channel/callback" is added to Valid OAuth Redirect URIs in your ${targetChannel} developer app.`, {
+                    duration: 9000,
+                })
             } else {
-                toast.error(`Failed to connect to ${targetChannel}: ${error}`)
+                toast.error(`Failed to connect to ${targetChannel}: ${error}`, {
+                    duration: 6000,
+                })
             }
         }
 

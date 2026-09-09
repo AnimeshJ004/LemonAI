@@ -40,6 +40,8 @@ export default function SocialAutomationPage() {
       if (!res.ok || data?.success === false) {
         // Show the specific actionable error from the server
         toast.error(data?.error || "Failed to sync comments. Please reconnect your Instagram account in Settings.");
+      } else if (data.skipped) {
+        toast.info(data.message || "No active Instagram or Facebook account connected. Connect one in Settings.");
       } else if (data.repliedCount > 0) {
         toast.success(`Replied to ${data.repliedCount} new comment(s) across ${data.scannedPostsCount} post(s)! 🎉`);
       } else if (data.scannedPostsCount > 0) {

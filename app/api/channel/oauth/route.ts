@@ -5,21 +5,21 @@ import { ChannelTypeEnum } from "@/constants/channels";
 import { getOAuthProvider, isProviderConfigured } from "@/lib/social-oauth";
 import { createOAuthState } from "@/lib/social-oauth/state";
 import { createPkcePair, getPkceCookieName } from "@/lib/social-oauth/pkce";
+import { getAppUrl } from "@/lib/app-url";
 export const dynamic = "force-dynamic";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-
 export async function GET(request: NextRequest) {
+  const appUrl = getAppUrl(request);
   try {
     const { userId } = await auth();
     if (!userId) {
-      return NextResponse.redirect(new URL("/sign-in", APP_URL));
+      return NextResponse.redirect(new URL("/sign-in", appUrl));
     }
 
     const { searchParams } = new URL(request.url);
     const channelTypeId = searchParams.get("channelTypeId");
     const channelTypeParam = searchParams.get("channelType");
-    const redirectTo = searchParams.get("redirectTo") || `${APP_URL}/settings?tab=channels`;
+    const redirectTo = searchParams.get("redirectTo") || `${appUrl}/settings?tab=channels`;
 
     const { insforge } = await getInsforgeServerClient();
 
@@ -43,7 +43,7 @@ export async function GET(request: NextRequest) {
 
     if (!channelRow) {
       return NextResponse.redirect(
-        new URL(`/settings?tab=channels&error=invalid_channel_type`, APP_URL)
+        new URL(`/settings?tab=channels&error=invalid_channel_type`, appUrl)
       );
     }
 
@@ -54,20 +54,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(
         new URL(
           `/settings?tab=channels&error=oauth_not_configured&channel=${type}&help=Add_${type}_CLIENT_ID_in_env`,
-          APP_URL
+          appUrl
         )
       );
     }
 
-    // Create OAuth state
+    const redirectUri = `${appUrl}/api/channel/callback`;
+
+    // Create OAuth state with embedded redirectUri for 100% callback match
     const state = createOAuthState({
       userId,
       channelTypeId: channelRow.id,
       channelType: type,
       redirectTo,
+      redirectUri,
     });
-
-    const redirectUri = `${APP_URL}/api/channel/callback`;
 
     // Handle PKCE for Twitter / X
     let codeVerifier: string | undefined;
@@ -105,7 +106,7 @@ export async function GET(request: NextRequest) {
   } catch (error: any) {
     console.error("OAuth initiation error:", error);
     return NextResponse.redirect(
-      new URL(`/settings?tab=channels&error=oauth_init_failed`, APP_URL)
+      new URL(`/settings?tab=channels&error=oauth_init_failed`, appUrl)
     );
   }
 }

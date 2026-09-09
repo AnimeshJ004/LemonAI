@@ -37,8 +37,12 @@ export async function POST(req: NextRequest) {
 
     if (!channels || channels.length === 0) {
       return NextResponse.json({
-        error: "No active Instagram or Facebook channel found. Please connect your account in Settings.",
-      }, { status: 400 });
+        success: true,
+        skipped: true,
+        message: "No active Instagram or Facebook channel found. Please connect your account in Settings.",
+        scannedPostsCount: 0,
+        repliedCount: 0,
+      }, { status: 200 });
     }
 
     // Fetch Brand Profile for AI persona
@@ -212,7 +216,9 @@ export async function POST(req: NextRequest) {
         success: false,
         error: "Could not fetch posts from Meta. Your access token may have expired or lack required permissions (instagram_manage_comments, pages_read_engagement). Please reconnect your Instagram account in Settings.",
         metaErrors: errors,
-      }, { status: 400 });
+        scannedPostsCount: 0,
+        repliedCount: 0,
+      }, { status: 200 });
     }
 
     return NextResponse.json({
