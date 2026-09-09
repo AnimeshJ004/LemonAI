@@ -123,8 +123,27 @@ export const leadFollowupOrchestrator = inngest.createFunction(
           lead.user_id
         );
 
+        // Step D: Log follow-up activity in CRM Activity Log
+        try {
+          await admin.database.from("crm_activities").insert({
+            user_id: lead.user_id,
+            lead_id: lead.id,
+            type: "follow_up",
+            title: `Automated follow-up sent to ${leadName}`,
+            description: `WhatsApp follow-up #${currentCount + 1} dispatched. ${shouldCall ? "AI voice call also dispatched." : "Voice call not triggered (score or auto-call config)."}`,
+            metadata: {
+              followup_count: currentCount + 1,
+              channel: lead.phone ? "whatsapp" : "email",
+              voice_call_dispatched: shouldCall,
+            },
+          });
+        } catch (actErr) {
+          logger.warn("Activity log notice (non-blocking):", { actErr });
+        }
+
         followedUpCount++;
       });
+
     }
 
     return {

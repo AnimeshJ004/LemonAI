@@ -288,21 +288,14 @@ Return ONLY valid JSON matching this schema:
     } catch {}
   }
 
-  // If still no channels found for this specific userId, look for any connected channel on the platform
+  // Never fall back to another user's channels. Multi-tenant isolation is strictly enforced.
   if (activeUserChannels.length === 0) {
-    try {
-      const { data: globalChannels } = await admin.database
-        .from("user_channels")
-        .select("id, handle, is_connected, is_active, channel_types(id, type, name)")
-        .eq("is_connected", true)
-        .limit(2);
-      if (globalChannels && globalChannels.length > 0) {
-        activeUserChannels = globalChannels;
-      }
-    } catch {}
+    console.log(
+      `[Flywheel] User ${params.userId} has no active connected social channels. Posts will not be published to other tenants.`
+    );
   }
 
-  console.log(`[Flywheel] Found ${activeUserChannels.length} active channels to target for publishing:`, 
+  console.log(`[Flywheel] Found ${activeUserChannels.length} active channel(s) owned by user to target for publishing:`, 
     activeUserChannels.map(c => `${c.channel_types?.name || c.channel_types?.type} (${c.handle})`));
 
   // Generate visual assets for the first batch of posts in parallel (capped for speed)
@@ -329,10 +322,12 @@ Return ONLY valid JSON matching this schema:
     const post = generatedPosts[i];
     const asset = visualAssets[i] || visualAssets[i % visualAssets.length];
     
-    // Day 1 (i === 0) is scheduled for right now; subsequent days are scheduled daily at 10:00 AM
+    // Day 1 (i === 0) is scheduled for right now; subsequent days are scheduled at 10:00 AM UTC.
+    // Using setUTCHours (not setHours) so the time is server-timezone-independent.
+    // 10:00 UTC = 3:30 PM IST, 6:00 AM EST — consistent across all deployments.
     const scheduleDate = i === 0 ? new Date() : addDays(now, i);
     if (i > 0) {
-      scheduleDate.setHours(10, 0, 0, 0);
+      scheduleDate.setUTCHours(10, 0, 0, 0);
     }
 
     const isReel = post.format === "REEL";
@@ -490,7 +485,9 @@ Return ONLY valid JSON matching this schema:
 
   const summaryText = day1PublishedCount > 0
     ? `Autonomous Campaign Engine completed in ${(executionTimeMs / 1000).toFixed(1)}s. Day 1 post was published immediately to your connected social accounts, and ${postsScheduled} posts across ${days} day(s) have been scheduled onto your social calendar.`
-    : `Autonomous Campaign Engine completed in ${(executionTimeMs / 1000).toFixed(1)}s. Scheduled ${postsScheduled} posts across ${days} day(s) onto your social calendar.`;
+    : postsScheduled > 0
+    ? `Autonomous Campaign Engine completed in ${(executionTimeMs / 1000).toFixed(1)}s. Scheduled ${postsScheduled} posts across ${days} day(s) onto your social calendar.`
+    : `Autonomous Campaign Engine generated ${generatedPosts.length} strategic content pieces in ${(executionTimeMs / 1000).toFixed(1)}s. Connect your social channels in Settings to auto-publish directly to your accounts.`;
 
   return {
     success: true,

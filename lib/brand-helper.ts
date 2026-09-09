@@ -84,6 +84,9 @@ export function getBrandBrainSummary(brandProfile?: any): string {
   if (brandProfile.booking_url) {
     parts.push(`Booking Calendar Link: ${brandProfile.booking_url}`);
   }
+  if (brandProfile.knowledge_docs) {
+    parts.push(`Knowledge Vault & FAQs: ${brandProfile.knowledge_docs.slice(0, 600)}`);
+  }
 
   return parts.join("\n");
 }
