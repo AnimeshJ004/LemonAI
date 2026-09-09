@@ -34,6 +34,7 @@ import {
   AlertCircle,
   ImageIcon,
 } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { getChannelIcon } from "@/constants/channels";
 import Link from "next/link";
 
@@ -328,14 +329,24 @@ Include 3-5 relevant viral hashtags: ${researchContext?.hashtags?.slice(0, 5).jo
                   </SelectTrigger>
                   <SelectContent>
                     {connectedChannels.map((c: any) => {
-                      const Icon = getChannelIcon(c.type || c.name);
+                      const icon = getChannelIcon(c.type || c.name);
                       return (
                         <SelectItem
                           key={c.id}
                           value={c.channel_type_id || c.id}
                         >
                           <div className="flex items-center gap-2">
-                            {Icon && <Icon className="size-4" />}
+                            {icon ? (
+                              <div
+                                className="size-5 rounded flex items-center justify-center shrink-0"
+                                style={c.color ? { backgroundColor: c.color } : undefined}
+                              >
+                                <HugeiconsIcon
+                                  icon={icon}
+                                  className={c.color ? "size-3 text-white" : "size-4 text-muted-foreground"}
+                                />
+                              </div>
+                            ) : null}
                             <span>{c.name || c.type}</span>
                           </div>
                         </SelectItem>
