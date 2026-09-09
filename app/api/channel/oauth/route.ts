@@ -5,6 +5,7 @@ import { ChannelTypeEnum } from "@/constants/channels";
 import { getOAuthProvider, isProviderConfigured } from "@/lib/social-oauth";
 import { createOAuthState } from "@/lib/social-oauth/state";
 import { createPkcePair, getPkceCookieName } from "@/lib/social-oauth/pkce";
+export const dynamic = "force-dynamic";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 

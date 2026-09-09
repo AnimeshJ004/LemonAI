@@ -6,8 +6,9 @@ import { getPkceCookieName } from "@/lib/social-oauth/pkce";
 import { verifyOAuthState } from "@/lib/social-oauth/state";
 import { OAuthProvider } from "@/lib/social-oauth/types";
 import { NextRequest, NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL!
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
 function buildRedirectUrl(
     appUrl: string,
