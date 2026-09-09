@@ -29,13 +29,11 @@ function getEncryptionKey(): string {
 
 const KNOWN_KEYS = [
     process.env.CHANNEL_TOKEN_ENCRYPTION_KEY,
-    ...(process.env.NODE_ENV === "development"
-        ? [
-            "LemonAI_DevOnly_EphemeralKey_ReplaceInProduction_32chars",
-            "LemonAISuperSecretTokenEncryptKey",
-            "default_token_encryption_key_32chars_lemon"
-        ]
-        : [])
+    "LemonAISuperSecretTokenEncryptKey",
+    "LemonAI_DevOnly_EphemeralKey_ReplaceInProduction_32chars",
+    "default_token_encryption_key_32chars_lemon",
+    process.env.CLERK_SECRET_KEY,
+    process.env.INSFORGE_PROJECT_API_KEY,
 ].filter(Boolean) as string[];
 
 export function encrypt(text: string | null | undefined){

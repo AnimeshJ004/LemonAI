@@ -5,6 +5,7 @@ import { getInsforgeServerClient } from "@/lib/insforge-server";
 import { ImageObject } from "@/types/post.type";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
+import { adaptCaptionForPlatform, getPlatformStaggeredDate } from "@/lib/platform-adapt-helper";
 
 
 type PostType = {
@@ -127,18 +128,18 @@ export async function POST(request: NextRequest) {
 
         const { data: userChannels, error: userChannelsError } = await insforge.database
             .from("user_channels")
-            .select("id, channel_type_id")
+            .select("id, channel_type_id, channel_types(id, type, name)")
             .eq("user_id", userId)
             .eq("is_active", true)
             .eq("is_connected", true)
-            .in("channel_type_id", channelTypeIds)
+            .in("channel_type_id", channelTypeIds);
 
         if (userChannelsError) {
-            return NextResponse.json({ error: "Failed to fetch user channels" }, { status: 500 })
+            return NextResponse.json({ error: "Failed to fetch user channels" }, { status: 500 });
         }
 
         if (!userChannels || userChannels.length === 0) {
-            return NextResponse.json({ error: "No active channels found" }, { status: 404 })
+            return NextResponse.json({ error: "No active channels found" }, { status: 404 });
         }
 
         const connectedChannels = new Map(
@@ -146,14 +147,14 @@ export async function POST(request: NextRequest) {
                 user_channel.channel_type_id,
                 user_channel.id
             ])
-        )
+        );
 
         const missigChannel = channelTypeIds.find(
             (channelTypeId) => !connectedChannels.has(channelTypeId)
-        )
+        );
 
         if (missigChannel) {
-            return NextResponse.json({ error: "No active channel found for channel type" }, { status: 404 })
+            return NextResponse.json({ error: "No active channel found for channel type" }, { status: 404 });
         }
 
         const effectiveDates: string[] = Array.isArray(scheduledDates) && scheduledDates.length > 0
@@ -161,21 +162,44 @@ export async function POST(request: NextRequest) {
             : (scheduledAt ? [scheduledAt] : []);
 
         if (effectiveDates.length === 0) {
-            return NextResponse.json({ error: "Scheduled at or scheduled dates is required" }, { status: 400 })
+            return NextResponse.json({ error: "Scheduled at or scheduled dates is required" }, { status: 400 });
         }
 
+        // Fetch brand profile for AI persona context (niche, business name, tone)
+        const { data: brand } = await insforge.database
+            .from("brand_profiles")
+            .select("business_name, niche, brand_tone")
+            .eq("user_id", userId)
+            .maybeSingle();
+
         const postStatus = status === POST_STATUS.DRAFT ? POST_STATUS.DRAFT : POST_STATUS.QUEUE;
+        const isMultiChannel = normalizedPosts.length > 1;
 
         const payload = effectiveDates.flatMap((dateStr) =>
-            normalizedPosts.map((post) => ({
-                user_id: userId,
-                user_channel_id: connectedChannels.get(post.channelTypeId),
-                content: post.content,
-                images: post.images,
-                scheduled_at: dateStr,
-                status: postStatus
-            }))
-        )
+            normalizedPosts.map((post, postIdx) => {
+                const channelRecord = userChannels.find((uc: any) => uc.channel_type_id === post.channelTypeId);
+                const rawType = (channelRecord?.channel_types as any)?.type || "TWITTER";
+                const channelType = String(rawType).toUpperCase();
+
+                // 1. Silently adapt caption to this specific social media platform
+                const tailoredContent = isMultiChannel
+                    ? adaptCaptionForPlatform(post.content, channelType, brand || undefined)
+                    : post.content;
+
+                // 2. In manual New Post, strictly honor the user's selected schedule date & time
+                // Subtle 1-second offset per channel prevents timestamp collisions in queries while preserving the exact scheduled minute
+                const scheduledAtDate = new Date(new Date(dateStr).getTime() + postIdx * 1000);
+
+                return {
+                    user_id: userId,
+                    user_channel_id: connectedChannels.get(post.channelTypeId),
+                    content: tailoredContent,
+                    images: post.images,
+                    scheduled_at: scheduledAtDate.toISOString(),
+                    status: postStatus,
+                };
+            })
+        );
 
         // console.log(payload,"payload")
 
