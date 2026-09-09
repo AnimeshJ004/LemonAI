@@ -51,8 +51,8 @@ export async function GET(request: NextRequest) {
     const provider = getOAuthProvider(type);
 
     if (!provider || !isProviderConfigured(type)) {
-      const isMeta = type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.INSTAGRAM || type === ChannelTypeEnum.THREADS;
-      const helpVar = isMeta ? "META_CLIENT_ID" : `${type}_CLIENT_ID`;
+      const isMeta = type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.INSTAGRAM;
+      const helpVar = type === ChannelTypeEnum.THREADS ? "THREADS_APP_ID" : isMeta ? "META_CLIENT_ID" : `${type}_CLIENT_ID`;
       return NextResponse.redirect(
         new URL(
           `/settings?tab=channels&error=oauth_not_configured&channel=${type}&help=Add_${helpVar}_in_env`,

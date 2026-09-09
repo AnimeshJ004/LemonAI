@@ -25,7 +25,8 @@ function buildRedirectUrl(
 export async function GET(request: NextRequest) {
     const appUrl = getAppUrl(request);
     const { searchParams } = new URL(request.url);
-    const code = searchParams.get('code');
+    const rawCode = searchParams.get('code');
+    const code = rawCode ? rawCode.replace(/#_$/, '') : null;
     const stateParams = searchParams.get('state');
     const providerError = searchParams.get('error');
     const providerErrorDesc = searchParams.get('error_description') || searchParams.get('error_message') || providerError;

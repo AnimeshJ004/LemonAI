@@ -48,7 +48,7 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
     scope: ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"],
   },
   [ChannelTypeEnum.THREADS]: {
-    authUrl: "https://threads.com/oauth/authorize",
+    authUrl: "https://threads.net/oauth/authorize",
     tokenUrl: "https://graph.threads.net/oauth/access_token",
     profileUrl: "https://graph.threads.net/v1.0/me?fields=id,username,threads_profile_picture_url",
     scope: ["threads_basic", "threads_content_publish"],
@@ -69,16 +69,32 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
 
 function getConfig(type: ChannelTypeEnum) {
   const defaults = DEFAULT_PROVIDER_CONFIGS[type];
-  const isMetaChannel = type === ChannelTypeEnum.INSTAGRAM || type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.THREADS;
+  const isMetaChannel = type === ChannelTypeEnum.INSTAGRAM || type === ChannelTypeEnum.FACEBOOK;
 
-  // Unified Meta Credentials: One App ID and Secret for Facebook, Instagram & Threads
+  // Unified Meta Credentials: One App ID and Secret for Facebook & Instagram
   const metaClientId = process.env.META_CLIENT_ID?.replace(/^["']|["']$/g, "").trim() || 
                        process.env.META_APP_ID?.replace(/^["']|["']$/g, "").trim() || "";
   const metaClientSecret = process.env.META_CLIENT_SECRET?.replace(/^["']|["']$/g, "").trim() || 
-                           process.env.META_APP_SECRET?.replace(/^["']|["']$/g, "").trim() || "";
+                            process.env.META_APP_SECRET?.replace(/^["']|["']$/g, "").trim() || "";
 
-  let clientId = process.env[`${type}_CLIENT_ID`]?.replace(/^["']|["']$/g, "").trim() || (isMetaChannel ? metaClientId : "");
-  let clientSecret = process.env[`${type}_CLIENT_SECRET`]?.replace(/^["']|["']$/g, "").trim() || (isMetaChannel ? metaClientSecret : "");
+  // Threads API requires its own dedicated Threads App ID & App Secret from Meta for Developers (under Use Cases -> Threads)
+  // It CANNOT use the main Facebook App ID (META_CLIENT_ID), as Meta will reject it with error 4476002
+  const threadsClientId = process.env.THREADS_APP_ID?.replace(/^["']|["']$/g, "").trim() ||
+                          process.env.THREADS_CLIENT_ID?.replace(/^["']|["']$/g, "").trim() ||
+                          process.env.NEXT_PUBLIC_THREADS_APP_ID?.replace(/^["']|["']$/g, "").trim() || "";
+  const threadsClientSecret = process.env.THREADS_APP_SECRET?.replace(/^["']|["']$/g, "").trim() ||
+                              process.env.THREADS_CLIENT_SECRET?.replace(/^["']|["']$/g, "").trim() || "";
+
+  let clientId = "";
+  let clientSecret = "";
+
+  if (type === ChannelTypeEnum.THREADS) {
+    clientId = threadsClientId;
+    clientSecret = threadsClientSecret;
+  } else {
+    clientId = process.env[`${type}_CLIENT_ID`]?.replace(/^["']|["']$/g, "").trim() || (isMetaChannel ? metaClientId : "");
+    clientSecret = process.env[`${type}_CLIENT_SECRET`]?.replace(/^["']|["']$/g, "").trim() || (isMetaChannel ? metaClientSecret : "");
+  }
 
   const authUrl = process.env[`${type}_AUTH_URL`] || defaults?.authUrl || "";
   const tokenUrl = process.env[`${type}_TOKEN_URL`] || defaults?.tokenUrl || "";
@@ -447,11 +463,8 @@ const PROVIDERS: Record<ChannelTypeEnum, any> = {
 
 export function isProviderConfigured(type: ChannelTypeEnum): boolean {
   try {
-    const isMeta = type === ChannelTypeEnum.INSTAGRAM || type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.THREADS;
-    const metaClientId = process.env.META_CLIENT_ID?.replace(/^["']|["']$/g, "").trim() || 
-                         process.env.META_APP_ID?.replace(/^["']|["']$/g, "").trim() || "";
-
-    let clientId = process.env[`${type}_CLIENT_ID`]?.replace(/^["']|["']$/g, "").trim() || (isMeta ? metaClientId : "");
+    const config = getConfig(type);
+    const clientId = config.clientId;
     if (!clientId) return false;
     const lower = clientId.toLowerCase();
     if (
@@ -462,7 +475,6 @@ export function isProviderConfigured(type: ChannelTypeEnum): boolean {
     ) {
       return false;
     }
-    const config = getConfig(type);
     return Boolean(config.authUrl && config.tokenUrl && config.clientId);
   } catch {
     return false;

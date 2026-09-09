@@ -205,14 +205,16 @@ export function ConnectChannelDialog({
                                             <span>OAuth Client ID Required in .env.local</span>
                                         </div>
                                         <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-amber-300/80">
-                                            1-Click OAuth requires {isMeta || isThreads ? (
-                                                <>unified Meta credentials (<code className="font-mono font-semibold text-foreground">META_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">META_CLIENT_SECRET</code> shared for Facebook, Instagram, and Threads)</>
+                                            1-Click OAuth requires {isThreads ? (
+                                                <><code className="font-mono font-semibold text-foreground">THREADS_APP_ID</code> and <code className="font-mono font-semibold text-foreground">THREADS_APP_SECRET</code> (from Meta Developers ➔ Use Cases ➔ Threads)</>
+                                            ) : isMeta ? (
+                                                <>unified Meta credentials (<code className="font-mono font-semibold text-foreground">META_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">META_CLIENT_SECRET</code> shared for Facebook and Instagram)</>
                                             ) : (
                                                 <><code className="font-mono font-semibold text-foreground">{channel.type}_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">{channel.type}_CLIENT_SECRET</code></>
                                             )} to be added in your <code className="font-mono font-semibold text-foreground">.env.local</code> file.
                                         </p>
                                         <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-amber-300/80">
-                                            You can connect immediately without any developer setup using your Page Access Token in the <strong className="font-semibold text-foreground">Manual Token</strong> tab.
+                                            You can connect immediately without any developer setup using your token in the <strong className="font-semibold text-foreground">Manual Token</strong> tab.
                                         </p>
                                         <Button
                                             type="button"
