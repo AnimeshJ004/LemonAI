@@ -440,35 +440,50 @@ async function publishToFacebookDirect({
       (images[0] as any)?.media_type === "video";
 
     if (isVideo) {
-      const res = await fetch(
-        `https://graph.facebook.com/v22.0/${targetId}/videos`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            file_url: images[0].url,
-            description: content,
-            access_token: activeToken,
-          }),
+      try {
+        const res = await fetch(
+          `https://graph.facebook.com/v22.0/${targetId}/videos`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              file_url: images[0].url,
+              description: content,
+              access_token: activeToken,
+            }),
+          }
+        );
+        const data = await res.json();
+        if (res.ok && data.id) {
+          return `https://facebook.com/${data.id}`;
         }
-      );
-      const data = await res.json();
-      if (!res.ok) {
         const msg = data?.error?.message || "Failed to post video to Facebook";
         if (msg.includes("publish_actions") || msg.includes("sufficient administrative permission") || msg.includes("If posting to a page")) {
           throw new Error(
             "Meta Graph API requires a Facebook Page to publish. Please connect your Facebook Page (not personal profile) in Settings > Channels."
           );
         }
-        throw new Error(msg);
+        logger.warn("[Facebook Publisher] Video upload failed, falling back to photo/feed:", msg);
+      } catch (vidErr: any) {
+        if (vidErr.message?.includes("Facebook Page to publish")) throw vidErr;
+        logger.warn("[Facebook Publisher] Video upload error, falling back to photo/feed:", vidErr.message);
       }
-      return `https://facebook.com/${data.id}`;
     }
 
+    // Find photo candidate from images list (or video thumbnail)
+    const photoCandidate = images.find(
+      (img) => img.media_type === "image" || (!img.url.toLowerCase().includes(".mp4") && !img.url.toLowerCase().includes(".mov"))
+    );
+    const candidatePhotoUrl = photoCandidate?.url || images[0].thumbnail_url;
+
     // Multi-photo Carousel/Album for Facebook
-    if (images.length > 1) {
+    const validPhotoList = images.filter(
+      (img) => !img.url.toLowerCase().includes(".mp4") && !img.url.toLowerCase().includes(".mov")
+    );
+
+    if (validPhotoList.length > 1) {
       const photoIds: string[] = [];
-      for (const img of images.slice(0, 10)) {
+      for (const img of validPhotoList.slice(0, 10)) {
         const photoRes = await fetch(
           `https://graph.facebook.com/v22.0/${targetId}/photos`,
           {
@@ -509,29 +524,36 @@ async function publishToFacebookDirect({
     }
 
     // Single photo fallback
-    const res = await fetch(
-      `https://graph.facebook.com/v22.0/${targetId}/photos`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: images[0].url,
-          caption: content,
-          access_token: activeToken,
-        }),
-      }
-    );
-    const data = await res.json();
-    if (!res.ok) {
-      const msg = data?.error?.message || "Failed to post photo to Facebook";
-      if (msg.includes("publish_actions") || msg.includes("sufficient administrative permission") || msg.includes("If posting to a page")) {
-        throw new Error(
-          "Meta Graph API requires a Facebook Page to publish. Posting to personal profiles is restricted by Meta. Please connect a Facebook Page in Settings > Channels."
+    if (candidatePhotoUrl) {
+      try {
+        const res = await fetch(
+          `https://graph.facebook.com/v22.0/${targetId}/photos`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              url: candidatePhotoUrl,
+              caption: content,
+              access_token: activeToken,
+            }),
+          }
         );
+        const data = await res.json();
+        if (res.ok && (data.post_id || data.id)) {
+          return `https://facebook.com/${data.post_id || data.id}`;
+        }
+        const msg = data?.error?.message || "Failed to post photo to Facebook";
+        if (msg.includes("publish_actions") || msg.includes("sufficient administrative permission") || msg.includes("If posting to a page")) {
+          throw new Error(
+            "Meta Graph API requires a Facebook Page to publish. Posting to personal profiles is restricted by Meta. Please connect a Facebook Page in Settings > Channels."
+          );
+        }
+        logger.warn("[Facebook Publisher] Photo upload error, falling back to feed text:", msg);
+      } catch (photoErr: any) {
+        if (photoErr.message?.includes("Facebook Page to publish")) throw photoErr;
+        logger.warn("[Facebook Publisher] Photo upload exception, falling back to feed text:", photoErr.message);
       }
-      throw new Error(msg);
     }
-    return `https://facebook.com/${data.post_id || data.id}`;
   }
 
   const res = await fetch(`https://graph.facebook.com/v22.0/${targetId}/feed`, {

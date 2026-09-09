@@ -105,9 +105,8 @@ export const CURATED_COMMERCIAL_PHOTOS: Record<string, string[]> = {
 };
 
 export const CURATED_VERTICAL_REELS: string[] = [
-  "https://assets.mixkit.co/videos/preview/mixkit-young-woman-working-with-a-laptop-in-an-office-42790-large.mp4",
-  "https://assets.mixkit.co/videos/preview/mixkit-group-of-diverse-people-having-a-business-meeting-42777-large.mp4",
-  "https://assets.mixkit.co/videos/preview/mixkit-man-working-on-a-laptop-in-a-coffee-shop-42784-large.mp4",
+  "https://raw.githubusercontent.com/bower-media-samples/big-buck-bunny-1080p-30s/master/video.mp4",
+  "https://www.w3schools.com/html/mov_bbb.mp4",
 ];
 
 /**
