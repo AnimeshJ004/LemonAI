@@ -107,9 +107,11 @@ export const CURATED_COMMERCIAL_PHOTOS: Record<string, string[]> = {
 };
 
 export const CURATED_VERTICAL_REELS: string[] = [
-  "https://assets.mixkit.co/videos/preview/mixkit-young-woman-working-with-a-laptop-in-an-office-42790-large.mp4",
-  "https://assets.mixkit.co/videos/preview/mixkit-group-of-diverse-people-having-a-business-meeting-42777-large.mp4",
-  "https://assets.mixkit.co/videos/preview/mixkit-man-working-on-a-laptop-in-a-coffee-shop-42784-large.mp4",
+  "/videos/reel-1.mp4",
+  "/videos/reel-2.mp4",
+  "/videos/reel-3.mp4",
+  "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
+  "https://www.w3schools.com/html/mov_bbb.mp4",
 ];
 
 /**
@@ -349,9 +351,9 @@ export async function generateAdCreativeVideo(options: {
       console.warn("[Replicate Video Engine] Wan 2.2 attempt notice:", err);
     }
 
-    // 2. Secondary / Backup: Wan 2.1 1.3b
+    // Primary: Try Wan 2.1 1.3b via Replicate
     try {
-      const wan21Res = await fetch("https://api.replicate.com/v1/models/alibaba-pai/wan2.1-t2v-1.3b/predictions", {
+      const wan21Res = await fetch("https://api.replicate.com/v1/models/wan-video/wan-2.1-1.3b/predictions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${replicateToken.trim()}`,
@@ -361,7 +363,6 @@ export async function generateAdCreativeVideo(options: {
           input: {
             prompt: `Cinematic 9:16 vertical commercial video reel. ${photorealisticPrompt}. High resolution, smooth natural camera motion, photorealistic cinematography.`,
             aspect_ratio: "9:16",
-            duration: 5,
             resolution: "720p",
           },
         }),
@@ -385,7 +386,7 @@ export async function generateAdCreativeVideo(options: {
         }
       }
     } catch (err) {
-      console.warn("[Replicate Video Engine] Wan 2.1 fallback notice:", err);
+      console.warn("[Replicate Video Engine] Wan 2.1 attempt notice:", err);
     }
   }
 

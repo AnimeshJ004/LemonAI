@@ -30,8 +30,8 @@ export default clerkMiddleware(
 
     // 1. Unauthenticated users:
     if (!userId) {
-      // Allow public routes
-      if (isPublicRoute(req)) {
+      // Allow public routes and API routes (APIs handle auth or return 401 JSON)
+      if (isPublicRoute(req) || isApiRoute(req)) {
         return NextResponse.next();
       }
 
@@ -63,7 +63,7 @@ export default clerkMiddleware(
 export const config = {
   matcher: [
     // Skip Next.js internals and all static files unless found in search params
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|mp4|webm|mov|ogg|mp3|wav)).*)",
     // Always run for API routes
     "/(api|trpc)(.*)",
   ],

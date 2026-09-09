@@ -226,12 +226,22 @@ export default function ReelsStudioPage() {
           <CardContent className="pt-4 flex flex-col md:flex-row items-center gap-6">
             <div className="relative w-full max-w-[260px] aspect-[9/16] rounded-2xl overflow-hidden border shadow-lg bg-black shrink-0">
               <video
+                key={videoResult.videoUrl}
                 src={videoResult.videoUrl}
                 controls
                 autoPlay
                 loop
                 muted
                 playsInline
+                preload="auto"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.src.includes("/videos/reel-1.mp4")) {
+                    target.src = "/videos/reel-1.mp4";
+                    target.load();
+                    target.play().catch(() => {});
+                  }
+                }}
                 className="w-full h-full object-cover"
               />
             </div>

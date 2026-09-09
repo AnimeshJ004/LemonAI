@@ -132,6 +132,14 @@ export function CampaignMediaPreviewDialog({
                       loop
                       muted
                       playsInline
+                      preload="auto"
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        if (!target.src.includes("/videos/reel-1.mp4")) {
+                          target.src = "/videos/reel-1.mp4";
+                          target.load();
+                        }
+                      }}
                       className="w-full h-full object-cover"
                     />
                   ) : post.imageUrl ? (
