@@ -326,6 +326,7 @@ export async function POST(request: NextRequest) {
 
         // 5. Threads Profile Fetching
         if (channelType.type === ChannelTypeEnum.THREADS) {
+            const cleanThHandle = rawHandle.replace(/^@/, '').trim();
             try {
                 const thRes = await fetch(`https://graph.threads.net/v1.0/me?fields=id,username,threads_profile_picture_url&access_token=${encodeURIComponent(rawToken)}`);
                 if (thRes.ok) {
@@ -340,6 +341,10 @@ export async function POST(request: NextRequest) {
                 }
             } catch (thErr) {
                 console.warn("Threads verification request failed:", thErr);
+            }
+
+            if (!profileImage && cleanThHandle) {
+                profileImage = `https://unavatar.io/threads/${cleanThHandle}`;
             }
         }
 

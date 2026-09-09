@@ -39,8 +39,9 @@ export function ConnectChannelDialog({
             setProviderAccountId((channel as any).provider_account_id || "")
             setAccessToken("")
             setPassword("")
-            // If OAuth is not configured in .env.local, default to manual tab; otherwise if connected default to manual else oauth
-            if (channel.oauth_configured === false) {
+            const isThr = channel.type === ChannelTypeEnum.THREADS || Boolean(channel.name?.toLowerCase().includes("thread"))
+            // Default Threads or unconfigured OAuth to manual tab; otherwise if connected default to manual else oauth
+            if (channel.oauth_configured === false || isThr) {
                 setConnectMode("manual")
             } else {
                 setConnectMode(channel.connected ? "manual" : "oauth")
@@ -351,14 +352,22 @@ export function ConnectChannelDialog({
                                 )}
 
                                 {isThreads && (
-                                    <div className="rounded-xl border border-neutral-300 bg-neutral-100/80 dark:border-neutral-800 dark:bg-neutral-900/60 p-3 space-y-1 text-xs text-foreground">
+                                    <div className="rounded-xl border border-neutral-300 bg-neutral-100/80 dark:border-neutral-800 dark:bg-neutral-900/60 p-3 space-y-1.5 text-xs text-foreground">
                                         <div className="flex items-center gap-1.5 font-semibold">
-                                            <KeyRound className="size-3.5" />
-                                            <span>Threads API Token:</span>
+                                            <KeyRound className="size-3.5 text-primary" />
+                                            <span>How to connect Threads with your Token:</span>
                                         </div>
-                                        <p className="leading-relaxed text-muted-foreground text-[11px]">
-                                            Get your Threads Access Token from <span className="font-medium text-foreground">Meta for Developers (Threads API)</span>.
-                                        </p>
+                                        <div className="leading-relaxed text-muted-foreground text-[11px] space-y-1">
+                                            <p>
+                                                1. Open <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline">developers.facebook.com</a> and select your app (<strong>LemonAI</strong>).
+                                            </p>
+                                            <p>
+                                                2. In the left sidebar, add the <strong>Threads API</strong> use case.
+                                            </p>
+                                            <p>
+                                                3. Go to <strong>Threads API ➔ Token Generator</strong>, click <strong>Generate Token</strong> for your Threads account, and paste it below.
+                                            </p>
+                                        </div>
                                     </div>
                                 )}
 
