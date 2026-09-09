@@ -381,10 +381,19 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
         (p: any) => new Date(p.scheduled_at).getTime() <= nowMs + 120_000
       );
 
-      // Publish initial due posts across all selected channels simultaneously
-      const postsToPublishNow = todayDuePosts.length > 0 ? todayDuePosts : [createdPosts[0]];
+      // Get initial Day 0 post for EACH targeted channel so all connected platforms receive their post
+      const channelFirstPostMap = new Map<string, any>();
+      for (const p of createdPosts) {
+        if (p.user_channel_id && !channelFirstPostMap.has(p.user_channel_id)) {
+          channelFirstPostMap.set(p.user_channel_id, p);
+        }
+      }
+      const initialPostsPerChannel = Array.from(channelFirstPostMap.values());
+      const postsToPublishNow = todayDuePosts.length > 0
+        ? todayDuePosts
+        : (initialPostsPerChannel.length > 0 ? initialPostsPerChannel : [createdPosts[0]]);
 
-      console.log(`[AutoPilot] Publishing ${postsToPublishNow.length} initial post(s) simultaneously across channels`);
+      console.log(`[AutoPilot] Publishing ${postsToPublishNow.length} initial post(s) simultaneously across all ${initialPostsPerChannel.length} selected channels`);
       await Promise.allSettled(
         postsToPublishNow.map((p: any) => publishPostDirectly(p.id))
       );

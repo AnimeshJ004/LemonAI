@@ -26,6 +26,7 @@ export async function POST(req: NextRequest) {
       daysToSchedule,
       postsPerDay,
       autoDraftMetaAd,
+      selectedChannelIds,
     } = body;
 
     const result = await executeAutonomousFlywheel({
@@ -42,6 +43,7 @@ export async function POST(req: NextRequest) {
       daysToSchedule: Number(daysToSchedule) || 7,
       postsPerDay: Number(postsPerDay) || 1,
       autoDraftMetaAd: autoDraftMetaAd !== false,
+      selectedChannelIds: Array.isArray(selectedChannelIds) ? selectedChannelIds : undefined,
     });
 
     return NextResponse.json(result);

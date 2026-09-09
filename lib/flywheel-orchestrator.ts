@@ -21,6 +21,7 @@ export interface FlywheelRequest {
   daysToSchedule?: number;
   postsPerDay?: number;
   autoDraftMetaAd?: boolean;
+  selectedChannelIds?: string[];
 }
 
 export interface FlywheelStepProgress {
@@ -38,8 +39,20 @@ export interface FlywheelCarouselSlide {
   swipePrompt?: string;
 }
 
+export interface FlywheelTargetChannelResult {
+  id: string;
+  channelId: string;
+  channelName: string;
+  channelType: string;
+  handle?: string;
+  status: "published" | "queue" | "failed";
+  publishedUrl?: string | null;
+  errorMessage?: string | null;
+}
+
 export interface FlywheelContentPiece {
   id?: string;
+  allPostIds?: string[];
   dayNumber: number;
   title: string;
   type: "FEED_POST" | "REEL_SCRIPT" | "CAROUSEL";
@@ -53,6 +66,7 @@ export interface FlywheelContentPiece {
   status?: "published" | "queue" | "failed";
   publishedUrl?: string | null;
   channelName?: string;
+  targetChannels?: FlywheelTargetChannelResult[];
   errorMessage?: string | null;
 }
 
@@ -289,6 +303,20 @@ Return ONLY valid JSON matching this schema:
     } catch {}
   }
 
+  // Filter by selected channel IDs if provided by user
+  if (params.selectedChannelIds && params.selectedChannelIds.length > 0) {
+    const selectedSet = new Set(params.selectedChannelIds);
+    const filtered = activeUserChannels.filter(
+      (c) =>
+        selectedSet.has(c.id) ||
+        selectedSet.has((c as any).channel_type_id) ||
+        selectedSet.has(c.channel_types?.id)
+    );
+    if (filtered.length > 0) {
+      activeUserChannels = filtered;
+    }
+  }
+
   // Never fall back to another user's channels. Multi-tenant isolation is strictly enforced.
   if (activeUserChannels.length === 0) {
     console.log(
@@ -312,11 +340,13 @@ Return ONLY valid JSON matching this schema:
   );
 
   const postTrackingRecords = new Map<number, {
-    id: string;
-    status: "published" | "queue" | "failed";
+    primaryId: string;
+    allPostIds: string[];
+    overallStatus: "published" | "queue" | "failed";
     publishedUrl?: string | null;
     channelName?: string;
     errorMessage?: string | null;
+    channels: FlywheelTargetChannelResult[];
   }>();
 
   for (let i = 0; i < generatedPosts.length; i++) {
@@ -423,14 +453,39 @@ Return ONLY valid JSON matching this schema:
             }
           }
 
-          if (!postTrackingRecords.has(i) || publishStatus === "published") {
+          const chResult: FlywheelTargetChannelResult = {
+            id: insertedPost.id,
+            channelId: channel.id,
+            channelName: channel.channel_types?.name || channel.channel_types?.type || "Social Channel",
+            channelType: chType,
+            handle: channel.handle || undefined,
+            status: publishStatus,
+            publishedUrl: liveUrl,
+            errorMessage: failureMsg,
+          };
+
+          const existingRecord = postTrackingRecords.get(i);
+          if (!existingRecord) {
             postTrackingRecords.set(i, {
-              id: insertedPost.id,
-              status: publishStatus,
+              primaryId: insertedPost.id,
+              allPostIds: [insertedPost.id],
+              overallStatus: publishStatus,
               publishedUrl: liveUrl,
               channelName: channel.channel_types?.name,
               errorMessage: failureMsg,
+              channels: [chResult],
             });
+          } else {
+            existingRecord.allPostIds.push(insertedPost.id);
+            existingRecord.channels.push(chResult);
+            if (publishStatus === "published") {
+              existingRecord.overallStatus = "published";
+              if (!existingRecord.publishedUrl) existingRecord.publishedUrl = liveUrl;
+            }
+            existingRecord.channelName = existingRecord.channels.map((c) => c.channelName).join(", ");
+            if (failureMsg && !existingRecord.errorMessage) {
+              existingRecord.errorMessage = failureMsg;
+            }
           }
         }
       } catch (insertErr) {
@@ -523,7 +578,8 @@ Return ONLY valid JSON matching this schema:
       const record = postTrackingRecords.get(idx);
 
       return {
-        id: record?.id,
+        id: record?.primaryId,
+        allPostIds: record?.allPostIds || (record?.primaryId ? [record.primaryId] : []),
         dayNumber: p.dayNumber || idx + 1,
         title: p.title,
         type: isReel ? ("REEL_SCRIPT" as const) : isCarousel ? ("CAROUSEL" as const) : ("FEED_POST" as const),
@@ -534,9 +590,10 @@ Return ONLY valid JSON matching this schema:
         videoUrl: assignedVideo,
         carouselSlides: p.carouselSlides || (isCarousel ? buildDefaultCarousel(p.title, p.dayNumber || idx + 1) : undefined),
         mediaPrompt: p.mediaPrompt,
-        status: record?.status || "queue",
+        status: record?.overallStatus || "queue",
         publishedUrl: record?.publishedUrl || null,
-        channelName: record?.channelName,
+        channelName: record?.channelName || "All Channels",
+        targetChannels: record?.channels || [],
         errorMessage: record?.errorMessage || null,
       };
     }),

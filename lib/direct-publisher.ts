@@ -238,9 +238,15 @@ async function publishToInstagramDirect({
   }
 
   // Instagram requires media (image, video Reel, or multi-image carousel)
-  let mainContainerId: string;
+  let mainContainerId: string | null = null;
 
-  if (images && images.length > 1) {
+  // Check if any image is a video reel
+  const videoItem = images?.find(
+    (img) => img.url.toLowerCase().includes(".mp4") || (img as any)?.media_type === "video"
+  );
+  const isVideoReel = Boolean(videoItem);
+
+  if (!isVideoReel && images && images.length > 1) {
     // Multi-image Carousel support
     const childIds: string[] = [];
     for (const img of images.slice(0, 10)) {
@@ -262,39 +268,39 @@ async function publishToInstagramDirect({
       }
     }
 
-    if (childIds.length === 0) {
-      throw new Error("Failed to upload images for Instagram carousel");
-    }
+    if (childIds.length >= 2) {
+      // Wait 1.5s for children containers
+      await new Promise((resolve) => setTimeout(resolve, 1500));
 
-    // Wait 1.5s for children containers
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-
-    const carouselRes = await fetch(
-      `https://graph.facebook.com/v22.0/${resolvedAccountId}/media`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          media_type: "CAROUSEL",
-          children: childIds,
-          caption: content,
-          access_token: accessToken,
-        }),
-      }
-    );
-    const carouselData = await carouselRes.json();
-    if (!carouselRes.ok || !carouselData.id) {
-      throw new Error(
-        `Failed to create Instagram carousel container: ${carouselData?.error?.message || JSON.stringify(carouselData)}`
+      const carouselRes = await fetch(
+        `https://graph.facebook.com/v22.0/${resolvedAccountId}/media`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            media_type: "CAROUSEL",
+            children: childIds.join(","),
+            caption: content,
+            access_token: accessToken,
+          }),
+        }
       );
+      const carouselData = await carouselRes.json();
+      if (carouselRes.ok && carouselData.id) {
+        mainContainerId = carouselData.id;
+      }
     }
-    mainContainerId = carouselData.id;
-  } else {
-    // Single image or Reel
+  }
+
+  // Single image or Reel fallback
+  if (!mainContainerId) {
     let mediaUrl: string | null = null;
     let isVideo = false;
 
-    if (images && images.length > 0) {
+    if (isVideoReel && videoItem) {
+      mediaUrl = videoItem.url;
+      isVideo = true;
+    } else if (images && images.length > 0) {
       mediaUrl = images[0].url;
       isVideo =
         mediaUrl.toLowerCase().includes(".mp4") ||
@@ -399,7 +405,34 @@ async function publishToFacebookDirect({
   content: string;
   images?: ImageObject[];
 }): Promise<string> {
-  const targetId = pageId || "me";
+  let targetId = pageId;
+  let activeToken = accessToken;
+
+  // Attempt to dynamically auto-resolve a managed Facebook Page and its Page Access Token from /me/accounts
+  try {
+    const accRes = await fetch(
+      `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(accessToken)}`
+    );
+    if (accRes.ok) {
+      const accData = await accRes.json();
+      const pages = accData?.data || [];
+      if (pages.length > 0) {
+        const match = pages.find((p: any) => p.id === pageId) || pages[0];
+        targetId = match.id;
+        if (match.access_token) {
+          activeToken = match.access_token;
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn("Notice checking Facebook accounts for page:", err);
+  }
+
+  if (!targetId || targetId === "me") {
+    throw new Error(
+      "Meta Graph API only supports publishing to Facebook Pages, not personal profiles. Please create a Facebook Page on facebook.com/pages/create and connect it in Settings > Channels."
+    );
+  }
 
   if (images && images.length > 0) {
     const isVideo =
@@ -415,15 +448,19 @@ async function publishToFacebookDirect({
           body: JSON.stringify({
             file_url: images[0].url,
             description: content,
-            access_token: accessToken,
+            access_token: activeToken,
           }),
         }
       );
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(
-          data?.error?.message || "Failed to post video to Facebook"
-        );
+        const msg = data?.error?.message || "Failed to post video to Facebook";
+        if (msg.includes("publish_actions") || msg.includes("sufficient administrative permission") || msg.includes("If posting to a page")) {
+          throw new Error(
+            "Meta Graph API requires a Facebook Page to publish. Please connect your Facebook Page (not personal profile) in Settings > Channels."
+          );
+        }
+        throw new Error(msg);
       }
       return `https://facebook.com/${data.id}`;
     }
@@ -440,7 +477,7 @@ async function publishToFacebookDirect({
             body: JSON.stringify({
               url: img.url,
               published: false,
-              access_token: accessToken,
+              access_token: activeToken,
             }),
           }
         );
@@ -460,7 +497,7 @@ async function publishToFacebookDirect({
             body: JSON.stringify({
               message: content,
               attached_media: attachedMedia,
-              access_token: accessToken,
+              access_token: activeToken,
             }),
           }
         );
@@ -480,15 +517,19 @@ async function publishToFacebookDirect({
         body: JSON.stringify({
           url: images[0].url,
           caption: content,
-          access_token: accessToken,
+          access_token: activeToken,
         }),
       }
     );
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(
-        data?.error?.message || "Failed to post photo to Facebook"
-      );
+      const msg = data?.error?.message || "Failed to post photo to Facebook";
+      if (msg.includes("publish_actions") || msg.includes("sufficient administrative permission") || msg.includes("If posting to a page")) {
+        throw new Error(
+          "Meta Graph API requires a Facebook Page to publish. Posting to personal profiles is restricted by Meta. Please connect a Facebook Page in Settings > Channels."
+        );
+      }
+      throw new Error(msg);
     }
     return `https://facebook.com/${data.post_id || data.id}`;
   }
@@ -498,10 +539,19 @@ async function publishToFacebookDirect({
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       message: content,
-      access_token: accessToken,
+      access_token: activeToken,
     }),
   });
   const data = await res.json();
+  if (!res.ok) {
+    const msg = data?.error?.message || "Failed to post message to Facebook";
+    if (msg.includes("publish_actions") || msg.includes("sufficient administrative permission") || msg.includes("If posting to a page")) {
+      throw new Error(
+        "Meta Graph API requires a Facebook Page to publish. Posting to personal profiles is restricted by Meta. Please connect a Facebook Page in Settings > Channels."
+      );
+    }
+    throw new Error(msg);
+  }
   if (!res.ok) {
     throw new Error(
       data?.error?.message || "Failed to publish post to Facebook"
