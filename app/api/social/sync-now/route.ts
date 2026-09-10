@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
       let posts: any[] = [];
 
       // Strategy 1: /{accountId}/media  (Instagram Business/Creator standard endpoint)
-      if (accountId) {
+      if (accountId && channelType === "INSTAGRAM") {
         try {
           const res = await fetch(
             `https://graph.facebook.com/v22.0/${accountId}/media?fields=id,caption,comments{id,text,from,timestamp,comments{id,from,text}}&limit=5&access_token=${encodeURIComponent(accessToken)}`
@@ -90,8 +90,8 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Strategy 2: /me/media (fallback for some token types)
-      if (posts.length === 0) {
+      // Strategy 2: /me/media (fallback for some Instagram token types)
+      if (posts.length === 0 && channelType === "INSTAGRAM") {
         try {
           const res = await fetch(
             `https://graph.facebook.com/v22.0/me/media?fields=id,caption,comments{id,text,from,timestamp,comments{id,from,text}}&limit=5&access_token=${encodeURIComponent(accessToken)}`
@@ -111,10 +111,13 @@ export async function POST(req: NextRequest) {
       }
 
       // Strategy 3: Facebook Page posts (for Facebook Pages connected as FACEBOOK channel type)
+      // Note: Use /{pageId}/published_posts instead of /{pageId}/posts.
+      // /{pageId}/posts requires 'pages_read_user_content' permission, whereas
+      // /{pageId}/published_posts accesses the page's own posts with standard page permissions.
       if (posts.length === 0 && channelType === "FACEBOOK" && accountId) {
         try {
           const res = await fetch(
-            `https://graph.facebook.com/v22.0/${accountId}/posts?fields=id,message,comments{id,message,from,created_time}&limit=5&access_token=${encodeURIComponent(accessToken)}`
+            `https://graph.facebook.com/v22.0/${accountId}/published_posts?fields=id,message,comments{id,message,from,created_time}&limit=5&access_token=${encodeURIComponent(accessToken)}`
           );
           if (res.ok) {
             const data = await res.json();
@@ -134,7 +137,7 @@ export async function POST(req: NextRequest) {
             }));
           } else {
             const errData = await res.json().catch(() => ({}));
-            console.warn("[Sync Now] Strategy 3 FB posts failed:", errData?.error?.message || res.status);
+            console.warn("[Sync Now] Strategy 3 FB published_posts failed:", errData?.error?.message || res.status);
           }
         } catch (e: any) {
           console.warn("[Sync Now] Strategy 3 network error:", e?.message);

@@ -325,25 +325,124 @@ async function publishToInstagramDirect({
           access_token: accessToken,
         };
 
-    const createRes = await fetch(
-      `https://graph.facebook.com/v22.0/${resolvedAccountId}/media`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(containerPayload),
+    let isVideoCreated = false;
+    if (isVideo) {
+      try {
+        const createRes = await fetch(
+          `https://graph.facebook.com/v22.0/${resolvedAccountId}/media`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(containerPayload),
+          }
+        );
+        const createData = await createRes.json();
+        if (createRes.ok && createData.id) {
+          mainContainerId = createData.id;
+          isVideoCreated = true;
+        } else {
+          logger.warn(
+            "[Instagram Publisher] Video container creation rejected by Meta, falling back to photo:",
+            createData?.error?.message || createData
+          );
+        }
+      } catch (vidErr) {
+        logger.warn("[Instagram Publisher] Video container fetch error, falling back to photo:", vidErr);
       }
-    );
-
-    const createData = await createRes.json();
-    if (!createRes.ok || !createData.id) {
-      throw new Error(
-        `Failed to create Instagram container: ${createData?.error?.message || JSON.stringify(createData)}`
-      );
     }
-    mainContainerId = createData.id;
+
+    // Photo container creation (if not video or if video container creation failed)
+    if (!mainContainerId) {
+      const photoCandidate = images?.find(
+        (img) => img.media_type === "image" || (!img.url.toLowerCase().includes(".mp4") && !img.url.toLowerCase().includes(".mov"))
+      );
+      const photoUrl =
+        photoCandidate?.url ||
+        images?.[0]?.thumbnail_url ||
+        (images?.[0] as any)?.thumbnail ||
+        "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80";
+
+      const createRes = await fetch(
+        `https://graph.facebook.com/v22.0/${resolvedAccountId}/media`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            image_url: photoUrl,
+            caption: content,
+            access_token: accessToken,
+          }),
+        }
+      );
+
+      const createData = await createRes.json();
+      if (!createRes.ok || !createData.id) {
+        throw new Error(
+          `Failed to create Instagram container: ${createData?.error?.message || JSON.stringify(createData)}`
+        );
+      }
+      mainContainerId = createData.id;
+    }
   }
 
-  // Step 2: Publish media container with readiness retry loop
+  // Step 2: If video Reel was created, verify readiness and fallback if Meta video processing fails
+  if (isVideoReel && mainContainerId) {
+    let isReady = false;
+    for (let sAttempt = 1; sAttempt <= 6; sAttempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      try {
+        const statusRes = await fetch(
+          `https://graph.facebook.com/v22.0/${mainContainerId}?fields=status_code,status&access_token=${accessToken}`
+        );
+        if (statusRes.ok) {
+          const sData = await statusRes.json();
+          if (sData.status_code === "FINISHED") {
+            isReady = true;
+            break;
+          } else if (sData.status_code === "ERROR") {
+            logger.warn(`[Instagram Publisher] Video container returned ERROR (${sData.status || sData.status_code}). Falling back to photo.`);
+            break;
+          }
+        }
+      } catch {}
+    }
+
+    // Fallback to photo container if video Reel could not finish processing
+    if (!isReady) {
+      const photoCandidate = images?.find(
+        (img) => img.media_type === "image" || (!img.url.toLowerCase().includes(".mp4") && !img.url.toLowerCase().includes(".mov"))
+      );
+      const photoUrl =
+        photoCandidate?.url ||
+        images?.[0]?.thumbnail_url ||
+        (images?.[0] as any)?.thumbnail ||
+        "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80";
+
+      try {
+        const fbRes = await fetch(
+          `https://graph.facebook.com/v22.0/${resolvedAccountId}/media`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              image_url: photoUrl,
+              caption: content,
+              access_token: accessToken,
+            }),
+          }
+        );
+        const fbData = await fbRes.json();
+        if (fbRes.ok && fbData.id) {
+          mainContainerId = fbData.id;
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+        }
+      } catch (fbErr) {
+        logger.warn("[Instagram Publisher] Photo fallback creation failed:", fbErr);
+      }
+    }
+  }
+
+  // Step 3: Publish media container with readiness retry loop
   let publishData: any = null;
   const maxAttempts = 8;
 
@@ -380,6 +479,54 @@ async function publishToInstagramDirect({
     if (isNotReady && attempt < maxAttempts) {
       logger.info(`Instagram container ${mainContainerId} still processing. Retrying (${attempt}/${maxAttempts})...`);
       continue;
+    }
+
+    // If publish failed with "Invalid parameter" or other error, attempt one final image fallback
+    if (attempt === maxAttempts) {
+      try {
+        const photoCandidate = images?.find(
+          (img) => img.media_type === "image" || (!img.url.toLowerCase().includes(".mp4") && !img.url.toLowerCase().includes(".mov"))
+        );
+        const photoUrl =
+          photoCandidate?.url ||
+          images?.[0]?.thumbnail_url ||
+          (images?.[0] as any)?.thumbnail ||
+          "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=80";
+
+        const emergencyRes = await fetch(
+          `https://graph.facebook.com/v22.0/${resolvedAccountId}/media`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              image_url: photoUrl,
+              caption: content,
+              access_token: accessToken,
+            }),
+          }
+        );
+        const emergencyData = await emergencyRes.json();
+        if (emergencyRes.ok && emergencyData.id) {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const pubEmergency = await fetch(
+            `https://graph.facebook.com/v22.0/${resolvedAccountId}/media_publish`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                creation_id: emergencyData.id,
+                access_token: accessToken,
+              }),
+            }
+          );
+          const pubEmData = await pubEmergency.json();
+          if (pubEmergency.ok && pubEmData.id) {
+            return `https://www.instagram.com/p/${pubEmData.id}`;
+          }
+        }
+      } catch (emergErr) {
+        logger.warn("[Instagram Publisher] Emergency image fallback error:", emergErr);
+      }
     }
 
     throw new Error(

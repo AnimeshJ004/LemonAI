@@ -525,8 +525,9 @@ export async function pollConnectedChannelsComments(maxChannels = 10): Promise<{
         accessToken = rawToken;
       }
 
-      const igAccountId = channel.provider_account_id;
-      if (!accessToken || !igAccountId) continue;
+      const accountId = channel.provider_account_id;
+      const channelType = (channel.channel_types as any)?.type || "INSTAGRAM";
+      if (!accessToken || !accountId) continue;
 
       // Fetch Brand Profile for this user
       const { data: brand } = await admin.database
@@ -535,15 +536,37 @@ export async function pollConnectedChannelsComments(maxChannels = 10): Promise<{
         .eq("user_id", channel.user_id)
         .maybeSingle();
 
-      // Query recent media from Instagram (latest 5 posts for rapid scanning)
+      // Query recent media/posts (latest 5 posts for rapid scanning)
       try {
-        const mediaUrl = `https://graph.facebook.com/v22.0/${igAccountId}/media?fields=id,caption,comments{id,text,from,timestamp,comments{id,from,text}}&limit=5&access_token=${encodeURIComponent(accessToken)}`;
-        const mediaRes = await fetch(mediaUrl);
+        let posts: any[] = [];
+        if (channelType === "FACEBOOK") {
+          const fbUrl = `https://graph.facebook.com/v22.0/${accountId}/published_posts?fields=id,message,comments{id,message,from,created_time}&limit=5&access_token=${encodeURIComponent(accessToken)}`;
+          const fbRes = await fetch(fbUrl);
+          if (fbRes.ok) {
+            const fbData = await fbRes.json();
+            posts = (fbData?.data || []).map((p: any) => ({
+              id: p.id,
+              caption: p.message,
+              comments: {
+                data: (p.comments?.data || []).map((c: any) => ({
+                  id: c.id,
+                  text: c.message,
+                  from: c.from,
+                  timestamp: c.created_time,
+                  comments: { data: [] },
+                })),
+              },
+            }));
+          }
+        } else {
+          const mediaUrl = `https://graph.facebook.com/v22.0/${accountId}/media?fields=id,caption,comments{id,text,from,timestamp,comments{id,from,text}}&limit=5&access_token=${encodeURIComponent(accessToken)}`;
+          const mediaRes = await fetch(mediaUrl);
+          if (mediaRes.ok) {
+            const mediaData = await mediaRes.json();
+            posts = mediaData?.data || [];
+          }
+        }
 
-        if (!mediaRes.ok) continue;
-
-        const mediaData = await mediaRes.json();
-        const posts = mediaData?.data || [];
         totalPosts += posts.length;
 
         for (const post of posts) {
@@ -565,7 +588,7 @@ export async function pollConnectedChannelsComments(maxChannels = 10): Promise<{
               mediaId: post.id,
               platform: (channel.channel_types as any)?.type || "INSTAGRAM",
               accessToken,
-              igAccountId,
+              igAccountId: accountId,
               channelHandle: channel.handle,
               brand,
               childReplies,
@@ -577,7 +600,7 @@ export async function pollConnectedChannelsComments(maxChannels = 10): Promise<{
           }
         }
       } catch (mediaErr) {
-        console.warn(`[Social Comment Service] Polling error for account ${igAccountId}:`, mediaErr);
+        console.warn(`[Social Comment Service] Polling error for account ${accountId}:`, mediaErr);
       }
     }
 

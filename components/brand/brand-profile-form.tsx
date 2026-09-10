@@ -215,6 +215,17 @@ export function BrandProfileForm() {
   });
 
   const channels: ChannelItem[] = channelsData?.channels || [];
+  const connectedChannels = useMemo(
+    () => channels.filter((c) => Boolean(c.connected)),
+    [channels]
+  );
+
+  // Automatically initialize selectedChannelIds to all CONNECTED channels once loaded
+  useEffect(() => {
+    if (connectedChannels.length > 0 && selectedChannelIds.length === 0) {
+      setSelectedChannelIds(connectedChannels.map((c) => c.id));
+    }
+  }, [connectedChannels]);
 
   // Sync form from server profile or cache
   useEffect(() => {
@@ -263,18 +274,31 @@ export function BrandProfileForm() {
     [storageKey]
   );
 
-  // Toggle channel selection
-  const toggleChannel = (channelId: string) => {
+  // Toggle channel selection (with prompt if channel is not connected)
+  const toggleChannel = (channel: ChannelItem) => {
+    if (!channel.connected) {
+      toast.error(`${channel.name} is not connected. Go to Settings → Channels to connect it.`, {
+        action: {
+          label: "Connect",
+          onClick: () => {
+            window.location.href = "/settings?tab=channels";
+          },
+        },
+      });
+      return;
+    }
     setSelectedChannelIds((prev) =>
-      prev.includes(channelId) ? prev.filter((id) => id !== channelId) : [...prev, channelId]
+      prev.includes(channel.id) ? prev.filter((id) => id !== channel.id) : [...prev, channel.id]
     );
   };
 
   const selectAllChannels = () => {
-    if (selectedChannelIds.length === channels.length) {
+    if (connectedChannels.length === 0) return;
+    const allConnectedSelected = connectedChannels.every((c) => selectedChannelIds.includes(c.id));
+    if (allConnectedSelected) {
       setSelectedChannelIds([]);
     } else {
-      setSelectedChannelIds(channels.map((c) => c.id));
+      setSelectedChannelIds(connectedChannels.map((c) => c.id));
     }
   };
 
@@ -868,15 +892,17 @@ export function BrandProfileForm() {
               <Layers className="size-4 text-primary" />
               Target Channels for Distribution
             </label>
-            <button
-              type="button"
-              onClick={selectAllChannels}
-              className="text-[11px] text-primary hover:underline font-semibold"
-            >
-              {selectedChannelIds.length === channels.length && channels.length > 0
-                ? "Deselect All"
-                : "Select All Channels"}
-            </button>
+            {connectedChannels.length > 0 && (
+              <button
+                type="button"
+                onClick={selectAllChannels}
+                className="text-[11px] text-primary hover:underline font-semibold cursor-pointer"
+              >
+                {connectedChannels.every((c) => selectedChannelIds.includes(c.id))
+                  ? "Deselect All"
+                  : "Select All Connected"}
+              </button>
+            )}
           </div>
 
           {channels.length === 0 ? (
@@ -887,36 +913,74 @@ export function BrandProfileForm() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {channels.map((ch) => {
-                const isSelected =
-                  selectedChannelIds.length === 0 || selectedChannelIds.includes(ch.id);
+                const isConnected = Boolean(ch.connected);
+                const isSelected = isConnected && selectedChannelIds.includes(ch.id);
+
                 return (
                   <button
                     key={ch.id}
                     type="button"
-                    onClick={() => toggleChannel(ch.id)}
+                    onClick={() => toggleChannel(ch)}
                     className={cn(
-                      "flex items-center justify-between p-2.5 rounded-xl border-2 text-xs transition-all",
-                      isSelected
-                        ? "border-primary bg-primary/10 text-foreground font-semibold"
-                        : "border-border bg-card/60 text-muted-foreground opacity-60 hover:opacity-100"
+                      "flex items-center justify-between p-2.5 rounded-xl border-2 text-xs transition-all relative text-left",
+                      !isConnected
+                        ? "border-border/60 bg-muted/20 text-muted-foreground/60 cursor-pointer hover:border-border"
+                        : isSelected
+                        ? "border-primary bg-primary/10 text-foreground font-semibold shadow-xs"
+                        : "border-border bg-card/60 text-muted-foreground hover:opacity-100"
                     )}
                   >
-                    <div className="flex items-center gap-2 truncate">
-                      <span
-                        className="size-2.5 rounded-full shrink-0"
-                        style={{ backgroundColor: ch.color || "#1877F2" }}
-                      />
-                      <span className="truncate">{ch.name}</span>
+                    <div className="flex flex-col min-w-0 pr-1 truncate">
+                      <div className="flex items-center gap-1.5 truncate">
+                        <span
+                          className="size-2 rounded-full shrink-0"
+                          style={{ backgroundColor: ch.color || "#1877F2" }}
+                        />
+                        <span className="truncate font-medium">{ch.name}</span>
+                      </div>
+                      <span className="text-[10px] truncate text-muted-foreground mt-0.5">
+                        {isConnected ? (ch.handle || "Connected") : "Not Connected"}
+                      </span>
                     </div>
-                    {isSelected && <Check className="size-3.5 text-primary shrink-0 ml-1" />}
+                    {isConnected ? (
+                      isSelected ? (
+                        <Check className="size-3.5 text-primary shrink-0 ml-1" />
+                      ) : (
+                        <span className="size-3.5 rounded border border-muted-foreground/30 shrink-0 ml-1" />
+                      )
+                    ) : (
+                      <span className="text-[9px] font-semibold px-1 py-0.5 rounded bg-muted text-muted-foreground shrink-0 border">
+                        Offline
+                      </span>
+                    )}
                   </button>
                 );
               })}
             </div>
           )}
-          <p className="text-[11px] text-muted-foreground">
-            Posts will be evenly balanced across selected channels so your audience receives diverse, coordinated updates.
-          </p>
+
+          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+            <span>
+              {connectedChannels.length > 0 ? (
+                <>
+                  <strong className="text-foreground font-semibold">
+                    {selectedChannelIds.filter((id) => connectedChannels.some((c) => c.id === id)).length} of {connectedChannels.length}
+                  </strong>{" "}
+                  connected channel(s) active for Auto-Pilot.
+                </>
+              ) : (
+                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                  No channels connected yet. Go to Settings → Channels to connect accounts.
+                </span>
+              )}
+            </span>
+            <Link
+              href="/settings?tab=channels"
+              className="text-primary hover:underline inline-flex items-center gap-1 font-medium"
+            >
+              Manage Channels <ExternalLink className="size-3" />
+            </Link>
+          </div>
         </div>
 
         {/* Options: Visual Generation & Post Status */}
