@@ -158,11 +158,17 @@ BUSINESS RULES:
     const intentKeywords = ["price", "buy", "cost", "book", "appointment", "contact", "purchase", "how much", "order", "quote"];
     const hasIntent = intentKeywords.some((k) => message.toLowerCase().includes(k));
 
-    // Extract email or phone if provided by visitor
+    // Extract email, phone, and name from visitor message
     const emailMatch = message.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
     const phoneMatch = message.match(/(?:\+?\d{1,3}[- ]?)?\(?\d{3}\)?[- ]?\d{3}[- ]?\d{4}/);
     const extractedEmail = emailMatch ? emailMatch[0] : null;
     const extractedPhone = phoneMatch ? phoneMatch[0] : null;
+
+    // Attempt to extract a proper name from message (e.g. "book appointment John Doe 5th jan")
+    const namePatternMatch = message.match(
+      /(?:my name is|i am|i'm|name[:\-]?|appointment(?:\s+for)?)[\s]+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/i
+    ) || message.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)(?:[^@]|$)/);
+    const extractedName = namePatternMatch ? namePatternMatch[1]?.trim() : null;
 
     // Log to CRM tables & create lead with BANT qualification
     try {
@@ -173,7 +179,7 @@ BUSINESS RULES:
       if (extractedEmail || extractedPhone || hasIntent) {
         let existingLeadQuery = admin.database
           .from("leads")
-          .select("id, metadata, score, stage")
+          .select("id, name, metadata, score, stage")
           .eq("user_id", userId);
 
         if (extractedEmail) {
@@ -184,34 +190,59 @@ BUSINESS RULES:
 
         const { data: existingLead } = await existingLeadQuery.limit(1).maybeSingle();
 
-        // Evaluate BANT intent score
-        const bant = await evaluateBANTLeadScore({
-          leadName: extractedEmail ? extractedEmail.split("@")[0] : "Website Visitor",
-          transcript: message,
-          niche: brand?.niche,
-        });
+        // Evaluate BANT intent score — isolated try/catch so AI credit failures don't block CRM
+        let bant: any = {
+          score: 5,
+          budgetScore: 5,
+          authorityScore: 5,
+          needScore: 5,
+          timingScore: 5,
+          reasoning: "Heuristic baseline score (AI scorer unavailable).",
+          isQualified: false,
+        };
+        try {
+          bant = await evaluateBANTLeadScore({
+            leadName: extractedName || (extractedEmail ? extractedEmail.split("@")[0] : "Website Visitor"),
+            transcript: message,
+            niche: brand?.niche,
+          });
+        } catch (bantErr) {
+          console.warn("[Chatbot] BANT scoring unavailable, using fallback score:", bantErr);
+          // Boost heuristic score if booking intent found
+          if (hasIntent) bant.score = 6;
+          if (extractedEmail) bant.score = Math.min(10, bant.score + 1);
+        }
 
         if (existingLead?.id) {
           leadId = existingLead.id;
-          // Update existing lead with latest BANT score
           const currentMeta = existingLead.metadata || {};
-          await admin.database
-            .from("leads")
-            .update({
-              score: Math.max(existingLead.score || 0, bant.score),
-              stage: bant.isQualified ? "qualified" : existingLead.stage,
-              metadata: {
-                ...currentMeta,
-                bant,
-              },
-            })
-            .eq("id", leadId);
-        } else if (extractedEmail || extractedPhone || hasIntent) {
-          const leadName = extractedEmail
-            ? extractedEmail.split("@")[0]
-            : `Website Visitor (${(sessionId || "").slice(0, 8) || "Web"})`;
+          const updatePayload: any = {
+            score: Math.max(existingLead.score || 0, bant.score),
+            stage: bant.isQualified ? "qualified" : existingLead.stage,
+            metadata: { ...currentMeta, bant },
+            updated_at: new Date().toISOString(),
+          };
+          // If we now have a better name, update it
+          if (extractedName && (!existingLead.name || existingLead.name === "Website Visitor")) {
+            updatePayload.name = extractedName;
+          }
+          if (extractedEmail) updatePayload.email = extractedEmail;
+          if (extractedPhone) updatePayload.phone = extractedPhone;
 
-          const { data: newLead } = await admin.database
+          const { error: updateErr } = await admin.database
+            .from("leads")
+            .update(updatePayload)
+            .eq("id", leadId);
+          if (updateErr) console.error("[Chatbot CRM] Lead update error:", updateErr);
+
+        } else {
+          // Determine best name: extracted name > email prefix > session fallback
+          const leadName =
+            extractedName ||
+            (extractedEmail ? extractedEmail.split("@")[0] : null) ||
+            `Website Visitor (${(sessionId || "").slice(0, 8) || "Web"})`;
+
+          const { data: newLead, error: insertErr } = await admin.database
             .from("leads")
             .insert({
               user_id: userId,
@@ -227,6 +258,11 @@ BUSINESS RULES:
             .select("id")
             .single();
 
+          if (insertErr) {
+            console.error("[Chatbot CRM] Lead insert error:", JSON.stringify(insertErr));
+          } else {
+            console.log(`[Chatbot CRM] New lead created: ${leadName} (${extractedEmail || extractedPhone || "intent-only"})`);
+          }
           leadId = newLead?.id || null;
         }
       }
