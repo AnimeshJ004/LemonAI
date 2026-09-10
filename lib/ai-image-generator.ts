@@ -52,7 +52,7 @@ function buildPhotorealisticPrompt(rawPrompt: string, niche?: string): string {
 /**
  * Poll Replicate prediction until completion
  */
-async function pollReplicatePrediction(predictionUrl: string, apiToken: string, maxWaitMs = 120000): Promise<any> {
+async function pollReplicatePrediction(predictionUrl: string, apiToken: string, maxWaitMs = 12000): Promise<any> {
   const startTime = Date.now();
   while (Date.now() - startTime < maxWaitMs) {
     const res = await fetch(predictionUrl, {
@@ -138,7 +138,7 @@ export async function generateAdCreativeImage(options: GenerateImageOptions): Pr
         headers: {
           Authorization: `Bearer ${replicateToken.trim()}`,
           "Content-Type": "application/json",
-          Prefer: "wait=60", // Ask Replicate to wait up to 60s for direct return
+          Prefer: "wait=10", // Fast return or poll for max 10-12s
         },
         body: JSON.stringify({
           input: {

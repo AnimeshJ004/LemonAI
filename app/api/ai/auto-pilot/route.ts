@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getInsforgeServerClient, getInsforgeAdminClient } from "@/lib/insforge-server";
 import { getBrandProfileForUser, formatBrandHashtags, cleanTag, userBrandCache } from "@/lib/brand-helper";
@@ -413,28 +413,37 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
           ? Array.from(publishPostMap.values())
           : (initialPostsPerChannel.length > 0 ? initialPostsPerChannel : [createdPosts[0]]);
 
-      console.log(`[AutoPilot] Publishing ${postsToPublishNow.length} initial post(s) simultaneously across all ${initialPostsPerChannel.length} selected channels`);
-      await Promise.allSettled(
-        postsToPublishNow.map((p: any) => publishPostDirectly(p.id))
-      );
-
-      // Send Inngest event for future scheduled posts so Inngest can trigger them at scheduled times
-      const futurePosts = createdPosts.filter(
-        (p: any) => !postsToPublishNow.some((nowPost) => nowPost.id === p.id)
-      );
-
-      if (futurePosts.length > 0) {
+      // Dispatch immediate Day 0 publishing and Inngest background scheduling
+      // using Next.js after() so the HTTP response returns to the browser in seconds
+      // without hitting Vercel's 504 Gateway Timeout!
+      after(async () => {
         try {
-          await inngest.send(
-            futurePosts.map((p: any) => ({
-              name: "post/publish.requested",
-              data: { postId: p.id },
-            }))
+          console.log(`[AutoPilot] Publishing ${postsToPublishNow.length} initial post(s) simultaneously across all ${initialPostsPerChannel.length} selected channels`);
+          await Promise.allSettled(
+            postsToPublishNow.map((p: any) => publishPostDirectly(p.id))
           );
-        } catch (inngestErr: any) {
-          console.warn("[Inngest] Auto-pilot future posts dispatch notice:", inngestErr?.message || inngestErr);
+
+          // Send Inngest event for future scheduled posts so Inngest can trigger them at scheduled times
+          const futurePosts = createdPosts.filter(
+            (p: any) => !postsToPublishNow.some((nowPost) => nowPost.id === p.id)
+          );
+
+          if (futurePosts.length > 0) {
+            try {
+              await inngest.send(
+                futurePosts.map((p: any) => ({
+                  name: "post/publish.requested",
+                  data: { postId: p.id },
+                }))
+              );
+            } catch (inngestErr: any) {
+              console.warn("[Inngest] Auto-pilot future posts dispatch notice:", inngestErr?.message || inngestErr);
+            }
+          }
+        } catch (afterErr: any) {
+          console.warn("[AutoPilot Background Task] Notice:", afterErr?.message || afterErr);
         }
-      }
+      });
     }
 
     // Calculate human-friendly date labels starting TODAY
