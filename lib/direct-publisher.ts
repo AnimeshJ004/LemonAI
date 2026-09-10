@@ -474,7 +474,7 @@ async function publishToFacebookDirect({
     const photoCandidate = images.find(
       (img) => img.media_type === "image" || (!img.url.toLowerCase().includes(".mp4") && !img.url.toLowerCase().includes(".mov"))
     );
-    const candidatePhotoUrl = photoCandidate?.url || images[0].thumbnail_url;
+    const candidatePhotoUrl = photoCandidate?.url || images[0]?.thumbnail_url || images[0]?.url;
 
     // Multi-photo Carousel/Album for Facebook
     const validPhotoList = images.filter(
