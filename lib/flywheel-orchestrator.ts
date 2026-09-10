@@ -289,7 +289,7 @@ Return ONLY valid JSON matching this schema:
       .eq("user_id", params.userId)
       .eq("is_connected", true);
     activeUserChannels = channels || [];
-  } catch {}
+  } catch { }
 
   // Fallback: if is_connected flag wasn't set, find any user channel with access_token
   if (activeUserChannels.length === 0) {
@@ -300,7 +300,7 @@ Return ONLY valid JSON matching this schema:
         .eq("user_id", params.userId)
         .not("access_token", "is", null);
       activeUserChannels = fallbackChannels || [];
-    } catch {}
+    } catch { }
   }
 
   // Filter by selected channel IDs if provided by user
@@ -324,7 +324,7 @@ Return ONLY valid JSON matching this schema:
     );
   }
 
-  console.log(`[Flywheel] Found ${activeUserChannels.length} active channel(s) owned by user to target for publishing:`, 
+  console.log(`[Flywheel] Found ${activeUserChannels.length} active channel(s) owned by user to target for publishing:`,
     activeUserChannels.map(c => `${c.channel_types?.name || c.channel_types?.type} (${c.handle})`));
 
   // Generate visual assets for the first batch of posts in parallel (capped for speed)
@@ -352,7 +352,7 @@ Return ONLY valid JSON matching this schema:
   for (let i = 0; i < generatedPosts.length; i++) {
     const post = generatedPosts[i];
     const asset = visualAssets[i] || visualAssets[i % visualAssets.length];
-    
+
     // Day 1 (i === 0) is scheduled for right now; subsequent days are scheduled at 10:00 AM UTC.
     // Using setUTCHours (not setHours) so the time is server-timezone-independent.
     // 10:00 UTC = 3:30 PM IST, 6:00 AM EST — consistent across all deployments.
@@ -368,8 +368,8 @@ Return ONLY valid JSON matching this schema:
       isCarousel
         ? CURATED_COMMERCIAL_PHOTOS.marketing[i % CURATED_COMMERCIAL_PHOTOS.marketing.length]
         : isReel
-        ? CURATED_COMMERCIAL_PHOTOS.business[i % CURATED_COMMERCIAL_PHOTOS.business.length]
-        : CURATED_COMMERCIAL_PHOTOS.default[i % CURATED_COMMERCIAL_PHOTOS.default.length]
+          ? CURATED_COMMERCIAL_PHOTOS.business[i % CURATED_COMMERCIAL_PHOTOS.business.length]
+          : CURATED_COMMERCIAL_PHOTOS.default[i % CURATED_COMMERCIAL_PHOTOS.default.length]
     );
 
     // Prepare media items for scheduled_posts table
@@ -548,15 +548,15 @@ Return ONLY valid JSON matching this schema:
         day1PublishedCount,
       },
     });
-  } catch {}
+  } catch { }
 
   console.log(`[Flywheel] Completed successfully in ${executionTimeMs}ms! Scheduled ${postsScheduled} posts, published ${day1PublishedCount} immediately, created Ad campaign.`);
 
   const summaryText = day1PublishedCount > 0
     ? `Autonomous Campaign Engine completed in ${(executionTimeMs / 1000).toFixed(1)}s. Day 1 post was published immediately to your connected social accounts, and ${postsScheduled} posts across ${days} day(s) have been scheduled onto your social calendar.`
     : postsScheduled > 0
-    ? `Autonomous Campaign Engine completed in ${(executionTimeMs / 1000).toFixed(1)}s. Scheduled ${postsScheduled} posts across ${days} day(s) onto your social calendar.`
-    : `Autonomous Campaign Engine generated ${generatedPosts.length} strategic content pieces in ${(executionTimeMs / 1000).toFixed(1)}s. Connect your social channels in Settings to auto-publish directly to your accounts.`;
+      ? `Autonomous Campaign Engine completed in ${(executionTimeMs / 1000).toFixed(1)}s. Scheduled ${postsScheduled} posts across ${days} day(s) onto your social calendar.`
+      : `Autonomous Campaign Engine generated ${generatedPosts.length} strategic content pieces in ${(executionTimeMs / 1000).toFixed(1)}s. Connect your social channels in Settings to auto-publish directly to your accounts.`;
 
   return {
     success: true,
@@ -571,8 +571,8 @@ Return ONLY valid JSON matching this schema:
         isCarousel
           ? CURATED_COMMERCIAL_PHOTOS.marketing[idx % CURATED_COMMERCIAL_PHOTOS.marketing.length]
           : isReel
-          ? CURATED_COMMERCIAL_PHOTOS.business[idx % CURATED_COMMERCIAL_PHOTOS.business.length]
-          : CURATED_COMMERCIAL_PHOTOS.default[idx % CURATED_COMMERCIAL_PHOTOS.default.length]
+            ? CURATED_COMMERCIAL_PHOTOS.business[idx % CURATED_COMMERCIAL_PHOTOS.business.length]
+            : CURATED_COMMERCIAL_PHOTOS.default[idx % CURATED_COMMERCIAL_PHOTOS.default.length]
       );
 
       const record = postTrackingRecords.get(idx);

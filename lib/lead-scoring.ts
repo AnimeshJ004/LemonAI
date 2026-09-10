@@ -1,6 +1,5 @@
 import { routeAICall } from "./ai-router";
 import { updateLead, Lead, BANTBreakdown } from "./crm-service";
-import { triggerOutboundQualificationCall } from "./vapi-client";
 
 export interface BANTEvaluationResult {
   score: number; // 1 to 10
@@ -163,28 +162,6 @@ export async function scoreAndUpdateLead(
 
   const finalLead = updatedLead || lead;
 
-  // Trigger outbound voice calling agent if high intent (>= 7), lead has phone, and user hasn't disabled auto-calling
-  if (evaluation.isQualified && finalLead.phone) {
-    try {
-      const { getBrandProfileForUser } = await import("./brand-helper");
-      const brand = await getBrandProfileForUser(finalLead.user_id);
-      const minScore = brand?.auto_call_min_score ?? 7;
-      const isAutoCallActive = brand?.auto_call_enabled ?? true;
-
-      if (isAutoCallActive && evaluation.score >= minScore) {
-        await triggerOutboundQualificationCall({
-          leadId: finalLead.id,
-          leadName: finalLead.name || "Customer",
-          phone: finalLead.phone,
-          company: finalLead.metadata?.company,
-          userId: finalLead.user_id,
-          contextNotes: evaluation.reasoning,
-        });
-      }
-    } catch (callErr) {
-      console.warn("Notice dispatching automated voice call:", callErr);
-    }
-  }
-
+  // Note: Automated AI voice calling is deactivated here as external voice provider is used.
   return { lead: finalLead, evaluation };
 }

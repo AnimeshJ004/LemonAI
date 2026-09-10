@@ -1,7 +1,6 @@
 import { inngest } from "../client";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { sendWhatsAppMessage } from "@/lib/whatsapp-client";
-import { triggerOutboundQualificationCall } from "@/lib/vapi-client";
 import { getBrandProfileForUser } from "@/lib/brand-helper";
 import { updateLead, Lead } from "@/lib/crm-service";
 
@@ -63,7 +62,6 @@ export const leadFollowupOrchestrator = inngest.createFunction(
     logger.info(`[Follow-Up Engine] Processing ${eligibleLeads.length} leads for autonomous follow-up`);
 
     let followedUpCount = 0;
-    let callsDispatched = 0;
 
     for (const lead of eligibleLeads) {
       await step.run(`followup-lead-${lead.id}`, async () => {
@@ -84,28 +82,7 @@ export const leadFollowupOrchestrator = inngest.createFunction(
           }).catch((err) => logger.warn("WhatsApp follow-up notice:", { err }));
         }
 
-        // Step B: Dispatch AI Voice Call if score >= 7 and auto-calling is enabled
-        const autoCallThreshold = brand?.auto_call_min_score ?? 7;
-        const shouldCall =
-          Boolean(brand?.auto_call_enabled) &&
-          (lead.score || 0) >= autoCallThreshold &&
-          Boolean(lead.phone) &&
-          !lead.metadata?.callLogs?.length;
-
-        if (shouldCall && lead.phone) {
-          try {
-            await triggerOutboundQualificationCall({
-              leadId: lead.id,
-              leadName,
-              phone: lead.phone,
-              userId: lead.user_id,
-              contextNotes: `Autonomous follow-up trigger: Lead expressed interest but has not booked a consultation yet.`,
-            });
-            callsDispatched++;
-          } catch (callErr) {
-            logger.warn("Voice call dispatch notice:", { callErr });
-          }
-        }
+        // Step B: AI Voice Call step deactivated (using external voice provider)
 
         // Step C: Update Lead Metadata
         const currentCount = lead.metadata?.followup_count || 0;
@@ -130,11 +107,10 @@ export const leadFollowupOrchestrator = inngest.createFunction(
             lead_id: lead.id,
             type: "follow_up",
             title: `Automated follow-up sent to ${leadName}`,
-            description: `WhatsApp follow-up #${currentCount + 1} dispatched. ${shouldCall ? "AI voice call also dispatched." : "Voice call not triggered (score or auto-call config)."}`,
+            description: `WhatsApp follow-up #${currentCount + 1} dispatched.`,
             metadata: {
               followup_count: currentCount + 1,
               channel: lead.phone ? "whatsapp" : "email",
-              voice_call_dispatched: shouldCall,
             },
           });
         } catch (actErr) {
@@ -143,13 +119,11 @@ export const leadFollowupOrchestrator = inngest.createFunction(
 
         followedUpCount++;
       });
-
     }
 
     return {
       processed: eligibleLeads.length,
       followedUpCount,
-      callsDispatched,
       message: `Completed autonomous follow-ups for ${followedUpCount} leads`,
     };
   }
