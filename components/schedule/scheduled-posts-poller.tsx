@@ -71,15 +71,18 @@ export function ScheduledPostsPoller() {
       }
     }
 
-    // Initial checks on mount
-    checkDuePosts();
-    syncLiveComments();
+    // Stagger initial background sync by 8 seconds so the UI loads instantly without competing for serverless concurrency
+    const startupTimer = setTimeout(() => {
+      checkDuePosts();
+      syncLiveComments();
+    }, 8_000);
 
-    // Periodic checks: posts every 45s, comments every 20s for immediate replies
-    const postInterval = setInterval(checkDuePosts, 45_000);
-    const commentInterval = setInterval(syncLiveComments, 20_000);
+    // Periodic checks: check due posts every 60s, comments every 45s
+    const postInterval = setInterval(checkDuePosts, 60_000);
+    const commentInterval = setInterval(syncLiveComments, 45_000);
 
     return () => {
+      clearTimeout(startupTimer);
       clearInterval(postInterval);
       clearInterval(commentInterval);
     };

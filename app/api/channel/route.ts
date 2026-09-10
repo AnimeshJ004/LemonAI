@@ -97,6 +97,10 @@ export async function GET(request: NextRequest) {
             channels,
             totalChannels,
             connectedCount
+        }, {
+            headers: {
+                "Cache-Control": "private, max-age=15, stale-while-revalidate=60"
+            }
         });
         
     } catch (error) {
