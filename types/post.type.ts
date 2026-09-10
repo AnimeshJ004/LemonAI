@@ -3,6 +3,8 @@ import { ChannelType } from "./channel.type";
 export type ImageObject = {
   url: string;
   key: string;
+  media_type?: string;
+  thumbnail_url?: string;
 }
 
 

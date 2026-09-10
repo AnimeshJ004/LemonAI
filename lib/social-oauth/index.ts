@@ -69,15 +69,31 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
 
 function getConfig(type: ChannelTypeEnum) {
   const defaults = DEFAULT_PROVIDER_CONFIGS[type];
-  let clientId = process.env[`${type}_CLIENT_ID`]?.replace(/^["']|["']$/g, "").trim() || "";
-  let clientSecret = process.env[`${type}_CLIENT_SECRET`]?.replace(/^["']|["']$/g, "").trim() || "";
+  const isMetaChannel = type === ChannelTypeEnum.INSTAGRAM || type === ChannelTypeEnum.FACEBOOK;
 
-  // Support generic META_CLIENT_ID / META_APP_ID for Instagram, Facebook, and Threads
-  if (!clientId && (type === ChannelTypeEnum.INSTAGRAM || type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.THREADS)) {
-    clientId = process.env.META_CLIENT_ID?.replace(/^["']|["']$/g, "").trim() || 
-               process.env.META_APP_ID?.replace(/^["']|["']$/g, "").trim() || "";
-    clientSecret = process.env.META_CLIENT_SECRET?.replace(/^["']|["']$/g, "").trim() || 
-                   process.env.META_APP_SECRET?.replace(/^["']|["']$/g, "").trim() || "";
+  // Unified Meta Credentials: One App ID and Secret for Facebook & Instagram
+  const metaClientId = process.env.META_CLIENT_ID?.replace(/^["']|["']$/g, "").trim() || 
+                       process.env.META_APP_ID?.replace(/^["']|["']$/g, "").trim() || "";
+  const metaClientSecret = process.env.META_CLIENT_SECRET?.replace(/^["']|["']$/g, "").trim() || 
+                            process.env.META_APP_SECRET?.replace(/^["']|["']$/g, "").trim() || "";
+
+  // Threads API requires its own dedicated Threads App ID & App Secret from Meta for Developers (under Use Cases -> Threads)
+  // It CANNOT use the main Facebook App ID (META_CLIENT_ID), as Meta will reject it with error 4476002
+  const threadsClientId = process.env.THREADS_APP_ID?.replace(/^["']|["']$/g, "").trim() ||
+                          process.env.THREADS_CLIENT_ID?.replace(/^["']|["']$/g, "").trim() ||
+                          process.env.NEXT_PUBLIC_THREADS_APP_ID?.replace(/^["']|["']$/g, "").trim() || "";
+  const threadsClientSecret = process.env.THREADS_APP_SECRET?.replace(/^["']|["']$/g, "").trim() ||
+                              process.env.THREADS_CLIENT_SECRET?.replace(/^["']|["']$/g, "").trim() || "";
+
+  let clientId = "";
+  let clientSecret = "";
+
+  if (type === ChannelTypeEnum.THREADS) {
+    clientId = threadsClientId;
+    clientSecret = threadsClientSecret;
+  } else {
+    clientId = process.env[`${type}_CLIENT_ID`]?.replace(/^["']|["']$/g, "").trim() || (isMetaChannel ? metaClientId : "");
+    clientSecret = process.env[`${type}_CLIENT_SECRET`]?.replace(/^["']|["']$/g, "").trim() || (isMetaChannel ? metaClientSecret : "");
   }
 
   const authUrl = process.env[`${type}_AUTH_URL`] || defaults?.authUrl || "";
@@ -173,7 +189,8 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
     getAuthorizationUrl: ({ state, redirectUri, codeChallenge, codeChallengeMethod }) => {
       const config = getConfig(type);
       const isMeta = type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.INSTAGRAM;
-      const scopeStr = isMeta ? config.scope.join(',') : config.scope.join(' ');
+      const isCommaScope = isMeta || type === ChannelTypeEnum.THREADS;
+      const scopeStr = isCommaScope ? config.scope.join(',') : config.scope.join(' ');
       const params = new URLSearchParams({
         client_id: config.clientId,
         redirect_uri: redirectUri,
@@ -182,9 +199,19 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
         state,
       });
 
+      // Threads OAuth: pass both client_id and app_id for full compatibility with Meta's Threads auth endpoints
+      if (type === ChannelTypeEnum.THREADS) {
+        params.set('app_id', config.clientId);
+      }
+
       if (opts.pkce && codeChallenge && codeChallengeMethod) {
         params.append('code_challenge', codeChallenge);
         params.append('code_challenge_method', codeChallengeMethod);
+      }
+
+      // Meta OAuth: force re-request so user is prompted to select/grant their Facebook Pages
+      if (isMeta) {
+        params.append('auth_type', 'rerequest');
       }
 
       // YouTube requires offline access to issue a refresh token
@@ -225,7 +252,7 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
       let finalAccessToken = data.access_token;
       let finalExpiresIn = Number(data.expires_in);
 
-      // Meta: exchange short-lived user token (1-2 hr) for long-lived user token (60 days)
+      // Meta (Facebook & Instagram): exchange short-lived user token (1-2 hr) for long-lived user token (60 days)
       if ((type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.INSTAGRAM) && finalAccessToken && config.clientSecret) {
         try {
           const exchangeUrl = `https://graph.facebook.com/v22.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${encodeURIComponent(config.clientId)}&client_secret=${encodeURIComponent(config.clientSecret)}&fb_exchange_token=${encodeURIComponent(finalAccessToken)}`;
@@ -244,6 +271,25 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
         }
       }
 
+      // Threads: exchange short-lived user token for long-lived user token (60 days)
+      if (type === ChannelTypeEnum.THREADS && finalAccessToken && config.clientSecret) {
+        try {
+          const exchangeUrl = `https://graph.threads.net/access_token?grant_type=th_exchange_token&client_secret=${encodeURIComponent(config.clientSecret)}&access_token=${encodeURIComponent(finalAccessToken)}`;
+          const exchangeRes = await fetch(exchangeUrl);
+          if (exchangeRes.ok) {
+            const exchangeData = await exchangeRes.json();
+            if (exchangeData?.access_token) {
+              finalAccessToken = exchangeData.access_token;
+              if (exchangeData.expires_in) {
+                finalExpiresIn = Number(exchangeData.expires_in);
+              }
+            }
+          }
+        } catch (exchangeErr) {
+          console.warn(`[Threads OAuth] Notice during long-lived token exchange:`, exchangeErr);
+        }
+      }
+
       const expiresAt = finalExpiresIn > 0 ? new Date(Date.now() + finalExpiresIn * 1000).toISOString() : null;
 
       return {
@@ -254,6 +300,26 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
     },
     refreshToken: async ({ refreshToken, redirectUri }) => {
       const config = getConfig(type);
+
+      // Threads: refresh long-lived access token via dedicated endpoint
+      if (type === ChannelTypeEnum.THREADS && refreshToken) {
+        try {
+          const refreshUrl = `https://graph.threads.net/refresh_access_token?grant_type=th_refresh_token&access_token=${encodeURIComponent(refreshToken)}`;
+          const refreshRes = await fetch(refreshUrl);
+          if (refreshRes.ok) {
+            const refreshData = await refreshRes.json();
+            const sec = Number(refreshData?.expires_in);
+            return {
+              accessToken: refreshData.access_token,
+              refreshToken: refreshData.access_token,
+              expiresAt: sec > 0 ? new Date(Date.now() + sec * 1000).toISOString() : null,
+            };
+          }
+        } catch (refreshErr) {
+          console.warn(`[Threads OAuth] Notice during token refresh:`, refreshErr);
+        }
+      }
+
       const params = new URLSearchParams({
         grant_type: 'refresh_token',
         refresh_token: refreshToken,
@@ -314,6 +380,7 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
 
       // Resolve user's primary Facebook Page and Page Access Token for Facebook
       if (type === ChannelTypeEnum.FACEBOOK) {
+        let pageErrorDetails = "";
         try {
           const fbRes = await fetch(`https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,picture{url}&access_token=${encodeURIComponent(accessToken)}`, {
             headers: {
@@ -333,14 +400,24 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
                 pageAccessToken: primaryPage.access_token || accessToken,
               };
             }
+          } else {
+            const errData = await fbRes.json().catch(() => ({}));
+            pageErrorDetails = errData?.error?.message ? ` (${errData.error.message})` : "";
           }
-        } catch (fbErr) {
+        } catch (fbErr: any) {
           console.warn("[Facebook OAuth] Notice checking me/accounts:", fbErr);
+          pageErrorDetails = fbErr?.message ? ` (${fbErr.message})` : "";
         }
+
+        // Meta Graph API strictly requires a Facebook Page to schedule and publish posts.
+        // If no page is returned, we must not fall back to the personal profile ID as it will always fail when publishing.
+        throw new Error(
+          `No Facebook Page found on this account${pageErrorDetails}. Meta requires a Facebook Page to publish posts (personal profiles cannot be published to via API). Please create a Facebook Page at https://facebook.com/pages/create, grant permission to it in the login popup, and reconnect.`
+        );
       }
 
       // General fallback to profileUrl
-      const profileUrlWithToken = (type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.INSTAGRAM)
+      const profileUrlWithToken = (type === ChannelTypeEnum.INSTAGRAM)
         ? `${config.profileUrl}&access_token=${encodeURIComponent(accessToken)}`
         : config.profileUrl;
 
@@ -360,7 +437,7 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
       const profileData = data?.data ?? data?.user ?? data;
       const providerAccountId = profileData?.id ?? profileData?.sub ?? profileData?.user_id ?? null;
       const handle = profileData?.username ?? profileData?.screen_name ?? profileData?.handle ?? profileData?.name ?? null;
-      const profileImage = profileData?.thread_profile_picture ?? profileData?.profile_image_url ?? profileData?.avatar_url ?? profileData?.profile_image ?? profileData?.picture?.data?.url ?? profileData?.picture?.url ?? profileData?.picture ?? null;
+      const profileImage = profileData?.threads_profile_picture_url ?? profileData?.thread_profile_picture ?? profileData?.profile_image_url ?? profileData?.avatar_url ?? profileData?.profile_image ?? profileData?.picture?.data?.url ?? profileData?.picture?.url ?? profileData?.picture ?? null;
 
       return {
         providerAccountId,
@@ -386,11 +463,8 @@ const PROVIDERS: Record<ChannelTypeEnum, any> = {
 
 export function isProviderConfigured(type: ChannelTypeEnum): boolean {
   try {
-    let clientId = process.env[`${type}_CLIENT_ID`]?.replace(/^["']|["']$/g, "").trim();
-    if (!clientId && (type === ChannelTypeEnum.INSTAGRAM || type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.THREADS)) {
-      clientId = process.env.META_CLIENT_ID?.replace(/^["']|["']$/g, "").trim() || 
-                 process.env.META_APP_ID?.replace(/^["']|["']$/g, "").trim();
-    }
+    const config = getConfig(type);
+    const clientId = config.clientId;
     if (!clientId) return false;
     const lower = clientId.toLowerCase();
     if (
@@ -401,7 +475,6 @@ export function isProviderConfigured(type: ChannelTypeEnum): boolean {
     ) {
       return false;
     }
-    const config = getConfig(type);
     return Boolean(config.authUrl && config.tokenUrl && config.clientId);
   } catch {
     return false;

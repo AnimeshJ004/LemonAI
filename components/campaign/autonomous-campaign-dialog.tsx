@@ -46,6 +46,8 @@ import {
   CampaignMediaPreviewDialog,
   CampaignMediaPost,
 } from "./campaign-media-preview-dialog";
+import { cn } from "@/lib/utils";
+import ChannelAvatar from "@/components/channel-avatar";
 
 interface AutonomousCampaignDialogProps {
   open: boolean;
@@ -82,6 +84,42 @@ export default function AutonomousCampaignDialog({
   const [previewPost, setPreviewPost] = useState<CampaignMediaPost | null>(null);
   const [inlineTab, setInlineTab] = useState<Record<number, "caption" | "media" | "script">>({});
   const [activeSlide, setActiveSlide] = useState<Record<number, number>>({});
+  const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
+
+  // Load connected channels for channel selection filter
+  const { data: channelsData } = useQuery({
+    queryKey: ["channels"],
+    queryFn: async () => {
+      const res = await fetch("/api/channel");
+      if (!res.ok) return { channels: [] };
+      return res.json();
+    },
+    enabled: open,
+  });
+
+  const allChannels: any[] = channelsData?.channels || [];
+  const connectedChannels = allChannels.filter((c: any) => c.connected);
+
+  // Default to selecting ALL connected channels when they load
+  useEffect(() => {
+    if (connectedChannels.length > 0 && selectedChannelIds.length === 0) {
+      setSelectedChannelIds(connectedChannels.map((c: any) => c.user_channel_id || c.id));
+    }
+  }, [connectedChannels]);
+
+  const toggleChannelSelection = (chId: string) => {
+    setSelectedChannelIds((prev) =>
+      prev.includes(chId) ? prev.filter((id) => id !== chId) : [...prev, chId]
+    );
+  };
+
+  const handleSelectAllChannels = () => {
+    if (selectedChannelIds.length === connectedChannels.length) {
+      setSelectedChannelIds([]);
+    } else {
+      setSelectedChannelIds(connectedChannels.map((c: any) => c.user_channel_id || c.id));
+    }
+  };
 
   // Load Brand Profile if fields are empty
   const { data: brandData } = useQuery({
@@ -127,6 +165,10 @@ export default function AutonomousCampaignDialog({
 
   const { mutate: executeCampaign, isPending } = useMutation({
     mutationFn: async () => {
+      if (connectedChannels.length > 0 && selectedChannelIds.length === 0) {
+        throw new Error("Please select at least one channel to launch this campaign.");
+      }
+
       const res = await fetch("/api/ai/flywheel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -137,6 +179,7 @@ export default function AutonomousCampaignDialog({
           competitors: competitors.trim() || undefined,
           daysToSchedule: activeDays,
           autoDraftMetaAd: draftAd,
+          selectedChannelIds: selectedChannelIds.length > 0 ? selectedChannelIds : undefined,
         }),
       });
 
@@ -169,30 +212,46 @@ export default function AutonomousCampaignDialog({
 
   const handlePublishDirectly = async (postItem: any, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!postItem?.id) {
+    const idsToPublish: string[] = (postItem?.allPostIds && postItem.allPostIds.length > 0)
+      ? postItem.allPostIds
+      : (postItem?.targetChannels?.map((tc: any) => tc.id).filter(Boolean) || (postItem?.id ? [postItem.id] : []));
+
+    if (idsToPublish.length === 0) {
       toast.error("Post ID not found. Post may not be saved yet.");
       return;
     }
-    setPublishingId(postItem.id);
+    setPublishingId(postItem.id || idsToPublish[0]);
     try {
-      const res = await fetch(`/api/post/${postItem.id}/publish`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to publish post to account");
+      const results = await Promise.allSettled(
+        idsToPublish.map(async (id) => {
+          const res = await fetch(`/api/post/${id}/publish`, {
+            method: "POST",
+          });
+          const data = await res.json();
+          if (!res.ok || !data.success) {
+            throw new Error(data.error || "Failed to publish post to account");
+          }
+          return { id, ...data };
+        })
+      );
+
+      const successful = results.filter((r) => r.status === "fulfilled");
+      if (successful.length > 0) {
+        toast.success(`Published post across ${successful.length} channel(s) successfully!`);
+      } else {
+        const firstErr = (results[0] as any)?.reason?.message || "Failed to publish post";
+        throw new Error(firstErr);
       }
-      toast.success(data.message || "Post published successfully to social account!");
+
       setResult((prev: any) => {
         if (!prev || !prev.contentPieces) return prev;
         return {
           ...prev,
           contentPieces: prev.contentPieces.map((cp: any) =>
-            cp.id === postItem.id
+            cp.id === postItem.id || cp.dayNumber === postItem.dayNumber
               ? {
                   ...cp,
-                  status: "published",
-                  publishedUrl: data.publishedUrl || cp.publishedUrl,
+                  status: successful.length > 0 ? "published" : "failed",
                   errorMessage: null,
                 }
               : cp
@@ -203,22 +262,7 @@ export default function AutonomousCampaignDialog({
       queryClient.invalidateQueries({ queryKey: ["calendar-posts"] });
       queryClient.invalidateQueries({ queryKey: ["analytics-overview"] });
     } catch (err: any) {
-      toast.error(err.message || "Publishing failed");
-      setResult((prev: any) => {
-        if (!prev || !prev.contentPieces) return prev;
-        return {
-          ...prev,
-          contentPieces: prev.contentPieces.map((cp: any) =>
-            cp.id === postItem.id
-              ? {
-                  ...cp,
-                  status: "failed",
-                  errorMessage: err.message,
-                }
-              : cp
-          ),
-        };
-      });
+      toast.error(err.message || "Failed to publish post to account");
     } finally {
       setPublishingId(null);
     }
@@ -316,6 +360,93 @@ export default function AutonomousCampaignDialog({
               </div>
             </div>
 
+            {/* Destination Channels Filter */}
+            <div className="space-y-2.5 p-3.5 rounded-xl border bg-muted/20">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                  <Layers className="size-3.5 text-primary" /> Target Channels
+                </Label>
+                {connectedChannels.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-[10px] font-medium">
+                      {selectedChannelIds.length} of {connectedChannels.length} Selected
+                    </Badge>
+                    <button
+                      type="button"
+                      onClick={handleSelectAllChannels}
+                      className="text-xs font-medium text-primary hover:underline cursor-pointer"
+                    >
+                      {selectedChannelIds.length === connectedChannels.length ? "Deselect All" : "Select All"}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {connectedChannels.length === 0 ? (
+                <div className="p-3 rounded-lg border border-dashed text-xs text-muted-foreground text-center space-y-1">
+                  <p>No social channels connected yet.</p>
+                  <Link href="/settings?tab=channels" className="text-primary hover:underline font-medium inline-flex items-center gap-1">
+                    Connect Channels in Settings <ExternalLink className="size-3" />
+                  </Link>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                  {connectedChannels.map((channel: any) => {
+                    const chKey = channel.user_channel_id || channel.id;
+                    const isSelected = selectedChannelIds.includes(chKey) || selectedChannelIds.includes(channel.id);
+
+                    return (
+                      <div
+                        key={channel.id}
+                        onClick={() => toggleChannelSelection(chKey)}
+                        className={cn(
+                          "flex items-center justify-between p-2.5 rounded-xl border transition-all cursor-pointer select-none",
+                          isSelected
+                            ? "bg-card border-primary/50 shadow-xs ring-1 ring-primary/30"
+                            : "bg-muted/10 hover:bg-muted/30 border-border/70 opacity-65"
+                        )}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                          <ChannelAvatar
+                            type={channel.type}
+                            color={channel.color}
+                            profileImage={channel.profile_image}
+                            name={channel.name}
+                            size="sm"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-foreground truncate">
+                              {channel.name}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground truncate">
+                              {channel.handle || "Connected"}
+                            </p>
+                          </div>
+                        </div>
+                        <div
+                          className={cn(
+                            "size-4 rounded-md border flex items-center justify-center shrink-0 transition-colors",
+                            isSelected
+                              ? "bg-primary border-primary text-primary-foreground"
+                              : "border-muted-foreground/40 bg-background"
+                          )}
+                        >
+                          {isSelected && <Check className="size-3" />}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {connectedChannels.length > 0 && selectedChannelIds.length === 0 && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                  <AlertCircle className="size-3 shrink-0" />
+                  Please select at least one channel to target with this campaign.
+                </p>
+              )}
+            </div>
+
             {/* Active Brand Context Preview (Managed exclusively in Brand Profile) */}
             <div className="flex items-center justify-between text-xs px-3.5 py-2.5 rounded-xl border bg-muted/20">
               <div className="space-y-0.5 min-w-0">
@@ -372,7 +503,7 @@ export default function AutonomousCampaignDialog({
                 type="button"
                 size="sm"
                 onClick={() => executeCampaign()}
-                disabled={isPending || !niche.trim()}
+                disabled={isPending || !niche.trim() || (connectedChannels.length > 0 && selectedChannelIds.length === 0)}
                 className="text-xs font-semibold gap-1.5 px-4"
               >
                 {isPending ? (
@@ -450,11 +581,11 @@ export default function AutonomousCampaignDialog({
                           }`}
                         >
                           {/* Header Row */}
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-2 min-w-0 flex-1">
                               <Badge
                                 variant="secondary"
-                                className={`text-[10px] shrink-0 font-semibold px-2 py-0.5 ${
+                                className={`text-[10px] shrink-0 font-semibold px-2 py-0.5 mt-0.5 ${
                                   isReel
                                     ? "bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900"
                                     : isCarousel
@@ -467,9 +598,46 @@ export default function AutonomousCampaignDialog({
                                 {!isReel && !isCarousel && <FileText className="size-2.5 mr-1 inline" />}
                                 {formatLabel}
                               </Badge>
-                              <span className="font-semibold text-xs text-foreground truncate">
-                                {p.title}
-                              </span>
+                              <div className="min-w-0 flex-1">
+                                <span className="font-semibold text-xs text-foreground truncate block">
+                                  {p.title}
+                                </span>
+                                {p.targetChannels && p.targetChannels.length > 0 ? (
+                                  <div className="flex flex-wrap items-center gap-1 mt-1">
+                                    {p.targetChannels.map((tc: any) => (
+                                      <span
+                                        key={tc.id}
+                                        className={cn(
+                                          "inline-flex items-center gap-1 text-[9px] font-medium px-1.5 py-0.5 rounded-md border",
+                                          tc.status === "published"
+                                            ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                                            : tc.status === "failed"
+                                            ? "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400"
+                                            : "bg-muted/40 border-border text-muted-foreground"
+                                        )}
+                                      >
+                                        <span
+                                          className="size-1.5 rounded-full shrink-0"
+                                          style={{
+                                            backgroundColor:
+                                              tc.status === "published"
+                                                ? "#10b981"
+                                                : tc.status === "failed"
+                                                ? "#ef4444"
+                                                : "#64748b",
+                                          }}
+                                        />
+                                        <span>{tc.channelName}</span>
+                                        {tc.status === "published" && <span>✓</span>}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-[10px] text-muted-foreground mt-0.5 block">
+                                    {p.channelName || "All Channels"}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
                               {/* Prominent View Creative Button */}

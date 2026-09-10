@@ -110,6 +110,7 @@ export const CURATED_VERTICAL_REELS: string[] = [
   "/videos/reel-1.mp4",
   "/videos/reel-2.mp4",
   "/videos/reel-3.mp4",
+  "https://raw.githubusercontent.com/bower-media-samples/big-buck-bunny-1080p-30s/master/video.mp4",
   "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4",
   "https://www.w3schools.com/html/mov_bbb.mp4",
 ];

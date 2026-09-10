@@ -39,8 +39,9 @@ export function ConnectChannelDialog({
             setProviderAccountId((channel as any).provider_account_id || "")
             setAccessToken("")
             setPassword("")
-            // If OAuth is not configured in .env.local, default to manual tab; otherwise if connected default to manual else oauth
-            if (channel.oauth_configured === false) {
+            const isThr = channel.type === ChannelTypeEnum.THREADS || Boolean(channel.name?.toLowerCase().includes("thread"))
+            // Default Threads or unconfigured OAuth to manual tab; otherwise if connected default to manual else oauth
+            if (channel.oauth_configured === false || isThr) {
                 setConnectMode("manual")
             } else {
                 setConnectMode(channel.connected ? "manual" : "oauth")
@@ -204,10 +205,16 @@ export function ConnectChannelDialog({
                                             <span>OAuth Client ID Required in .env.local</span>
                                         </div>
                                         <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-amber-300/80">
-                                            1-Click OAuth requires <code className="font-mono font-semibold text-foreground">{channel.type}_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">{channel.type}_CLIENT_SECRET</code> to be added in your <code className="font-mono font-semibold text-foreground">.env.local</code> file.
+                                            1-Click OAuth requires {isThreads ? (
+                                                <><code className="font-mono font-semibold text-foreground">THREADS_APP_ID</code> and <code className="font-mono font-semibold text-foreground">THREADS_APP_SECRET</code> (from Meta Developers ➔ Use Cases ➔ Threads)</>
+                                            ) : isMeta ? (
+                                                <>unified Meta credentials (<code className="font-mono font-semibold text-foreground">META_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">META_CLIENT_SECRET</code> shared for Facebook and Instagram)</>
+                                            ) : (
+                                                <><code className="font-mono font-semibold text-foreground">{channel.type}_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">{channel.type}_CLIENT_SECRET</code></>
+                                            )} to be added in your <code className="font-mono font-semibold text-foreground">.env.local</code> file.
                                         </p>
                                         <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-amber-300/80">
-                                            You can connect immediately without any developer setup using your Page Access Token in the <strong className="font-semibold text-foreground">Manual Token</strong> tab.
+                                            You can connect immediately without any developer setup using your token in the <strong className="font-semibold text-foreground">Manual Token</strong> tab.
                                         </p>
                                         <Button
                                             type="button"
@@ -229,6 +236,54 @@ export function ConnectChannelDialog({
                                             <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300">
                                                 <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
                                                 <span>Currently linked to: <strong className="font-semibold">{channel.handle}</strong></span>
+                                            </div>
+                                        )}
+
+                                        {isFacebook && (
+                                            <div className="p-3 rounded-xl border border-blue-200/80 bg-blue-50/70 dark:border-blue-900/50 dark:bg-blue-950/30 text-xs text-blue-950 dark:text-blue-200 space-y-1">
+                                                <div className="flex items-center gap-1.5 font-semibold text-blue-700 dark:text-blue-300">
+                                                    <AlertCircle className="size-3.5 shrink-0" />
+                                                    <span>Facebook Page Required</span>
+                                                </div>
+                                                <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-blue-300/85">
+                                                    Meta Graph API allows scheduling &amp; publishing <strong>only to Facebook Pages</strong> (Meta strictly forbids API posting to personal profiles).
+                                                    If you haven&apos;t created a Page yet, create one at{" "}
+                                                    <a
+                                                        href="https://www.facebook.com/pages/create"
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="underline font-medium text-primary hover:opacity-80 inline-flex items-center gap-0.5"
+                                                    >
+                                                        facebook.com/pages/create
+                                                        <ExternalLink className="size-2.5 ml-0.5 inline" />
+                                                    </a>
+                                                    {" "}and select it in the login popup.
+                                                </p>
+                                            </div>
+                                        )}
+
+                                        {isThreads && (
+                                            <div className="p-3 rounded-xl border border-neutral-300/80 bg-neutral-100/70 dark:border-neutral-800 dark:bg-neutral-900/40 text-xs space-y-1.5">
+                                                <div className="flex items-center gap-1.5 font-semibold text-foreground">
+                                                    <AlertCircle className="size-3.5 shrink-0 text-amber-500" />
+                                                    <span>Threads App ID Required for 1-Click OAuth</span>
+                                                </div>
+                                                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                                                    Meta requires your app to have the <strong>Threads API</strong> use case added in Meta for Developers. If you see error 4476002 (&quot;No app ID was sent with the request&quot;), add the <strong>Threads API</strong> use case at{" "}
+                                                    <a
+                                                        href="https://developers.facebook.com"
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="underline font-medium text-primary hover:opacity-80 inline-flex items-center gap-0.5"
+                                                    >
+                                                        developers.facebook.com
+                                                        <ExternalLink className="size-2.5 ml-0.5 inline" />
+                                                    </a>
+                                                    {" "}and set your <strong>Threads App ID</strong> in <code className="font-mono font-semibold text-foreground">.env.local</code>.
+                                                </p>
+                                                <p className="text-[11px] leading-relaxed text-muted-foreground">
+                                                    Or connect immediately with your token in the <button type="button" onClick={() => setConnectMode("manual")} className="font-semibold text-primary underline cursor-pointer">Manual Token tab</button>.
+                                                </p>
                                             </div>
                                         )}
 
@@ -299,14 +354,22 @@ export function ConnectChannelDialog({
                                 )}
 
                                 {isThreads && (
-                                    <div className="rounded-xl border border-neutral-300 bg-neutral-100/80 dark:border-neutral-800 dark:bg-neutral-900/60 p-3 space-y-1 text-xs text-foreground">
+                                    <div className="rounded-xl border border-neutral-300 bg-neutral-100/80 dark:border-neutral-800 dark:bg-neutral-900/60 p-3 space-y-1.5 text-xs text-foreground">
                                         <div className="flex items-center gap-1.5 font-semibold">
-                                            <KeyRound className="size-3.5" />
-                                            <span>Threads API Token:</span>
+                                            <KeyRound className="size-3.5 text-primary" />
+                                            <span>How to connect Threads with your Token:</span>
                                         </div>
-                                        <p className="leading-relaxed text-muted-foreground text-[11px]">
-                                            Get your Threads Access Token from <span className="font-medium text-foreground">Meta for Developers (Threads API)</span>.
-                                        </p>
+                                        <div className="leading-relaxed text-muted-foreground text-[11px] space-y-1">
+                                            <p>
+                                                1. Open <a href="https://developers.facebook.com/apps" target="_blank" rel="noopener noreferrer" className="font-medium text-primary underline">developers.facebook.com</a> and select your app (<strong>LemonAI</strong>).
+                                            </p>
+                                            <p>
+                                                2. In the left sidebar, add the <strong>Threads API</strong> use case.
+                                            </p>
+                                            <p>
+                                                3. Go to <strong>Threads API ➔ Token Generator</strong>, click <strong>Generate Token</strong> for your Threads account, and paste it below.
+                                            </p>
+                                        </div>
                                     </div>
                                 )}
 

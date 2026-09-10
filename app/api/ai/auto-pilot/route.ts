@@ -8,7 +8,7 @@ import { inngest } from "@/inngest/client";
 import { publishPostDirectly } from "@/lib/direct-publisher";
 import { getUserMemoryContext, buildMemoryPromptBlock } from "@/lib/ai-memory";
 import { callResilientCompletion } from "@/lib/ai-gateway";
-import { getPlatformPeakTime, adaptCaptionForPlatform } from "@/lib/platform-adapt-helper";
+import { getPlatformPeakTime, adaptCaptionForPlatform, getPlatformStaggeredDate } from "@/lib/platform-adapt-helper";
 
 export const maxDuration = 120; // Support extended AI batch generation
 
@@ -265,18 +265,10 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
             generatedPosts[0] ||
             null;
 
-          // 1. Silently calculate platform-specific optimal peak engagement time
+          // 1. Silently calculate platform-specific optimal peak engagement time (guarantees no collisions)
           const peak = getPlatformPeakTime(channelType, p);
-          let scheduledDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
-          scheduledDate.setHours(peak.hour, peak.minute, 0, 0);
-
-          // For TODAY (d === 0): if peak time already passed, space out starting shortly from now
-          if (d === 0) {
-            if (scheduledDate.getTime() <= now.getTime()) {
-              const offsetMinutes = cIdx * 75 + p * 120 + 2;
-              scheduledDate = new Date(now.getTime() + offsetMinutes * 60 * 1000);
-            }
-          }
+          const baseDateForDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
+          const scheduledDate = getPlatformStaggeredDate(baseDateForDay, channelType, cIdx, p);
 
           // 2. Silently adapt caption according to this specific social media platform's rules
           const baseText =
@@ -389,10 +381,19 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
         (p: any) => new Date(p.scheduled_at).getTime() <= nowMs + 120_000
       );
 
-      // Publish initial due posts across all selected channels simultaneously
-      const postsToPublishNow = todayDuePosts.length > 0 ? todayDuePosts : [createdPosts[0]];
+      // Get initial Day 0 post for EACH targeted channel so all connected platforms receive their post
+      const channelFirstPostMap = new Map<string, any>();
+      for (const p of createdPosts) {
+        if (p.user_channel_id && !channelFirstPostMap.has(p.user_channel_id)) {
+          channelFirstPostMap.set(p.user_channel_id, p);
+        }
+      }
+      const initialPostsPerChannel = Array.from(channelFirstPostMap.values());
+      const postsToPublishNow = todayDuePosts.length > 0
+        ? todayDuePosts
+        : (initialPostsPerChannel.length > 0 ? initialPostsPerChannel : [createdPosts[0]]);
 
-      console.log(`[AutoPilot] Publishing ${postsToPublishNow.length} initial post(s) simultaneously across channels`);
+      console.log(`[AutoPilot] Publishing ${postsToPublishNow.length} initial post(s) simultaneously across all ${initialPostsPerChannel.length} selected channels`);
       await Promise.allSettled(
         postsToPublishNow.map((p: any) => publishPostDirectly(p.id))
       );

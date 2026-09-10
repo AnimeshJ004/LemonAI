@@ -17,14 +17,24 @@ export async function POST() {
 async function handleProcessDue() {
     try {
         const insforge = getInsforgeAdminClient();
-        const now = new Date().toISOString();
 
-        // 1. Fetch all posts in queue whose scheduled time has arrived
+        // 0. Recover any posts stuck in 'publishing' state for > 3 minutes (e.g. cold start crashes)
+        const threeMinutesAgo = new Date(Date.now() - 180_000).toISOString();
+        try {
+            await insforge.database
+                .from("scheduled_posts")
+                .update({ status: "queue" })
+                .eq("status", "publishing")
+                .lte("scheduled_at", threeMinutesAgo);
+        } catch {}
+
+        // 1. Fetch all posts in queue whose scheduled time has arrived (with 60s lookahead buffer)
+        const lookaheadNow = new Date(Date.now() + 60_000).toISOString();
         const { data: duePosts, error } = await insforge.database
             .from("scheduled_posts")
             .select("id, status, scheduled_at")
             .eq("status", "queue")
-            .lte("scheduled_at", now)
+            .lte("scheduled_at", lookaheadNow)
             .order("scheduled_at", { ascending: true });
 
         if (error) {

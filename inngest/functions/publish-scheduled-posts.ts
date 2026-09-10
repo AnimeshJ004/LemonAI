@@ -5,6 +5,7 @@ import { decrypt, encrypt } from "@/lib/encryption";
 import { refreshOauthToken } from "@/lib/social-oauth";
 import { ChannelTypeEnum } from "@/constants/channels";
 import { BskyAgent } from "@atproto/api";
+import { publishPostDirectly } from "@/lib/direct-publisher";
 
 
 type DuePost = {
@@ -278,140 +279,12 @@ export async function executePostPublishDirectly(postId: string): Promise<{
     error?: string;
     provider?: string;
 }> {
-    const insforge = getInsforgeAdminClient();
-    const { data: post, error } = await insforge.database
-        .from("scheduled_posts")
-        .select("*, user_channels(*, channel_types(id, type, name))")
-        .eq("id", postId)
-        .single();
-
-    if (error || !post) {
-        return { success: false, error: error?.message || "Post not found" };
-    }
-
-    const userChannel = post.user_channels;
-    if (!userChannel) {
-        const msg = "No connected social channel assigned to this post";
-        await markPostFailed(post.id, msg);
-        return { success: false, error: msg };
-    }
-
-    const providerType = userChannel.channel_types?.type;
-    const accessToken = decrypt(userChannel.access_token);
-    const refreshToken = decrypt(userChannel.refresh_token);
-    const tokenExpiresAt = userChannel.token_expires_at
-        ? new Date(userChannel.token_expires_at).getTime()
-        : null;
-    const callbackUrl = `${APP_URL}/api/channel/callback`;
-
-    if (!providerType || !accessToken) {
-        const msg = `Missing access token for ${providerType || "channel"}. Please reconnect in Channels.`;
-        await markPostFailed(post.id, msg);
-        return { success: false, error: msg, provider: providerType };
-    }
-
-    let currentAccessToken = accessToken;
-    if (refreshToken && tokenExpiresAt !== null && tokenExpiresAt <= Date.now()) {
-        try {
-            const refreshed = await refreshOauthToken(
-                providerType as ChannelTypeEnum,
-                refreshToken,
-                callbackUrl
-            );
-            await saveRefreshedToken(
-                userChannel.id,
-                refreshed.accessToken,
-                refreshed.refreshToken ?? refreshToken,
-                refreshed.expiresAt
-            );
-            currentAccessToken = refreshed.accessToken;
-        } catch (refreshErr) {
-            console.warn("[Direct Publisher] Notice refreshing token:", refreshErr);
-        }
-    }
-
-    const logger = {
-        info: (msg: string, ctx?: any) => console.log(`[Direct Publisher] INFO: ${msg}`, ctx || ""),
-        warn: (msg: string, ctx?: any) => console.warn(`[Direct Publisher] WARN: ${msg}`, ctx || ""),
-        error: (msg: string, ctx?: any) => console.error(`[Direct Publisher] ERROR: ${msg}`, ctx || ""),
+    const res = await publishPostDirectly(postId);
+    return {
+        success: res.success,
+        publishedUrl: res.publishedUrl,
+        error: res.error,
     };
-
-    let publishedUrl: string | null = null;
-    try {
-        if (providerType === ChannelTypeEnum.TWITTER) {
-            publishedUrl = await publishToTwitter({
-                accessToken: currentAccessToken,
-                content: post.content,
-                handle: userChannel.handle,
-                images: post.images,
-                logger,
-            });
-        } else if (providerType === ChannelTypeEnum.LINKEDIN) {
-            publishedUrl = await publishToLinkedIn({
-                accessToken: currentAccessToken,
-                text: post.content,
-                authorId: userChannel.provider_account_id,
-                images: post.images,
-                logger,
-            });
-        } else if (providerType === ChannelTypeEnum.BLUESKY) {
-            publishedUrl = await publishToBluesky({
-                identifier: userChannel.handle || process.env.BLUESKY_IDENTIFIER,
-                password: currentAccessToken || process.env.BLUESKY_APP_PASSWORD,
-                content: post.content,
-                images: post.images,
-                logger,
-            });
-        } else if (providerType === ChannelTypeEnum.INSTAGRAM) {
-            publishedUrl = await publishToInstagram({
-                accessToken: currentAccessToken,
-                instagramAccountId: userChannel.provider_account_id,
-                content: post.content,
-                images: post.images,
-                logger,
-            });
-        } else if (providerType === ChannelTypeEnum.FACEBOOK) {
-            publishedUrl = await publishToFacebook({
-                accessToken: currentAccessToken,
-                pageId: userChannel.provider_account_id,
-                content: post.content,
-                images: post.images,
-                logger,
-            });
-        } else if (providerType === ChannelTypeEnum.THREADS) {
-            publishedUrl = await publishToThreads({
-                accessToken: currentAccessToken,
-                content: post.content,
-                images: post.images,
-                logger,
-            });
-        } else if (providerType === ChannelTypeEnum.YOUTUBE) {
-            publishedUrl = await publishToYouTube({
-                accessToken: currentAccessToken,
-                content: post.content,
-                handle: userChannel.handle,
-                images: post.images,
-                logger,
-            });
-        } else if (providerType === ChannelTypeEnum.TIKTOK) {
-            publishedUrl = await publishToTikTok({
-                accessToken: currentAccessToken,
-                content: post.content,
-                images: post.images,
-                logger,
-            });
-        } else {
-            throw new Error(`Unsupported provider type: ${providerType}`);
-        }
-
-        await markPostPublished(post.id, publishedUrl);
-        return { success: true, publishedUrl, provider: providerType };
-    } catch (error: any) {
-        const msg = error?.message || "Failed to publish post";
-        logger.error("Direct publish failed:", { error });
-        await markPostFailed(post.id, msg);
-        return { success: false, error: msg, provider: providerType };
-    }
 }
 
 async function publishToTwitter({
