@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
       booking_url,
       auto_call_enabled,
       auto_call_min_score,
+      whatsapp_phone_number_id,
     } = body;
 
     if (!business_name?.trim()) {
@@ -65,10 +66,12 @@ export async function POST(request: NextRequest) {
       competitors: competitors?.trim() || null,
       products_services: products_services?.trim() || null,
       pricing_details: pricing_details?.trim() || null,
+      knowledge_docs: knowledge_docs?.trim() || null,
       location: location?.trim() || "India & Global",
       booking_url: booking_url?.trim() || null,
       auto_call_enabled: Boolean(auto_call_enabled),
       auto_call_min_score: typeof auto_call_min_score === "number" ? auto_call_min_score : 7,
+      whatsapp_phone_number_id: whatsapp_phone_number_id?.trim() || null,
       updated_at: new Date().toISOString(),
     };
 
@@ -117,10 +120,12 @@ export async function POST(request: NextRequest) {
             .update({
               products_services: payload.products_services,
               pricing_details: payload.pricing_details,
+              knowledge_docs: payload.knowledge_docs,
               location: payload.location,
               booking_url: payload.booking_url,
               auto_call_enabled: payload.auto_call_enabled,
               auto_call_min_score: payload.auto_call_min_score,
+              whatsapp_phone_number_id: payload.whatsapp_phone_number_id,
             })
             .eq("id", existing.id);
         } catch {
@@ -143,12 +148,13 @@ export async function POST(request: NextRequest) {
             .update({
               products_services: payload.products_services,
               pricing_details: payload.pricing_details,
+              knowledge_docs: payload.knowledge_docs,
               location: payload.location,
               booking_url: payload.booking_url,
               auto_call_enabled: payload.auto_call_enabled,
               auto_call_min_score: payload.auto_call_min_score,
             })
-            .eq("user_id", userId);
+            .eq("id", inserted?.id || basePayload.user_id);
         } catch {
           // Non-fatal if extended columns are not yet present in DB schema
         }

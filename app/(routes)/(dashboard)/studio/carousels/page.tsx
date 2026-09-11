@@ -326,7 +326,9 @@ export default function CarouselStudioPage() {
         open={isScheduleOpen}
         onOpenChange={setIsScheduleOpen}
         mode="single"
-        initialTopic={carousel?.caption || form.topic}
+        initialTopic={form.topic}
+        initialContent={carousel?.caption || form.topic}
+        initialCarouselSlides={carousel?.slides || []}
         suggestedFormat="CAROUSEL"
         researchContext={{
           niche: form.topic,

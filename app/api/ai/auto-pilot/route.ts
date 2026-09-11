@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getInsforgeServerClient, getInsforgeAdminClient } from "@/lib/insforge-server";
 import { getBrandProfileForUser, formatBrandHashtags, cleanTag, userBrandCache } from "@/lib/brand-helper";
@@ -151,10 +151,11 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Filter by selected channel IDs if provided
-    let targetChannels = userChannels || [];
+    // Filter by selected channel IDs if provided, prioritizing active connected channels
+    const connectedUserChannels = (userChannels || []).filter((ch: any) => ch.is_connected !== false);
+    let targetChannels = connectedUserChannels.length > 0 ? connectedUserChannels : (userChannels || []);
     if (Array.isArray(body.selectedChannelIds) && body.selectedChannelIds.length > 0) {
-      const filtered = userChannels?.filter(
+      const filtered = targetChannels.filter(
         (ch: any) =>
           body.selectedChannelIds!.includes(ch.id) ||
           body.selectedChannelIds!.includes(ch.channel_type_id)
@@ -318,29 +319,36 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
       }
     }
 
-    // 6. Generate Images (Fast Commercial Engine with Curated Fallback)
+    // 6. Generate Images (Fast Commercial Engine with Curated Fallback & Prompt Reuse across platforms)
+    const promptImageMap = new Map<string, { url: string; key: string }[]>();
+
     const finalPostsToInsert = await Promise.all(
       payloadItems.map(async (item, idx) => {
         let imageArray: { url: string; key: string }[] = [];
 
         if (generateImages && item.visualPrompt) {
-          try {
-            const imgRes = await generateAdCreativeImage({
-              prompt: item.visualPrompt,
-              aspectRatio: item.aspectRatio || "1:1",
-              userId,
-              niche,
-            });
-            if (imgRes.success && imgRes.imageUrl) {
-              imageArray = [
-                {
-                  url: imgRes.imageUrl,
-                  key: imgRes.storageKey || `ai-post-${Date.now()}-${idx}`,
-                },
-              ];
+          if (promptImageMap.has(item.visualPrompt)) {
+            imageArray = promptImageMap.get(item.visualPrompt)!;
+          } else {
+            try {
+              const imgRes = await generateAdCreativeImage({
+                prompt: item.visualPrompt,
+                aspectRatio: item.aspectRatio || "1:1",
+                userId,
+                niche,
+              });
+              if (imgRes.success && imgRes.imageUrl) {
+                imageArray = [
+                  {
+                    url: imgRes.imageUrl,
+                    key: imgRes.storageKey || `ai-post-${Date.now()}-${idx}`,
+                  },
+                ];
+                promptImageMap.set(item.visualPrompt, imageArray);
+              }
+            } catch (imgErr) {
+              console.warn("Visual generation error for item:", idx, imgErr);
             }
-          } catch (imgErr) {
-            console.warn("Visual generation error for item:", idx, imgErr);
           }
         }
 
@@ -389,32 +397,53 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
         }
       }
       const initialPostsPerChannel = Array.from(channelFirstPostMap.values());
-      const postsToPublishNow = todayDuePosts.length > 0
-        ? todayDuePosts
-        : (initialPostsPerChannel.length > 0 ? initialPostsPerChannel : [createdPosts[0]]);
 
-      console.log(`[AutoPilot] Publishing ${postsToPublishNow.length} initial post(s) simultaneously across all ${initialPostsPerChannel.length} selected channels`);
-      await Promise.allSettled(
-        postsToPublishNow.map((p: any) => publishPostDirectly(p.id))
-      );
-
-      // Send Inngest event for future scheduled posts so Inngest can trigger them at scheduled times
-      const futurePosts = createdPosts.filter(
-        (p: any) => !postsToPublishNow.some((nowPost) => nowPost.id === p.id)
-      );
-
-      if (futurePosts.length > 0) {
-        try {
-          await inngest.send(
-            futurePosts.map((p: any) => ({
-              name: "post/publish.requested",
-              data: { postId: p.id },
-            }))
-          );
-        } catch (inngestErr: any) {
-          console.warn("[Inngest] Auto-pilot future posts dispatch notice:", inngestErr?.message || inngestErr);
-        }
+      // Ensure Day 0 post for EACH targeted channel is published immediately,
+      // plus any posts whose scheduled time is already due today.
+      const publishPostMap = new Map<string, any>();
+      for (const p of initialPostsPerChannel) {
+        publishPostMap.set(p.id, p);
       }
+      for (const p of todayDuePosts) {
+        publishPostMap.set(p.id, p);
+      }
+
+      const postsToPublishNow =
+        publishPostMap.size > 0
+          ? Array.from(publishPostMap.values())
+          : (initialPostsPerChannel.length > 0 ? initialPostsPerChannel : [createdPosts[0]]);
+
+      // Dispatch immediate Day 0 publishing and Inngest background scheduling
+      // using Next.js after() so the HTTP response returns to the browser in seconds
+      // without hitting Vercel's 504 Gateway Timeout!
+      after(async () => {
+        try {
+          console.log(`[AutoPilot] Publishing ${postsToPublishNow.length} initial post(s) simultaneously across all ${initialPostsPerChannel.length} selected channels`);
+          await Promise.allSettled(
+            postsToPublishNow.map((p: any) => publishPostDirectly(p.id))
+          );
+
+          // Send Inngest event for future scheduled posts so Inngest can trigger them at scheduled times
+          const futurePosts = createdPosts.filter(
+            (p: any) => !postsToPublishNow.some((nowPost) => nowPost.id === p.id)
+          );
+
+          if (futurePosts.length > 0) {
+            try {
+              await inngest.send(
+                futurePosts.map((p: any) => ({
+                  name: "post/publish.requested",
+                  data: { postId: p.id },
+                }))
+              );
+            } catch (inngestErr: any) {
+              console.warn("[Inngest] Auto-pilot future posts dispatch notice:", inngestErr?.message || inngestErr);
+            }
+          }
+        } catch (afterErr: any) {
+          console.warn("[AutoPilot Background Task] Notice:", afterErr?.message || afterErr);
+        }
+      });
     }
 
     // Calculate human-friendly date labels starting TODAY

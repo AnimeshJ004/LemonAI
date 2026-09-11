@@ -20,8 +20,16 @@ export interface FlywheelRequest {
   targetRegion?: string;
   daysToSchedule?: number;
   postsPerDay?: number;
+  customTimeSlots?: string[];
+  generateImages?: boolean;
+  postStatus?: "queue" | "draft";
   autoDraftMetaAd?: boolean;
   selectedChannelIds?: string[];
+  customMix?: {
+    reelsCount?: number;
+    imagePostsCount?: number;
+    carouselsCount?: number;
+  };
 }
 
 export interface FlywheelStepProgress {
@@ -107,8 +115,34 @@ export async function executeAutonomousFlywheel(params: FlywheelRequest): Promis
   const targetAudience = params.targetAudience || brand?.target_audience || "Valued Customers";
   const region = params.targetRegion || brand?.location || "India & Global";
   const competitors = params.competitors || (brand?.competitors ? [brand.competitors] : []);
-  const days = params.daysToSchedule || 7;
   const postsPerDay = params.postsPerDay || 1;
+
+  // Build target format sequence based on user's custom mix (or balanced default)
+  const requestedReels = params.customMix?.reelsCount !== undefined ? Math.max(0, params.customMix.reelsCount) : null;
+  const requestedImages = params.customMix?.imagePostsCount !== undefined ? Math.max(0, params.customMix.imagePostsCount) : null;
+  const requestedCarousels = params.customMix?.carouselsCount !== undefined ? Math.max(0, params.customMix.carouselsCount) : null;
+
+  let targetFormats: ("REEL" | "IMAGE_POST" | "CAROUSEL")[] = [];
+
+  if (requestedReels !== null || requestedImages !== null || requestedCarousels !== null) {
+    const reels = requestedReels ?? 0;
+    const images = requestedImages ?? 0;
+    const carousels = requestedCarousels ?? 0;
+
+    for (let r = 0; r < reels; r++) targetFormats.push("REEL");
+    for (let img = 0; img < images; img++) targetFormats.push("IMAGE_POST");
+    for (let car = 0; car < carousels; car++) targetFormats.push("CAROUSEL");
+
+    if (targetFormats.length === 0) {
+      targetFormats = Array(params.daysToSchedule || 7).fill("IMAGE_POST");
+    }
+  } else {
+    const defaultDays = params.daysToSchedule || 7;
+    const defaultRotation: ("REEL" | "IMAGE_POST" | "CAROUSEL")[] = ["REEL", "IMAGE_POST", "CAROUSEL"];
+    targetFormats = Array.from({ length: defaultDays }, (_, i) => defaultRotation[i % defaultRotation.length]);
+  }
+
+  const days = targetFormats.length;
 
   // 1. STEP 1: Research Agent (Live market trends & competitor copy inspection)
   console.log(`[Flywheel] Phase 1: Research Agent starting for ${businessName} (${niche})...`);
@@ -133,8 +167,10 @@ export async function executeAutonomousFlywheel(params: FlywheelRequest): Promis
   const winningAngle = research.recommendedContentAngles?.[0]?.angleTitle || "Direct Problem Solver";
 
   // 2. STEP 2: Content Studio (Synthesizes dynamic multi-day content pieces: Reels, Image Posts, Carousels)
-  console.log(`[Flywheel] Phase 2: Content Studio synthesizing ${days}-day cross-platform content assets...`);
+  console.log(`[Flywheel] Phase 2: Content Studio synthesizing ${days}-day cross-platform content assets (Formats: ${targetFormats.join(", ")})...`);
   const brandBrainText = getBrandBrainSummary(brand);
+
+  const formatListText = targetFormats.map((f, i) => `Day ${i + 1}: format must be "${f}"`).join("\n");
 
   const contentPrompt = `You are an elite autonomous social content engine for Lemon AI.
 Based on the following verified market intelligence:
@@ -147,9 +183,22 @@ Hashtags: ${research.recommendedHashtags?.slice(0, 5).join(" ") || "#Growth #Bus
 Duration: ${days} day(s)
 
 Generate a structured daily social media campaign plan for exactly ${days} day(s).
-For each day, allocate an optimal format rotating between:
-- "REEL": Vertical video reel. Provide a clean publishable caption, plus a director/voiceover script with [0:00-0:03] Hook, [0:04-0:18] Spoken Value, [0:19-0:30] CTA.
-- "IMAGE_POST": Captivating headline, problem-solution copy, high-converting CTA, and hashtags.
+Strict Rules:
+1. Every single day MUST have a COMPLETELY DIFFERENT, unique title, topic, and opening hook.
+   - Day 1: Contrarian Industry Truth / Pain Point
+   - Day 2: 3 Costly Inefficiencies & Hidden Bottlenecks
+   - Day 3: Step-by-Step Tactical Framework
+   - Day 4: Real-World Case Study / Before-and-After
+   - Day 5: Top Industry Myth vs Reality
+   - Day 6: Future Trend & Operational Shift
+   - Day 7: Direct High-Value Consultation & Offer
+2. NEVER repeat the same headline, title, or opening phrase across days.
+3. You MUST follow the EXACT format requested for each day below:
+${formatListText}
+
+Format definitions:
+- "REEL": Vertical video reel with clean caption and director voiceover script ([0:00-0:03] Hook, [0:04-0:18] Spoken Value, [0:19-0:30] CTA).
+- "IMAGE_POST": Captivating punchy headline, problem-solution copy, high-converting CTA, and hashtags.
 - "CAROUSEL": 5-slide educational breakdown with slide-by-slide headlines, subtext, bullets, and swipe cues.
 
 Return ONLY valid JSON matching this schema:
@@ -158,8 +207,8 @@ Return ONLY valid JSON matching this schema:
     {
       "dayNumber": 1,
       "format": "REEL",
-      "title": "Title of the post",
-      "caption": "Clean social media post caption with hashtags ready to publish on Instagram/Facebook/LinkedIn",
+      "title": "Unique distinct headline for Day 1",
+      "caption": "Clean social media post caption starting with a unique scroll-stopping hook and ready to publish",
       "script": "Actor voiceover script with [0:00-0:03] Hook, [0:04-0:18] Spoken Value, [0:19-0:30] CTA (Only for REEL, omit for others)",
       "carouselSlides": [
         {
@@ -235,6 +284,17 @@ Return ONLY valid JSON matching this schema:
     },
   ];
 
+  // Distinct daily themes rotation
+  const dailyThemes = [
+    { title: `The Hidden Growth Bottleneck in ${niche}`, hook: `Stop burning time on broken ${niche} systems.` },
+    { title: `3 Costly Inefficiencies in ${niche}`, hook: `Most ${targetAudience} lose 10+ hours a week to avoidable friction.` },
+    { title: `The 4-Step Blueprint to Solve ${primaryPainPoint}`, hook: `Here is the exact framework ${businessName} uses to guarantee results.` },
+    { title: `Real Case Study: How We Scaled ${niche}`, hook: `What happens when you replace manual guesswork with ${winningAngle}?` },
+    { title: `The Biggest Myth in ${niche} Debunked`, hook: `You don't need more complexity to scale—you need automated leverage.` },
+    { title: `The 80/20 Leverage Rule for ${niche}`, hook: `Focusing on these 2 key levers will double your output this quarter.` },
+    { title: `Ready to Scale ${businessName}? Let's Talk`, hook: `If you are tired of inconsistent results, claim your strategic roadmap today.` },
+  ];
+
   // Fallback posts if AI output is empty or truncated
   let generatedPosts = contentRes.data?.posts || [];
   if (!generatedPosts || generatedPosts.length === 0) {
@@ -242,32 +302,33 @@ Return ONLY valid JSON matching this schema:
       const dayNum = i + 1;
       const formats: ("REEL" | "IMAGE_POST" | "CAROUSEL")[] = ["REEL", "IMAGE_POST", "CAROUSEL"];
       const format = formats[i % formats.length];
-      const tagLine = research.recommendedHashtags?.slice(0, 4).join(" ") || `#${cleanTag(niche)} #Growth #LemonAI`;
+      const theme = dailyThemes[i % dailyThemes.length];
+      const tagLine = research.recommendedHashtags?.slice(0, 4).join(" ") || `#${cleanTag(niche)} #Growth #${cleanTag(businessName)}`;
 
       if (format === "REEL") {
         return {
           dayNumber: dayNum,
           format,
-          title: `Day ${dayNum}: ${topHook}`,
-          caption: `Stop burning time on broken ${niche} systems.\n\nThe real issue for ${targetAudience} isn't lack of effort—it's ${primaryPainPoint}.\n\nWhen you implement ${winningAngle}, execution becomes seamless. Save this reel and apply this in your workflow today!\n\n${tagLine}`,
-          script: `[0:00-0:03] Hook: ${topHook}\n\n[0:04-0:18] Spoken Value: Across our client audits in ${niche}, we see teams losing hours every day to ${primaryPainPoint}. The solution isn't more complexity—it's ${winningAngle}.\n\n[0:19-0:30] Call to Action: Comment 'INFO' below or send us a DM to get the complete step-by-step roadmap from ${businessName}.`,
+          title: theme.title,
+          caption: `${theme.title}\n\n${theme.hook}\n\nThe real challenge isn't effort—it's ${primaryPainPoint}. When you deploy ${winningAngle}, execution becomes seamless.\n\nSave this reel and take action today!\n\n${tagLine}`,
+          script: `[0:00-0:03] Hook: ${theme.hook}\n\n[0:04-0:18] Spoken Value: Across our client audits in ${niche}, teams lose critical velocity to ${primaryPainPoint}. The solution is ${winningAngle}.\n\n[0:19-0:30] Call to Action: Comment 'ROADMAP' below or DM ${businessName} for the playbook.`,
           mediaPrompt: `Cinematic 9:16 vertical commercial video of modern professional working in ${niche}, high resolution`,
         };
       } else if (format === "CAROUSEL") {
         return {
           dayNumber: dayNum,
           format,
-          title: `Day ${dayNum}: 5 Shifts for ${niche}`,
-          caption: `5 Strategic Shifts for ${niche}.\n\nMost ${targetAudience} struggle with ${primaryPainPoint} because they miss critical fundamentals. Swipe through for the step-by-step breakdown!\n\nWhich slide resonates most with your current goals? Let us know below.\n\n${tagLine}`,
-          carouselSlides: buildDefaultCarousel(`5 Shifts for ${niche}`, dayNum),
+          title: theme.title,
+          caption: `${theme.title}\n\n${theme.hook}\n\nSwipe through for the complete breakdown!\n\nWhich slide resonates most with your goals? Drop a comment below.\n\n${tagLine}`,
+          carouselSlides: buildDefaultCarousel(theme.title, dayNum),
           mediaPrompt: `Minimalist high-contrast educational graphic typography for ${niche}, 4:5 aspect ratio`,
         };
       } else {
         return {
           dayNumber: dayNum,
           format,
-          title: `Day ${dayNum}: Overcoming ${primaryPainPoint}`,
-          caption: `Tired of dealing with ${primaryPainPoint} in ${niche}?\n\nHere is the exact framework ${businessName} uses to guarantee results:\n\n1. Target the root cause\n2. Streamline daily operations\n3. Leverage ${winningAngle}\n\nSend us a direct message or click our calendar link to get started!\n\n${tagLine}`,
+          title: theme.title,
+          caption: `${theme.title}\n\n${theme.hook}\n\nHere is how ${businessName} tackles ${primaryPainPoint}:\n1. Identify root constraints\n2. Enforce standard systems\n3. Leverage ${winningAngle}\n\nSend us a DM or book a strategy call to get started!\n\n${tagLine}`,
           mediaPrompt: `Ultra-clean commercial photorealistic editorial image representing ${niche} and ${businessName}`,
         };
       }
@@ -289,7 +350,7 @@ Return ONLY valid JSON matching this schema:
       .eq("user_id", params.userId)
       .eq("is_connected", true);
     activeUserChannels = channels || [];
-  } catch {}
+  } catch { }
 
   // Fallback: if is_connected flag wasn't set, find any user channel with access_token
   if (activeUserChannels.length === 0) {
@@ -300,7 +361,7 @@ Return ONLY valid JSON matching this schema:
         .eq("user_id", params.userId)
         .not("access_token", "is", null);
       activeUserChannels = fallbackChannels || [];
-    } catch {}
+    } catch { }
   }
 
   // Filter by selected channel IDs if provided by user
@@ -324,7 +385,7 @@ Return ONLY valid JSON matching this schema:
     );
   }
 
-  console.log(`[Flywheel] Found ${activeUserChannels.length} active channel(s) owned by user to target for publishing:`, 
+  console.log(`[Flywheel] Found ${activeUserChannels.length} active channel(s) owned by user to target for publishing:`,
     activeUserChannels.map(c => `${c.channel_types?.name || c.channel_types?.type} (${c.handle})`));
 
   // Generate visual assets for the first batch of posts in parallel (capped for speed)
@@ -352,7 +413,7 @@ Return ONLY valid JSON matching this schema:
   for (let i = 0; i < generatedPosts.length; i++) {
     const post = generatedPosts[i];
     const asset = visualAssets[i] || visualAssets[i % visualAssets.length];
-    
+
     // Day 1 (i === 0) is scheduled for right now; subsequent days are scheduled at 10:00 AM UTC.
     // Using setUTCHours (not setHours) so the time is server-timezone-independent.
     // 10:00 UTC = 3:30 PM IST, 6:00 AM EST — consistent across all deployments.
@@ -368,8 +429,8 @@ Return ONLY valid JSON matching this schema:
       isCarousel
         ? CURATED_COMMERCIAL_PHOTOS.marketing[i % CURATED_COMMERCIAL_PHOTOS.marketing.length]
         : isReel
-        ? CURATED_COMMERCIAL_PHOTOS.business[i % CURATED_COMMERCIAL_PHOTOS.business.length]
-        : CURATED_COMMERCIAL_PHOTOS.default[i % CURATED_COMMERCIAL_PHOTOS.default.length]
+          ? CURATED_COMMERCIAL_PHOTOS.business[i % CURATED_COMMERCIAL_PHOTOS.business.length]
+          : CURATED_COMMERCIAL_PHOTOS.default[i % CURATED_COMMERCIAL_PHOTOS.default.length]
     );
 
     // Prepare media items for scheduled_posts table
@@ -410,8 +471,21 @@ Return ONLY valid JSON matching this schema:
         niche,
       });
 
-      // 2. Silently schedule at platform's distinct peak engagement time (guarantees no collisions)
-      const chScheduleDate = getPlatformStaggeredDate(addDays(now, i), chType, cIdx, 0);
+      // 2. Silently schedule at platform's distinct peak engagement time (or user-defined time slots)
+      let chScheduleDate = getPlatformStaggeredDate(addDays(now, Math.floor(i / postsPerDay)), chType, cIdx, i % postsPerDay);
+      if (params.customTimeSlots && params.customTimeSlots.length > 0) {
+        const slotStr = params.customTimeSlots[(i % postsPerDay) % params.customTimeSlots.length];
+        const match = slotStr ? slotStr.match(/^(\d{1,2}):(\d{2})/) : null;
+        if (match) {
+          const hours = parseInt(match[1], 10);
+          const minutes = parseInt(match[2], 10);
+          const targetDay = addDays(now, Math.floor(i / postsPerDay));
+          targetDay.setHours(hours, minutes, 0, 0);
+          chScheduleDate = targetDay;
+        }
+      }
+
+      const postDesiredStatus = params.postStatus || "queue";
 
       try {
         const { data: insertedPost } = await admin.database
@@ -422,7 +496,7 @@ Return ONLY valid JSON matching this schema:
             content: platformCaption,
             images: mediaItems,
             scheduled_at: chScheduleDate.toISOString(),
-            status: "queue",
+            status: postDesiredStatus,
           })
           .select("id, status, scheduled_at")
           .maybeSingle();
@@ -548,15 +622,15 @@ Return ONLY valid JSON matching this schema:
         day1PublishedCount,
       },
     });
-  } catch {}
+  } catch { }
 
   console.log(`[Flywheel] Completed successfully in ${executionTimeMs}ms! Scheduled ${postsScheduled} posts, published ${day1PublishedCount} immediately, created Ad campaign.`);
 
   const summaryText = day1PublishedCount > 0
     ? `Autonomous Campaign Engine completed in ${(executionTimeMs / 1000).toFixed(1)}s. Day 1 post was published immediately to your connected social accounts, and ${postsScheduled} posts across ${days} day(s) have been scheduled onto your social calendar.`
     : postsScheduled > 0
-    ? `Autonomous Campaign Engine completed in ${(executionTimeMs / 1000).toFixed(1)}s. Scheduled ${postsScheduled} posts across ${days} day(s) onto your social calendar.`
-    : `Autonomous Campaign Engine generated ${generatedPosts.length} strategic content pieces in ${(executionTimeMs / 1000).toFixed(1)}s. Connect your social channels in Settings to auto-publish directly to your accounts.`;
+      ? `Autonomous Campaign Engine completed in ${(executionTimeMs / 1000).toFixed(1)}s. Scheduled ${postsScheduled} posts across ${days} day(s) onto your social calendar.`
+      : `Autonomous Campaign Engine generated ${generatedPosts.length} strategic content pieces in ${(executionTimeMs / 1000).toFixed(1)}s. Connect your social channels in Settings to auto-publish directly to your accounts.`;
 
   return {
     success: true,
@@ -571,8 +645,8 @@ Return ONLY valid JSON matching this schema:
         isCarousel
           ? CURATED_COMMERCIAL_PHOTOS.marketing[idx % CURATED_COMMERCIAL_PHOTOS.marketing.length]
           : isReel
-          ? CURATED_COMMERCIAL_PHOTOS.business[idx % CURATED_COMMERCIAL_PHOTOS.business.length]
-          : CURATED_COMMERCIAL_PHOTOS.default[idx % CURATED_COMMERCIAL_PHOTOS.default.length]
+            ? CURATED_COMMERCIAL_PHOTOS.business[idx % CURATED_COMMERCIAL_PHOTOS.business.length]
+            : CURATED_COMMERCIAL_PHOTOS.default[idx % CURATED_COMMERCIAL_PHOTOS.default.length]
       );
 
       const record = postTrackingRecords.get(idx);

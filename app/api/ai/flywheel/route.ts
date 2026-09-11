@@ -25,8 +25,12 @@ export async function POST(req: NextRequest) {
       targetRegion,
       daysToSchedule,
       postsPerDay,
+      customTimeSlots,
+      generateImages,
+      postStatus,
       autoDraftMetaAd,
       selectedChannelIds,
+      customMix,
     } = body;
 
     const result = await executeAutonomousFlywheel({
@@ -42,8 +46,12 @@ export async function POST(req: NextRequest) {
       targetRegion,
       daysToSchedule: Number(daysToSchedule) || 7,
       postsPerDay: Number(postsPerDay) || 1,
+      customTimeSlots: Array.isArray(customTimeSlots) ? customTimeSlots : undefined,
+      generateImages: generateImages !== false,
+      postStatus: postStatus === "draft" ? "draft" : "queue",
       autoDraftMetaAd: autoDraftMetaAd !== false,
       selectedChannelIds: Array.isArray(selectedChannelIds) ? selectedChannelIds : undefined,
+      customMix: customMix && typeof customMix === "object" ? customMix : undefined,
     });
 
     return NextResponse.json(result);

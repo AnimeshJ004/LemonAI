@@ -156,7 +156,7 @@ export function adaptCaptionForPlatform(
   for (const t of existingTags) if (t && t.length > 1) tagPool.add(t);
 
   // 1. INSTAGRAM
-  // Visual storytelling, aesthetic emojis, clear IG CTA, 6-8 clustered discovery hashtags
+  // Visual storytelling, authentic creative hook, clear IG CTA, 6-8 clustered discovery hashtags
   if (type.includes("instagram")) {
     const igTags = Array.from(tagPool).slice(0, 8);
     if (!igTags.includes(`#${cleanNiche}Tips`)) igTags.push(`#${cleanNiche}Tips`);
@@ -164,11 +164,8 @@ export function adaptCaptionForPlatform(
     const tagCluster = igTags.join(" ");
 
     let igBody = cleaned;
-    if (!igBody.startsWith("✨") && !igBody.startsWith("📸")) {
-      igBody = `✨ Game-Changer for ${cleanNiche}:\n\n${igBody}`;
-    }
 
-    if (!igBody.toLowerCase().includes("save") && !igBody.toLowerCase().includes("share")) {
+    if (!igBody.toLowerCase().includes("save") && !igBody.toLowerCase().includes("share") && !igBody.toLowerCase().includes("comment")) {
       igBody += "\n\n💡 Save this post for later 📌 & share with someone who needs this!";
     }
 
@@ -179,9 +176,6 @@ export function adaptCaptionForPlatform(
   // Authentic, candid conversational take. Strictly <= 300 characters, no hashtag clutter.
   if (type.includes("bluesky")) {
     let bskyBody = cleaned;
-    if (!bskyBody.toLowerCase().startsWith("quick take") && !bskyBody.toLowerCase().startsWith("real talk")) {
-      bskyBody = `Quick take on ${cleanNiche}:\n\n${bskyBody}`;
-    }
 
     // Bluesky has strict 300 char limit
     const maxLen = 295;
@@ -206,9 +200,6 @@ export function adaptCaptionForPlatform(
     const maxBodyLen = 280 - tagSuffix.length - 2;
 
     let twBody = cleaned;
-    if (!twBody.startsWith("⚡️") && !twBody.startsWith("🧵")) {
-      twBody = `⚡️ ${twBody}`;
-    }
 
     if (twBody.length > maxBodyLen) {
       const truncated = twBody.slice(0, maxBodyLen);
@@ -229,10 +220,6 @@ export function adaptCaptionForPlatform(
     const linkedinTags = Array.from(tagPool).slice(0, 4).join(" ");
     let liBody = cleaned;
 
-    if (!liBody.toLowerCase().includes("insight") && !liBody.startsWith("💡")) {
-      liBody = `💡 Key Insight for ${cleanNiche} Leaders:\n\n${liBody}`;
-    }
-
     // Line breaks between sentences for easy mobile readability
     liBody = liBody.replace(/([.?!])\s+([A-Z])/g, "$1\n\n$2").trim();
 
@@ -248,10 +235,6 @@ export function adaptCaptionForPlatform(
     const fbTags = Array.from(tagPool).slice(0, 2).join(" ");
     let fbBody = cleaned;
 
-    if (!fbBody.toLowerCase().startsWith("hey") && !fbBody.startsWith("👋")) {
-      fbBody = `Hey community! 👋\n\n${fbBody}`;
-    }
-
     if (!fbBody.includes("?")) {
       fbBody += "\n\nWe'd love to hear your thoughts! Drop a comment below 👇";
     }
@@ -260,16 +243,12 @@ export function adaptCaptionForPlatform(
 
   // 6. THREADS
   if (type.includes("threads")) {
-    let thBody = cleaned;
-    if (!thBody.toLowerCase().startsWith("curious:")) {
-      thBody = `Curious to know:\n\n${thBody}`;
-    }
-    return thBody.trim();
+    return cleaned.trim();
   }
 
   // 7. YOUTUBE
   if (type.includes("youtube")) {
-    return `📌 Overview:\n${cleaned}\n\n🔔 Subscribe to ${cleanBrand} for practical breakdowns and updates.`.trim();
+    return `${cleaned}\n\n🔔 Subscribe to ${cleanBrand} for weekly insights and updates.`.trim();
   }
 
   const defaultTags = Array.from(tagPool).slice(0, 3).join(" ");

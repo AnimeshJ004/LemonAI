@@ -23,7 +23,13 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
     authUrl: "https://www.facebook.com/v22.0/dialog/oauth",
     tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
     profileUrl: "https://graph.facebook.com/v22.0/me?fields=id,name,picture",
-    scope: ["public_profile", "pages_show_list", "pages_read_engagement", "pages_manage_posts"],
+    scope: [
+      "public_profile",
+      "pages_show_list",
+      "pages_read_engagement",
+      "pages_manage_posts",
+      "pages_read_user_content",      // Required: read Page published posts and user comments
+    ],
   },
   [ChannelTypeEnum.INSTAGRAM]: {
     authUrl: "https://www.facebook.com/v22.0/dialog/oauth",
@@ -39,6 +45,7 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
       "pages_manage_posts",
       "pages_manage_metadata",       // Required: subscribe to comment webhooks
       "pages_messaging",             // Required: send Page messages / DMs
+      "pages_read_user_content",     // Required: read Page published posts and user comments
     ],
   },
   [ChannelTypeEnum.YOUTUBE]: {

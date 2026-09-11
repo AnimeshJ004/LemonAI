@@ -69,7 +69,7 @@ export const pollPostComments = inngest.createFunction(
           let numericMediaId: string | null = null;
           if (rawMediaId && /^\d+$/.test(rawMediaId)) {
             numericMediaId = rawMediaId;
-          } else if (rawMediaId && accessToken) {
+          } else if (rawMediaId && accessToken && normalizedChannel === "INSTAGRAM") {
             try {
               const lookupUrl = igAccountId
                 ? `https://graph.facebook.com/v22.0/${igAccountId}/media?fields=id,shortcode,permalink&limit=25&access_token=${encodeURIComponent(accessToken)}`

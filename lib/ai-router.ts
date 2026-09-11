@@ -1,4 +1,5 @@
 import { getInsforgeServerClient, getInsforgeAdminClient } from "@/lib/insforge-server";
+import { callGroqChatCompletion, isGroqConfigured } from "@/lib/groq-client";
 
 /**
  * Multi-Tier Budget-Friendly LLM Cost Router
@@ -27,7 +28,7 @@ export interface AIModelConfig {
   maxTokens: number;
 }
 
-// Model registry optimized for low-cost SaaS operation with InsForge Latest Gemini 3+ models
+// Model registry optimized for low-cost SaaS operation with InsForge Latest Gemini 3+ models & Groq Cloud
 export const MODEL_REGISTRY: Record<string, AIModelConfig> = {
   // Tier 1: Ultra Budget-Friendly / Fast Gemini 3.8 & 3.7 (~$0.38/1M tokens -> ~₹0.01 - ₹0.02 per request)
   "google/gemini-3.8-flash": {
@@ -44,7 +45,14 @@ export const MODEL_REGISTRY: Record<string, AIModelConfig> = {
     outputCostPer1M: 0.76,
     maxTokens: 8192,
   },
-  // Tier 2: High Intelligence / Gemini 3.7 Flash & 3.6 Flash (~₹0.03 - ₹0.05 per request)
+  "groq/openai/gpt-oss-20b": {
+    name: "groq/openai/gpt-oss-20b",
+    tier: "TIER_1_FAST",
+    inputCostPer1M: 0.05,
+    outputCostPer1M: 0.08,
+    maxTokens: 8192,
+  },
+  // Tier 2: High Intelligence / Gemini 3.7 Flash & GPT-OSS 120B (~₹0.03 - ₹0.05 per request)
   "google/gemini-3.7-flash": {
     name: "google/gemini-3.7-flash",
     tier: "TIER_2_SMART",
@@ -57,6 +65,20 @@ export const MODEL_REGISTRY: Record<string, AIModelConfig> = {
     tier: "TIER_2_SMART",
     inputCostPer1M: 0.75,
     outputCostPer1M: 1.50,
+    maxTokens: 8192,
+  },
+  "groq/openai/gpt-oss-120b": {
+    name: "groq/openai/gpt-oss-120b",
+    tier: "TIER_2_SMART",
+    inputCostPer1M: 0.59,
+    outputCostPer1M: 0.79,
+    maxTokens: 8192,
+  },
+  "groq/qwen/qwen3.8-27b": {
+    name: "groq/qwen/qwen3.8-27b",
+    tier: "TIER_2_SMART",
+    inputCostPer1M: 0.20,
+    outputCostPer1M: 0.40,
     maxTokens: 8192,
   },
   "deepseek/deepseek-chat": {
@@ -154,16 +176,85 @@ export async function routeAICall<T = any>(req: AICallRequest): Promise<AICallRe
     ? ["google/gemini-3.8-flash", "google/gemini-3.7-flash:beta", "google/gemini-2.5-flash-lite"] 
     : ["google/gemini-3.8-flash", "google/gemini-3.7-flash", "google/gemini-3.6-flash", "deepseek/deepseek-chat", "google/gemini-2.5-flash"];
 
-  const { insforge } = await getInsforgeServerClient().catch(() => ({
-    insforge: getInsforgeAdminClient()
-  }));
+  let insforgeClient: any = null;
+  try {
+    const { insforge } = await getInsforgeServerClient().catch(() => ({
+      insforge: getInsforgeAdminClient()
+    }));
+    insforgeClient = insforge;
+  } catch (err) {
+    console.warn("[AI Router] InsForge client initialization notice:", err);
+  }
 
   let lastError: any = null;
 
-  for (const modelToTry of candidateModels) {
+  // 1. Attempt InsForge candidate models
+  if (insforgeClient?.ai?.chat?.completions) {
+    for (const modelToTry of candidateModels) {
+      try {
+        const result = await insforgeClient.ai.chat.completions.create({
+          model: modelToTry,
+          messages: [
+            {
+              role: "system",
+              content: req.systemPrompt + (req.jsonMode ? "\nReturn ONLY raw valid JSON without markdown formatting." : ""),
+            },
+            {
+              role: "user",
+              content: constrainPrompt(req.userPrompt),
+            },
+          ],
+          temperature: req.temperature ?? (tier === "TIER_1_FAST" ? 0.3 : 0.7),
+        });
+
+        const rawText = result?.choices?.[0]?.message?.content ?? "";
+        if (rawText) {
+          const parsedData = req.jsonMode ? cleanAndParseJSON<T>(rawText) : (rawText as unknown as T);
+          const latencyMs = Date.now() - startTime;
+
+          // Estimate token usage & cost metrics
+          const estInputTokens = Math.ceil((req.systemPrompt.length + req.userPrompt.length) / 4);
+          const estOutputTokens = Math.ceil(rawText.length / 4);
+          const totalTokens = estInputTokens + estOutputTokens;
+
+          const modelConfig = MODEL_REGISTRY[modelToTry] || MODEL_REGISTRY["google/gemini-2.5-flash-lite"];
+          const costUSD = (estInputTokens * modelConfig.inputCostPer1M + estOutputTokens * modelConfig.outputCostPer1M) / 1_000_000;
+          const costINR = Number((costUSD * 86.5).toFixed(4));
+
+          // Compare with Claude 3.5 Sonnet ($3.00/1M input + $15.00/1M output)
+          const claudeCostUSD = (estInputTokens * 3.0 + estOutputTokens * 15.0) / 1_000_000;
+          const claudeCostINR = Number((claudeCostUSD * 86.5).toFixed(4));
+          const savingsVsClaudeINR = Number(Math.max(0, claudeCostINR - costINR).toFixed(4));
+
+          return {
+            success: true,
+            data: parsedData,
+            rawText,
+            metrics: {
+              model: modelToTry,
+              tier,
+              estimatedTokens: totalTokens,
+              costUSD,
+              costINR,
+              savingsVsClaudeINR,
+              latencyMs,
+            },
+          };
+        }
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`[AI Router] Model ${modelToTry} attempt notice, trying next candidate:`, err?.message || err);
+      }
+    }
+  }
+
+  // 2. Fallback to Groq if InsForge models failed / limited out
+  if (isGroqConfigured()) {
+    console.log(`[AI Router] Cascading task ${req.task} to Groq AI fallback...`);
+    const groqModel = tier === "TIER_1_FAST" ? "openai/gpt-oss-20b" : "openai/gpt-oss-120b";
     try {
-      const result = await insforge.ai.chat.completions.create({
-        model: modelToTry,
+      const groqRes = await callGroqChatCompletion<T>({
+        model: groqModel,
         messages: [
           {
             role: "system",
@@ -175,47 +266,47 @@ export async function routeAICall<T = any>(req: AICallRequest): Promise<AICallRe
           },
         ],
         temperature: req.temperature ?? (tier === "TIER_1_FAST" ? 0.3 : 0.7),
+        jsonMode: req.jsonMode,
       });
 
-      const rawText = result.choices[0]?.message?.content ?? "";
-      const parsedData = req.jsonMode ? cleanAndParseJSON<T>(rawText) : (rawText as unknown as T);
-      const latencyMs = Date.now() - startTime;
+      if (groqRes.success && groqRes.content) {
+        const rawText = groqRes.content;
+        const parsedData = groqRes.data;
+        const latencyMs = Date.now() - startTime;
 
-      // Estimate token usage & cost metrics
-      const estInputTokens = Math.ceil((req.systemPrompt.length + req.userPrompt.length) / 4);
-      const estOutputTokens = Math.ceil(rawText.length / 4);
-      const totalTokens = estInputTokens + estOutputTokens;
+        const estInputTokens = Math.ceil((req.systemPrompt.length + req.userPrompt.length) / 4);
+        const estOutputTokens = Math.ceil(rawText.length / 4);
+        const totalTokens = estInputTokens + estOutputTokens;
 
-      const modelConfig = MODEL_REGISTRY[modelToTry] || MODEL_REGISTRY["google/gemini-2.5-flash-lite"];
-      const costUSD = (estInputTokens * modelConfig.inputCostPer1M + estOutputTokens * modelConfig.outputCostPer1M) / 1_000_000;
-      const costINR = Number((costUSD * 86.5).toFixed(4));
+        const modelConfigKey = `groq/${groqModel}`;
+        const modelConfig = MODEL_REGISTRY[modelConfigKey] || MODEL_REGISTRY["groq/llama-3.1-8b-instant"];
+        const costUSD = (estInputTokens * modelConfig.inputCostPer1M + estOutputTokens * modelConfig.outputCostPer1M) / 1_000_000;
+        const costINR = Number((costUSD * 86.5).toFixed(4));
+        const claudeCostUSD = (estInputTokens * 3.0 + estOutputTokens * 15.0) / 1_000_000;
+        const claudeCostINR = Number((claudeCostUSD * 86.5).toFixed(4));
+        const savingsVsClaudeINR = Number(Math.max(0, claudeCostINR - costINR).toFixed(4));
 
-      // Compare with Claude 3.5 Sonnet ($3.00/1M input + $15.00/1M output)
-      const claudeCostUSD = (estInputTokens * 3.0 + estOutputTokens * 15.0) / 1_000_000;
-      const claudeCostINR = Number((claudeCostUSD * 86.5).toFixed(4));
-      const savingsVsClaudeINR = Number(Math.max(0, claudeCostINR - costINR).toFixed(4));
-
-      return {
-        success: true,
-        data: parsedData,
-        rawText,
-        metrics: {
-          model: modelToTry,
-          tier,
-          estimatedTokens: totalTokens,
-          costUSD,
-          costINR,
-          savingsVsClaudeINR,
-          latencyMs,
-        },
-      };
-    } catch (err: any) {
-      lastError = err;
-      console.warn(`[AI Router] Model ${modelToTry} attempt notice, trying next candidate:`, err?.message || err);
+        return {
+          success: true,
+          data: parsedData,
+          rawText,
+          metrics: {
+            model: `groq/${groqModel}`,
+            tier,
+            estimatedTokens: totalTokens,
+            costUSD,
+            costINR,
+            savingsVsClaudeINR,
+            latencyMs,
+          },
+        };
+      }
+    } catch (groqErr) {
+      console.error("[AI Router] Groq fallback failed:", groqErr);
     }
   }
 
-  console.error(`[AI Router] All candidate models failed for task ${req.task}:`, lastError);
+  console.error(`[AI Router] All candidate models (InsForge + Groq) failed for task ${req.task}:`, lastError);
 
   return {
     success: false,

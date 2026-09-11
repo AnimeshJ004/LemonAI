@@ -71,6 +71,7 @@ export async function GET(request: NextRequest) {
 
         let channels = channelTypes.map(channel_type => {
             const userChannel = userChannelMap.get(channel_type.id);
+            const isConnected = Boolean(userChannel?.is_connected);
             return {
               id: channel_type.id,
               type: channel_type.type,
@@ -78,13 +79,13 @@ export async function GET(request: NextRequest) {
               color: channel_type.color,
               character_limit: channel_type.character_limit,
               user_channel_id: userChannel?.id ?? null,
-              handle: userChannel?.handle ?? null,
-              profile_image: userChannel?.profile_image ?? null,
-              profile_url: userChannel?.profile_url ?? null,
-              provider_account_id: userChannel?.provider_account_id ?? null,
-              connected: Boolean(userChannel?.is_connected),
+              handle: isConnected ? (userChannel?.handle ?? null) : null,
+              profile_image: isConnected ? (userChannel?.profile_image ?? null) : null,
+              profile_url: isConnected ? (userChannel?.profile_url ?? null) : null,
+              provider_account_id: isConnected ? (userChannel?.provider_account_id ?? null) : null,
+              connected: isConnected,
               oauth_configured: isProviderConfigured(channel_type.type as ChannelTypeEnum),
-              has_token: Boolean(userChannel?.access_token && userChannel.access_token.length > 5)
+              has_token: isConnected && Boolean(userChannel?.access_token && userChannel.access_token.length > 5)
             };
         });
 
@@ -101,6 +102,10 @@ export async function GET(request: NextRequest) {
             channels,
             totalChannels,
             connectedCount
+        }, {
+            headers: {
+                "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate"
+            }
         });
         
     } catch (error) {

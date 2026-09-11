@@ -30,7 +30,7 @@ export default clerkMiddleware(
 
     // 1. Unauthenticated users:
     if (!userId) {
-      // Allow public routes and API routes (APIs handle auth or return 401 JSON)
+      // Allow public routes and API routes (APIs handle auth internally and return JSON)
       if (isPublicRoute(req) || isApiRoute(req)) {
         return NextResponse.next();
       }

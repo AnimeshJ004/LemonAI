@@ -1,4 +1,5 @@
 import { getInsforgeAdminClient, getInsforgeServerClient } from "./insforge-server";
+import { callResilientCompletion } from "./ai-gateway";
 
 export interface TrendingAd {
   id: string;
@@ -76,12 +77,11 @@ export async function fetchTrendingMetaAds(params: {
     }
   }
 
-  // AI Fallback: Generate realistic competitive ad intelligence
+  // AI Fallback: Generate realistic competitive ad intelligence with InsForge + Groq
   if (ads.length === 0) {
     try {
-      const { insforge } = await getInsforgeServerClient();
-      const completion = await insforge.ai.chat.completions.create({
-        model: "google/gemini-3.8-flash",
+      const completion = await callResilientCompletion<TrendingAd[]>({
+        jsonMode: true,
         messages: [{
           role: "user",
           content: `Generate 6 realistic trending Meta ads for the "${niche}" niche targeting ${country}. Return ONLY valid JSON array:
@@ -100,9 +100,9 @@ export async function fetchTrendingMetaAds(params: {
 ]`
         }]
       });
-      const raw = completion.choices[0]?.message?.content || "[]";
-      const clean = raw.replace(/```(?:json)?\s*|\s*```/g, "").trim();
-      try { ads = JSON.parse(clean); } catch {}
+      if (Array.isArray(completion.data) && completion.data.length > 0) {
+        ads = completion.data;
+      }
     } catch (err) {
       console.warn("AI generation failed for trending ads:", err);
     }

@@ -4,6 +4,8 @@ import {
   getLeadsForUser,
   createLead,
   updateLead,
+  recordActivity,
+  getAppointmentsForUser,
   LeadStage,
 } from "@/lib/crm-service";
 import { scoreAndUpdateLead } from "@/lib/lead-scoring";
@@ -11,11 +13,20 @@ import { scoreAndUpdateLead } from "@/lib/lead-scoring";
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || "user_lemon_default";
+    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : "usr_lemon_demo");
+    if (!targetUserId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const { searchParams } = new URL(request.url);
     const stage = searchParams.get("stage") as LeadStage | null;
     const search = searchParams.get("search")?.toLowerCase() || "";
+    const type = searchParams.get("type");
+
+    if (type === "appointments") {
+      const appointments = await getAppointmentsForUser(targetUserId);
+      return NextResponse.json({ appointments });
+    }
 
     let leads = await getLeadsForUser(targetUserId);
 
@@ -37,15 +48,19 @@ export async function GET(request: NextRequest) {
     const totalPipelineValue = leads.reduce((sum, l) => sum + (Number(l.deal_value) || 0), 0);
     const qualifiedCount = leads.filter((l) => ["qualified", "booked", "closed_won"].includes(l.stage)).length;
     const wonCount = leads.filter((l) => l.stage === "closed_won").length;
+    const bookedCount = leads.filter((l) => l.stage === "booked" || l.metadata?.bookingInfo?.scheduledAt).length;
     const conversionRate = totalLeads > 0 ? Math.round((wonCount / totalLeads) * 100) : 0;
+    const appointments = await getAppointmentsForUser(targetUserId);
 
     return NextResponse.json({
       leads,
+      appointments,
       stats: {
         totalLeads,
         totalPipelineValue,
         qualifiedCount,
         wonCount,
+        bookedCount,
         conversionRate,
       },
     });
@@ -58,7 +73,10 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || "user_lemon_default";
+    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : "usr_lemon_demo");
+    if (!targetUserId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const body = await request.json().catch(() => ({}));
     const { name, email, phone, source, stage, score, deal_value, company, notes } = body;
@@ -97,8 +115,7 @@ export async function POST(request: NextRequest) {
 
     // Log lead created activity
     try {
-      const admin = (await import("@/lib/insforge-server")).getInsforgeAdminClient();
-      await admin.database.from("crm_activities").insert({
+      await recordActivity({
         user_id: targetUserId,
         lead_id: finalizedLead.id,
         type: "lead_created",
@@ -120,7 +137,10 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || "user_lemon_default";
+    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : "usr_lemon_demo");
+    if (!targetUserId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
     const body = await request.json().catch(() => ({}));
     const { id, stage, score, deal_value, name, email, phone, metadata, triggerScoring, transcript } = body;

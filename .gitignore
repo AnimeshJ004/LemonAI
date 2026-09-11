@@ -23,6 +23,7 @@
 # misc
 .DS_Store
 *.pem
+.data
 
 # debug
 npm-debug.log*
@@ -65,5 +66,6 @@ next-env.d.ts
 /.clerk/
 
 # local dev database & memory persistence
+.data
 .lemon_crm_memory.json
 .lemon_dms_memory.json

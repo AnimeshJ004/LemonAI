@@ -31,7 +31,6 @@ import {
   Zap,
 } from "lucide-react";
 import ScheduleFromResearchDialog from "@/components/competition/schedule-from-research-dialog";
-import AutonomousCampaignDialog from "@/components/campaign/autonomous-campaign-dialog";
 import Link from "next/link";
 
 export default function CompetitionResearcherPage() {
@@ -47,7 +46,6 @@ export default function CompetitionResearcherPage() {
 
   // Schedule modal states
   const [isScheduleOpen, setIsScheduleOpen] = useState(false);
-  const [isFlywheelOpen, setIsFlywheelOpen] = useState(false);
   const [scheduleMode, setScheduleMode] = useState<"single" | "batch">("single");
   const [scheduleTopic, setScheduleTopic] = useState("");
   const [scheduleFormat, setScheduleFormat] = useState("FEED_POST");
@@ -91,11 +89,6 @@ export default function CompetitionResearcherPage() {
     setScheduleTopic(topicText);
     setScheduleFormat(format);
     setScheduleMode("single");
-    setIsScheduleOpen(true);
-  };
-
-  const openBatchSchedule = () => {
-    setScheduleMode("batch");
     setIsScheduleOpen(true);
   };
 
@@ -149,12 +142,6 @@ export default function CompetitionResearcherPage() {
             AI analyses your market, competitors & extracts winning content angles, hooks & hashtags
           </p>
         </div>
-        <Button
-          onClick={() => setIsFlywheelOpen(true)}
-          className="gap-2 font-semibold shadow-xs text-xs sm:text-sm h-9"
-        >
-          <Layers className="size-4 text-primary-foreground" /> Autonomous Campaign Generator
-        </Button>
       </div>
 
       {/* Input Form */}
@@ -268,28 +255,6 @@ export default function CompetitionResearcherPage() {
       {/* Results */}
       {result && (
         <div className="space-y-6">
-          {/* Top Auto-Pilot Campaign Banner */}
-          <div className="p-4 rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-background flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
-            <div className="space-y-1">
-              <h3 className="font-semibold text-base flex items-center gap-2">
-                <Sparkles className="size-4 text-primary" />
-                Autonomous Content Distribution Ready
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                AI has identified high-performing angles for{" "}
-                <span className="font-medium text-foreground">{form.niche}</span>.
-                Auto-generate and schedule a full 7 to 30-day campaign in 1 click.
-              </p>
-            </div>
-            <Button
-              onClick={openBatchSchedule}
-              className="shrink-0 bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm"
-            >
-              <Layers className="size-4 mr-2" />
-              Auto-Schedule Campaign (Auto-Pilot)
-            </Button>
-          </div>
-
           {/* Trending Hooks */}
           {result.topTrendingHooks?.length > 0 && (
             <Card>
@@ -516,7 +481,7 @@ export default function CompetitionResearcherPage() {
         </div>
       )}
 
-      {/* Schedule / Auto-Pilot Dialog */}
+      {/* Schedule Dialog */}
       <ScheduleFromResearchDialog
         open={isScheduleOpen}
         onOpenChange={setIsScheduleOpen}
@@ -530,15 +495,6 @@ export default function CompetitionResearcherPage() {
           competitors: form.competitorUrls,
           hashtags: result?.recommendedHashtags,
         }}
-      />
-
-      {/* Autonomous Campaign Generator Dialog */}
-      <AutonomousCampaignDialog
-        open={isFlywheelOpen}
-        onOpenChange={setIsFlywheelOpen}
-        initialNiche={form.niche}
-        initialAudience={form.targetAudience}
-        initialBusinessName={form.businessName}
       />
     </div>
   );
