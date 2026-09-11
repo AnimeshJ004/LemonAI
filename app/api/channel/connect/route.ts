@@ -208,19 +208,32 @@ export async function POST(request: NextRequest) {
                 verifiedAccountId = providerAccountId.trim();
             }
 
-            try {
+                // Try 0: Direct query on Account ID (if provided)
+                if (verifiedAccountId) {
+                    try {
+                        const directRes = await fetch(`https://graph.facebook.com/v22.0/${verifiedAccountId}?fields=id,username,name,profile_picture_url&access_token=${encodeURIComponent(rawToken)}`);
+                        if (directRes.ok) {
+                            const directData = await directRes.json();
+                            if (directData?.profile_picture_url) profileImage = directData.profile_picture_url;
+                            if (directData?.username) formattedHandle = `@${directData.username.replace(/^@/, '')}`;
+                        }
+                    } catch {}
+                }
+
                 // Try 1: Graph API me with instagram_business_account
-                const metaRes = await fetch(`https://graph.facebook.com/v22.0/me?fields=id,name,picture,username,instagram_business_account{id,username,profile_picture_url}&access_token=${encodeURIComponent(rawToken)}`);
-                if (metaRes.ok) {
-                    const metaData = await metaRes.json();
-                    profileImage = metaData?.instagram_business_account?.profile_picture_url || metaData?.picture?.data?.url || null;
-                    if (!verifiedAccountId) {
-                        verifiedAccountId = metaData?.instagram_business_account?.id || metaData?.id || null;
-                    }
-                    if (metaData?.instagram_business_account?.username) {
-                        formattedHandle = `@${metaData.instagram_business_account.username.replace(/^@/, '')}`;
-                    } else if (metaData?.username) {
-                        formattedHandle = `@${metaData.username.replace(/^@/, '')}`;
+                if (!profileImage) {
+                    const metaRes = await fetch(`https://graph.facebook.com/v22.0/me?fields=id,name,picture,username,instagram_business_account{id,username,profile_picture_url}&access_token=${encodeURIComponent(rawToken)}`);
+                    if (metaRes.ok) {
+                        const metaData = await metaRes.json();
+                        profileImage = metaData?.instagram_business_account?.profile_picture_url || metaData?.picture?.data?.url || null;
+                        if (!verifiedAccountId) {
+                            verifiedAccountId = metaData?.instagram_business_account?.id || metaData?.id || null;
+                        }
+                        if (metaData?.instagram_business_account?.username) {
+                            formattedHandle = `@${metaData.instagram_business_account.username.replace(/^@/, '')}`;
+                        } else if (metaData?.username) {
+                            formattedHandle = `@${metaData.username.replace(/^@/, '')}`;
+                        }
                     }
                 }
 

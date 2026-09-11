@@ -236,9 +236,11 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
         params.append('code_challenge_method', codeChallengeMethod);
       }
 
-      // Meta OAuth: force re-request so user is prompted to select/grant their Facebook Pages
+      // Meta OAuth: force re-request and enable profile/page selector so user is prompted to select/grant their Facebook Pages
       if (isMeta) {
         params.append('auth_type', 'rerequest');
+        params.append('return_scopes', 'true');
+        params.append('enable_profile_selector', 'true');
       }
 
       // YouTube requires offline access to issue a refresh token
@@ -422,9 +424,9 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
           console.warn("[Instagram OAuth] Notice checking me/accounts:", igErr);
         }
 
-        // Method 2: Direct query on /me for instagram_business_account
+        // Method 2: Direct query on /me for instagram_business_account or nested accounts
         try {
-          const meRes = await fetch(`https://graph.facebook.com/v22.0/me?fields=id,name,instagram_business_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`, {
+          const meRes = await fetch(`https://graph.facebook.com/v22.0/me?fields=id,name,username,profile_picture_url,instagram_business_account{id,username,name,profile_picture_url},accounts{id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}}&access_token=${encodeURIComponent(accessToken)}`, {
             headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" }
           });
           if (meRes.ok) {
@@ -436,6 +438,28 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
                 providerAccountId: ig.id,
                 handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : null,
                 profileImage: ig.profile_picture_url || null,
+                pageAccessToken: accessToken,
+              };
+            }
+            // Check nested accounts
+            const nestedAccounts = meData?.accounts?.data || [];
+            const nestedWithIg = nestedAccounts.find((a: any) => a.instagram_business_account?.id);
+            if (nestedWithIg?.instagram_business_account) {
+              const ig = nestedWithIg.instagram_business_account;
+              const igHandle = ig.username || ig.name;
+              return {
+                providerAccountId: ig.id,
+                handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : null,
+                profileImage: ig.profile_picture_url || null,
+                pageAccessToken: nestedWithIg.access_token || accessToken,
+              };
+            }
+            // Check if /me is already an Instagram user or Page
+            if (meData?.username && (meData?.id?.length > 14 || meData?.profile_picture_url)) {
+              return {
+                providerAccountId: meData.id,
+                handle: `@${meData.username.replace(/^@/, '')}`,
+                profileImage: meData.profile_picture_url || null,
                 pageAccessToken: accessToken,
               };
             }
