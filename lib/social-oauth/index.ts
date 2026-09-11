@@ -489,7 +489,7 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
 
       // Resolve user's primary Facebook Page and Page Access Token for Facebook
       if (type === ChannelTypeEnum.FACEBOOK) {
-        let pageErrorDetails = "";
+        // Method 1: Scan user's managed Facebook Pages
         try {
           const fbRes = await fetch(`https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,picture{url}&access_token=${encodeURIComponent(accessToken)}`, {
             headers: {
@@ -518,10 +518,40 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
           pageErrorDetails = fbErr?.message ? ` (${fbErr.message})` : "";
         }
 
+        // Method 2: Check /me for nested accounts or direct Page token
+        try {
+          const meRes = await fetch(`https://graph.facebook.com/v22.0/me?fields=id,name,picture{url},accounts{id,name,access_token,picture{url}}&access_token=${encodeURIComponent(accessToken)}`, {
+            headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" }
+          });
+          if (meRes.ok) {
+            const meData = await meRes.json();
+            const nestedPages = meData?.accounts?.data || [];
+            if (nestedPages.length > 0) {
+              const primaryPage = nestedPages[0];
+              return {
+                providerAccountId: primaryPage.id,
+                handle: primaryPage.name || null,
+                profileImage: primaryPage.picture?.data?.url || null,
+                pageAccessToken: primaryPage.access_token || accessToken,
+              };
+            }
+            // If the token is already a Page Access Token (where /me returns the page itself)
+            if (meData?.id && meData?.name) {
+              return {
+                providerAccountId: meData.id,
+                handle: meData.name,
+                profileImage: meData.picture?.data?.url || null,
+                pageAccessToken: accessToken,
+              };
+            }
+          }
+        } catch (meErr) {
+          console.warn("[Facebook OAuth] Notice checking /me:", meErr);
+        }
+
         // Meta Graph API strictly requires a Facebook Page to schedule and publish posts.
-        // If no page is returned, we must not fall back to the personal profile ID as it will always fail when publishing.
         throw new Error(
-          `No Facebook Page found on this account${pageErrorDetails}. Meta requires a Facebook Page to publish posts (personal profiles cannot be published to via API). Please create a Facebook Page at https://facebook.com/pages/create, grant permission to it in the login popup, and reconnect.`
+          `No Facebook Page found on this account${pageErrorDetails}. Meta requires a Facebook Page to publish posts (personal profiles cannot be published to via API). Please ensure: 1) You have a Facebook Page created, 2) Your Facebook account has Admin access to that Page, and 3) You grant access to that Page in the Meta login dialog.`
         );
       }
 
