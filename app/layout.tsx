@@ -23,7 +23,13 @@ export default function RootLayout({
       className="h-full antialiased font-sans"
     >
       <body className="min-h-full flex flex-col font-sans">
-        <ClerkProvider>
+        <ClerkProvider
+          publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+          signInUrl="/sign-in"
+          signUpUrl="/sign-up"
+          signInFallbackRedirectUrl="/"
+          signUpFallbackRedirectUrl="/onboarding"
+        >
           <QueryProvider>
             <ThemeProvider
               attribute="class"
