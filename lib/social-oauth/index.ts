@@ -370,7 +370,7 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
         let igErrorDetails = "";
         try {
           // Method 1: Scan all Facebook Pages for connected Instagram Business/Creator Account
-          const igRes = await fetch(`https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`, {
+          const igRes = await fetch(`https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`, {
             headers: {
               Authorization: `Bearer ${accessToken}`,
               Accept: "application/json",
@@ -379,9 +379,32 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
           if (igRes.ok) {
             const igData = await igRes.json();
             const pages = igData?.data || [];
-            const pageWithIg = pages.find((p: any) => p.instagram_business_account?.id);
-            if (pageWithIg?.instagram_business_account) {
-              const ig = pageWithIg.instagram_business_account;
+            let pageWithIg = pages.find((p: any) => p.instagram_business_account?.id || p.connected_instagram_account?.id);
+            
+            // Method 1b: If not in bulk list, query each Page directly using its Page Access Token
+            if (!pageWithIg && pages.length > 0) {
+              for (const p of pages) {
+                if (p.id && p.access_token) {
+                  try {
+                    const pageDetailRes = await fetch(`https://graph.facebook.com/v22.0/${p.id}?fields=id,name,instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(p.access_token)}`);
+                    if (pageDetailRes.ok) {
+                      const pageDetail = await pageDetailRes.json();
+                      const resolvedIg = pageDetail?.instagram_business_account || pageDetail?.connected_instagram_account;
+                      if (resolvedIg?.id) {
+                        p.instagram_business_account = resolvedIg;
+                        pageWithIg = p;
+                        break;
+                      }
+                    }
+                  } catch (pageErr) {
+                    console.warn(`[Instagram OAuth] Notice checking page ${p.id}:`, pageErr);
+                  }
+                }
+              }
+            }
+
+            if (pageWithIg) {
+              const ig = pageWithIg.instagram_business_account || pageWithIg.connected_instagram_account;
               const igHandle = ig.username || ig.name;
               return {
                 providerAccountId: ig.id,
@@ -436,7 +459,7 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
         } catch {}
 
         throw new Error(
-          `No Instagram Business/Creator account detected on this Meta login (${igErrorDetails}). Please ensure: 1) Your Instagram account is switched to a Professional (Creator or Business) Account, 2) It is linked to a Facebook Page in your Instagram account settings, and 3) You grant access to that Page when logging in.`
+          `No Instagram Business/Creator account detected on this Meta login (${igErrorDetails}). Please ensure: 1) Your Instagram account is switched to a Professional (Creator or Business) Account, 2) It is linked to a Facebook Page in your Instagram account settings or Meta Business Suite, and 3) You grant access to that Page when logging in.`
         );
       }
 
