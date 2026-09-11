@@ -1,6 +1,7 @@
 import { getInsforgeServerClient, getInsforgeAdminClient } from "@/lib/insforge-server";
 import { getBrandProfileForUser, formatBrandHashtags, cleanTag } from "@/lib/brand-helper";
 import { generateAdCreativeImage } from "@/lib/ai-image-generator";
+import { callResilientCompletion } from "@/lib/ai-gateway";
 import { POST_STATUS } from "@/constants/post";
 import { auth } from "@clerk/nextjs/server";
 import { inngest } from "@/inngest/client";
@@ -114,8 +115,9 @@ Schedule: ${daysNum} day(s) duration with ${perDayNum} post(s) per day (Total ${
 
 Strict Generation Rules:
 1. Every single post MUST specifically feature ${brandProfile?.business_name || "our brand"}, its niche (${brandProfile?.niche || "industry"}), and core offer. Do NOT write generic motivational quotes or unrelated filler.
-2. Every post MUST end with 4 to 6 relevant hashtags including #${cleanBrandTag} and #${cleanNicheTag} (e.g. #${cleanBrandTag} #${cleanNicheTag} #${cleanNicheTag}Tips #BusinessGrowth).
-3. Plain text only: zero emojis, zero icons, zero symbols. Do not use markdown headings (# Header) or bold asterisks (**bold**).
+2. Every single post MUST have a completely UNIQUE, distinct topic, headline, and creative angle across all days (e.g. Day 1: Problem breakdown, Day 2: Case study/Results, Day 3: Step-by-step framework, Day 4: Overcoming mistakes, etc.). NEVER duplicate the same opening title or theme across days.
+3. Every post MUST end with 4 to 6 relevant hashtags including #${cleanBrandTag} and #${cleanNicheTag} (e.g. #${cleanBrandTag} #${cleanNicheTag} #${cleanNicheTag}Tips #BusinessGrowth).
+4. Plain text only: zero emojis, zero icons, zero symbols. Do not use markdown headings (# Header) or bold asterisks (**bold**).
 
 Return ONLY a valid JSON object matching this schema without markdown formatting:
 {
@@ -123,24 +125,19 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
     {
       "dayOffset": 1,
       "timeSlot": "10:00 AM",
-      "content": "Specific brand caption talking about ${brandProfile?.business_name || 'our services'} and value.\\n\\n#${cleanBrandTag} #${cleanNicheTag} #${cleanNicheTag}Tips #QualityService",
+      "content": "Specific unique brand caption talking about a distinct topic for this day.\\n\\n#${cleanBrandTag} #${cleanNicheTag} #${cleanNicheTag}Tips #QualityService",
       "imagePrompt": "Authentic professional commercial photo of..."
     }
   ]
 }`;
 
-            // High-Tier Task (Multi-Day Strategy & Batch Content): Gemini 3.7 Flash for deep reasoning
-            const completion = await insforge.ai.chat.completions.create({
-                model: "google/gemini-3.7-flash",
+            // Resilient Completion: Cascades from InsForge Gemini models to Groq Cloud Llama models
+            const completion = await callResilientCompletion({
                 messages: [{ role: "user", content: multiPrompt }],
-            }).catch(() => {
-                return insforge.ai.chat.completions.create({
-                    model: "google/gemini-3.8-flash",
-                    messages: [{ role: "user", content: multiPrompt }],
-                });
+                jsonMode: true,
             });
 
-            const rawText = completion.choices[0]?.message?.content ?? "";
+            const rawText = completion.content || "";
             const cleanJson = rawText.replace(/```(?:json)?\s*|\s*```/g, "").trim();
             let parsedData: any = {};
             try {
@@ -240,9 +237,8 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
 
         const userPrompt = buildPrompt(action, content, prompt);
 
-        // Low-Tier Task (Fast Single Post, Rephrase, Shorten, Expand): Gemini 3.8 Flash for ultra-low cost (~₹0.01)
-        const result = await insforge.ai.chat.completions.create({
-            model: "google/gemini-3.8-flash",
+        // Resilient Completion: Fast Single Post, Rephrase, Shorten, Expand (InsForge + Groq Fallback)
+        const result = await callResilientCompletion({
             messages: [
                 {
                     role: "system",
@@ -253,17 +249,10 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
                     content: userPrompt,
                 },
             ],
-        }).catch(() => {
-            return insforge.ai.chat.completions.create({
-                model: "google/gemini-3.7-flash",
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: userPrompt },
-                ],
-            });
+            jsonMode: isGenerateAction,
         });
 
-        const rawText = result.choices[0]?.message?.content ?? "";
+        const rawText = result.content || "";
 
         if (isGenerateAction) {
             const cleanJson = rawText.replace(/```(?:json)?\s*|\s*```/g, "").trim();

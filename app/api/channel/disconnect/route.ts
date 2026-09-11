@@ -8,39 +8,37 @@ export async function POST(request: NextRequest) {
         if (!userId) {
             return NextResponse.json({ error: "User not authenticated" }, { status: 401 });
         }
-        const { userChannelId } = await request.json();
+        const { userChannelId, channelTypeId } = await request.json();
 
-        if (!userChannelId) {
-            return NextResponse.json({ error: "User channel ID is required" }, { status: 400 });
+        if (!userChannelId && !channelTypeId) {
+            return NextResponse.json({ error: "User channel ID or channel type ID is required" }, { status: 400 });
         }
 
-        const { data: userChannelData, error } = await insforge.database
-            .from("user_channels")
-            .select(
-                "id, user_id"
-            )
-            .eq("id", userChannelId)
-            .eq("user_id", userId)
-            .single();
-
-        if (error || !userChannelData) {
-            return NextResponse.json({ error: "User channel not found" }, { status: 404 });
-        }
-
-        const { error: updateError } = await insforge.database
+        let updateQuery = insforge.database
             .from("user_channels")
             .update({
                 access_token: null,
                 refresh_token: null,
                 token_expires_at: null,
+                handle: null,
+                profile_image: null,
+                profile_url: null,
+                provider_account_id: null,
                 is_connected: false,
                 is_active: false
             })
-            .eq("id", userChannelId)
             .eq("user_id", userId);
 
+        if (userChannelId) {
+            updateQuery = updateQuery.eq("id", userChannelId);
+        } else if (channelTypeId) {
+            updateQuery = updateQuery.eq("channel_type_id", channelTypeId);
+        }
+
+        const { error: updateError } = await updateQuery;
+
         if (updateError) {
-            throw updateError
+            throw updateError;
         }
         return NextResponse.json({ success: true })
 

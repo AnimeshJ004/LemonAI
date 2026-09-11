@@ -635,19 +635,21 @@ async function publishToBluesky({
         const uploadedImages = [];
         for (const img of images) {
             const fileResponse = await fetch(img.url);
-            if (!fileResponse.ok) throw new Error("Failed to fetch image for Bluesky upload");
+            if (!fileResponse.ok) continue;
 
             const arrayBuffer = await fileResponse.arrayBuffer();
             const contentType = fileResponse.headers.get("content-type") || "image/jpeg";
 
-            const uploadRes = await agent.uploadBlob(new Uint8Array(arrayBuffer), {
-                encoding: contentType,
-            });
+            if (contentType.startsWith("image/")) {
+                const uploadRes = await agent.uploadBlob(new Uint8Array(arrayBuffer), {
+                    encoding: contentType,
+                });
 
-            uploadedImages.push({
-                image: uploadRes.data.blob,
-                alt: "",
-            });
+                uploadedImages.push({
+                    image: uploadRes.data.blob,
+                    alt: "",
+                });
+            }
         }
 
         embed = {

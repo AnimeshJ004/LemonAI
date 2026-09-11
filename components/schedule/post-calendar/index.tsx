@@ -37,6 +37,14 @@ interface PostCalendarProps {
   rightActions?: React.ReactNode
 }
 
+function getEventTitle(content?: string): string {
+  if (!content) return "Scheduled Post";
+  const lines = content.split("\n").map(l => l.trim()).filter(Boolean);
+  const first = lines[0] || "";
+  const clean = first.replace(/^#+\s*/, "").replace(/^[*_~`]+|[*_~`]+$/g, "").trim();
+  return clean || "Scheduled Post";
+}
+
 export function PostCalendar({
   posts,
   isPending,
@@ -52,7 +60,7 @@ export function PostCalendar({
   const events = React.useMemo(() =>
     isPending ? [] : posts.map(p => ({
       ...p,
-      title: p.content,
+      title: getEventTitle(p.content),
       start: new Date(p.scheduled_at),
       end: addHours(new Date(p.scheduled_at), 1),
     })), [posts, isPending]

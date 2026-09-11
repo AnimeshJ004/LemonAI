@@ -35,8 +35,8 @@ export function ConnectChannelDialog({
 
     React.useEffect(() => {
         if (channel && open) {
-            setHandle(channel.handle ? channel.handle.replace(/^@/, '') : "")
-            setProviderAccountId((channel as any).provider_account_id || "")
+            setHandle(channel.connected && channel.handle ? channel.handle.replace(/^@/, '') : "")
+            setProviderAccountId(channel.connected ? ((channel as any).provider_account_id || "") : "")
             setAccessToken("")
             setPassword("")
             const isThr = channel.type === ChannelTypeEnum.THREADS || Boolean(channel.name?.toLowerCase().includes("thread"))

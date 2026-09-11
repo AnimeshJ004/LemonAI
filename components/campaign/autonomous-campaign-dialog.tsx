@@ -39,6 +39,9 @@ import {
   Send,
   AlertCircle,
   RefreshCw,
+  Plus,
+  Minus,
+  SlidersHorizontal,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -58,7 +61,38 @@ interface AutonomousCampaignDialogProps {
   initialBusinessName?: string;
 }
 
-const PRESET_DAYS = [1, 7, 14, 30] as const;
+const PRESET_DAYS = [
+  { value: 3, label: "3 Days", sub: "Quick Sprint" },
+  { value: 7, label: "7 Days", sub: "1 Week" },
+  { value: 14, label: "14 Days", sub: "2 Weeks" },
+  { value: 30, label: "30 Days", sub: "Full Month" },
+] as const;
+
+const PRESET_POSTS_PER_DAY = [
+  { value: 1, label: "1 / Day", desc: "Steady Base" },
+  { value: 2, label: "2 / Day", desc: "Optimal Growth" },
+  { value: 3, label: "3 / Day", desc: "High Engagement" },
+  { value: 4, label: "4 / Day", desc: "Aggressive Blitz" },
+];
+
+const DEFAULT_TIME_SLOTS: Record<number, string[]> = {
+  1: ["10:00"],
+  2: ["09:30", "16:30"],
+  3: ["09:00", "14:00", "19:30"],
+  4: ["08:30", "12:30", "17:00", "20:30"],
+};
+
+function formatTimeDisplay(timeStr: string): string {
+  if (!timeStr) return "";
+  const match = timeStr.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return timeStr;
+  let hour = parseInt(match[1], 10);
+  const min = match[2];
+  const ampm = hour >= 12 ? "PM" : "AM";
+  if (hour > 12) hour -= 12;
+  if (hour === 0) hour = 12;
+  return `${hour.toString().padStart(2, "0")}:${min} ${ampm}`;
+}
 
 export default function AutonomousCampaignDialog({
   open,
@@ -71,6 +105,7 @@ export default function AutonomousCampaignDialog({
   const queryClient = useQueryClient();
 
   const [days, setDays] = useState<number>(defaultDays);
+  const [postsPerDay, setPostsPerDay] = useState<number>(1);
   const [customDays, setCustomDays] = useState<string>("");
   const [isCustom, setIsCustom] = useState<boolean>(false);
   const [businessName, setBusinessName] = useState<string>(initialBusinessName);
@@ -78,6 +113,9 @@ export default function AutonomousCampaignDialog({
   const [audience, setAudience] = useState<string>(initialAudience);
   const [competitors, setCompetitors] = useState<string>("");
   const [draftAd, setDraftAd] = useState<boolean>(true);
+  const [generateImages, setGenerateImages] = useState<boolean>(true);
+  const [postStatus, setPostStatus] = useState<"queue" | "draft">("queue");
+  const [customTimes, setCustomTimes] = useState<string[]>(["10:00"]);
   const [result, setResult] = useState<any | null>(null);
   const [expandedPostIdx, setExpandedPostIdx] = useState<number | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
@@ -85,6 +123,35 @@ export default function AutonomousCampaignDialog({
   const [inlineTab, setInlineTab] = useState<Record<number, "caption" | "media" | "script">>({});
   const [activeSlide, setActiveSlide] = useState<Record<number, number>>({});
   const [selectedChannelIds, setSelectedChannelIds] = useState<string[]>([]);
+
+  // Keep customTimes synced when postsPerDay changes
+  useEffect(() => {
+    setCustomTimes((prev) => {
+      const defaults = DEFAULT_TIME_SLOTS[postsPerDay] || ["10:00"];
+      const next: string[] = [];
+      for (let i = 0; i < postsPerDay; i++) {
+        next.push(prev[i] || defaults[i] || "10:00");
+      }
+      return next;
+    });
+  }, [postsPerDay]);
+
+  const updateTimeSlot = (index: number, newTime: string) => {
+    if (!newTime) return;
+    setCustomTimes((prev) => {
+      const copy = [...prev];
+      copy[index] = newTime;
+      return copy;
+    });
+  };
+
+  const resetToDefaultTimes = () => {
+    const defaults = DEFAULT_TIME_SLOTS[postsPerDay] || ["10:00"];
+    setCustomTimes([...defaults]);
+    toast.success("Reset to AI peak engagement times");
+  };
+
+  const activeFormattedTimes = customTimes.slice(0, postsPerDay).map((t) => formatTimeDisplay(t));
 
   // Load connected channels for channel selection filter
   const { data: channelsData } = useQuery({
@@ -142,12 +209,32 @@ export default function AutonomousCampaignDialog({
     }
   }, [brandData, businessName, niche, audience, competitors]);
 
-  const activeDays = isCustom ? Math.max(1, parseInt(customDays, 10) || 1) : days;
+  const [isCustomMix, setIsCustomMix] = useState(false);
+  const [customReels, setCustomReels] = useState(3);
+  const [customImages, setCustomImages] = useState(2);
+  const [customCarousels, setCustomCarousels] = useState(2);
 
-  // Calculate format breakdown
-  const reelsCount = Math.max(0, Math.floor(activeDays / 3) + (activeDays % 3 >= 1 ? 1 : 0));
-  const carouselsCount = Math.max(0, Math.floor(activeDays / 3));
-  const imagePostsCount = Math.max(0, activeDays - reelsCount - carouselsCount);
+  const autoDays = isCustom ? Math.max(1, parseInt(customDays, 10) || 1) : days;
+  const totalBasePosts = autoDays * postsPerDay;
+  const autoReels = Math.max(0, Math.floor(totalBasePosts / 3) + (totalBasePosts % 3 >= 1 ? 1 : 0));
+  const autoCarousels = Math.max(0, Math.floor(totalBasePosts / 3));
+  const autoImages = Math.max(0, totalBasePosts - autoReels - autoCarousels);
+
+  const reelsCount = isCustomMix ? customReels : autoReels;
+  const imagePostsCount = isCustomMix ? customImages : autoImages;
+  const carouselsCount = isCustomMix ? customCarousels : autoCarousels;
+
+  const totalPostsToSchedule = isCustomMix
+    ? Math.max(1, customReels + customImages + customCarousels)
+    : totalBasePosts;
+
+  const dateRangePreview = (() => {
+    const now = new Date();
+    const start = now;
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (autoDays - 1));
+    const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
+    return `Today (${start.toLocaleDateString("en-US", opts)}) – ${end.toLocaleDateString("en-US", opts)}`;
+  })();
 
   const handleSelectPreset = (d: number) => {
     setDays(d);
@@ -177,9 +264,18 @@ export default function AutonomousCampaignDialog({
           niche: niche.trim() || "General Business",
           targetAudience: audience.trim() || "General Audience",
           competitors: competitors.trim() || undefined,
-          daysToSchedule: activeDays,
+          daysToSchedule: autoDays,
+          postsPerDay,
+          customTimeSlots: customTimes.slice(0, postsPerDay),
+          generateImages,
+          postStatus,
           autoDraftMetaAd: draftAd,
           selectedChannelIds: selectedChannelIds.length > 0 ? selectedChannelIds : undefined,
+          customMix: isCustomMix ? {
+            reelsCount: customReels,
+            imagePostsCount: customImages,
+            carouselsCount: customCarousels,
+          } : undefined,
         }),
       });
 
@@ -189,7 +285,7 @@ export default function AutonomousCampaignDialog({
     },
     onSuccess: (data) => {
       setResult(data);
-      toast.success(`Autonomous Campaign Scheduled: ${data.postsScheduledCount || activeDays} posts added to calendar`);
+      toast.success(`Autonomous Campaign Scheduled: ${data.postsScheduledCount || totalPostsToSchedule} posts added to calendar`);
       queryClient.invalidateQueries({ queryKey: ["scheduled-posts"] });
       queryClient.invalidateQueries({ queryKey: ["calendar-posts"] });
       queryClient.invalidateQueries({ queryKey: ["analytics-overview"] });
@@ -296,75 +392,343 @@ export default function AutonomousCampaignDialog({
 
         {!result ? (
           <div className="space-y-5 py-2">
-            {/* Duration Selector */}
-            <div className="space-y-2.5 p-3.5 rounded-xl border bg-muted/20">
+            {/* 1. Duration & Days to Schedule */}
+            <div className="space-y-3 p-3.5 rounded-xl border bg-muted/20">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                  <Calendar className="size-3.5 text-primary" /> Campaign Duration
+                  <Calendar className="size-3.5 text-primary" /> 1. Duration & Timeline
                 </Label>
-                <Badge variant="outline" className="text-xs font-medium">
-                  {activeDays} {activeDays === 1 ? "Day" : "Days"} Campaign
-                </Badge>
+                <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
+                  {autoDays} {autoDays === 1 ? "Day" : "Days"} ({dateRangePreview})
+                </span>
               </div>
 
-              {/* Presets and Custom Input */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {PRESET_DAYS.map((preset) => {
-                  const selected = !isCustom && days === preset;
+                  const selected = !isCustom && days === preset.value;
                   return (
-                    <Button
-                      key={preset}
+                    <button
+                      key={preset.value}
                       type="button"
-                      variant={selected ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => handleSelectPreset(preset)}
-                      className="text-xs font-semibold h-9"
+                      onClick={() => handleSelectPreset(preset.value)}
+                      className={cn(
+                        "flex flex-col items-center justify-center py-2 px-2.5 rounded-xl border text-xs transition-all cursor-pointer",
+                        selected
+                          ? "border-primary bg-primary/15 text-primary font-bold shadow-xs ring-1 ring-primary/30"
+                          : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-accent/40"
+                      )}
                     >
-                      {preset} {preset === 1 ? "Day" : "Days"}
-                    </Button>
+                      <span className="font-bold">{preset.label}</span>
+                      <span className="text-[10px] opacity-75">{preset.sub}</span>
+                    </button>
                   );
                 })}
-
-                {/* Custom Days Input */}
-                <div className="relative">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={90}
-                    placeholder="Custom"
-                    value={customDays}
-                    onChange={(e) => handleCustomChange(e.target.value)}
-                    className={`h-9 text-xs pr-8 ${isCustom ? "border-primary font-semibold ring-1 ring-primary" : ""}`}
-                  />
-                  <span className="absolute right-2.5 top-2.5 text-[11px] text-muted-foreground pointer-events-none">
-                    d
-                  </span>
-                </div>
               </div>
 
-              {/* Dynamic Mix Breakdown */}
-              <div className="pt-2 border-t flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">Content Distribution:</span>
-                <span className="inline-flex items-center gap-1">
-                  <Video className="size-3.5 text-blue-500" />
-                  {reelsCount} {reelsCount === 1 ? "Reel" : "Reels"}
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <FileText className="size-3.5 text-amber-500" />
-                  {imagePostsCount} {imagePostsCount === 1 ? "Image Post" : "Image Posts"}
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <LayoutGrid className="size-3.5 text-purple-500" />
-                  {carouselsCount} {carouselsCount === 1 ? "Carousel" : "Carousels"}
-                </span>
+              {/* Custom Days Input & Slider */}
+              <div className="flex items-center gap-3 pt-1">
+                <span className="text-[11px] text-muted-foreground shrink-0">Custom Days (1 – 30):</span>
+                <input
+                  type="range"
+                  min={1}
+                  max={30}
+                  value={autoDays}
+                  onChange={(e) => handleCustomChange(e.target.value)}
+                  className="w-full accent-primary h-1.5 bg-muted rounded-lg cursor-pointer"
+                />
+                <span className="text-xs font-mono font-bold text-foreground w-8 text-right">{autoDays}d</span>
               </div>
             </div>
 
-            {/* Destination Channels Filter */}
+            {/* 2. Daily Posting Frequency */}
+            <div className="space-y-3 p-3.5 rounded-xl border bg-muted/20">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                  <TrendingUp className="size-3.5 text-primary" /> 2. Daily Posting Frequency
+                </Label>
+                <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
+                  {postsPerDay} {postsPerDay === 1 ? "Post" : "Posts"} / Day
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {PRESET_POSTS_PER_DAY.map((preset) => (
+                  <button
+                    key={preset.value}
+                    type="button"
+                    onClick={() => setPostsPerDay(preset.value)}
+                    className={cn(
+                      "flex flex-col items-center justify-center py-2 px-2.5 rounded-xl border text-xs transition-all cursor-pointer",
+                      postsPerDay === preset.value
+                        ? "border-primary bg-primary/15 text-primary font-bold shadow-xs ring-1 ring-primary/30"
+                        : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-accent/40"
+                    )}
+                  >
+                    <span className="font-bold">{preset.label}</span>
+                    <span className="text-[10px] opacity-75">{preset.desc}</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Customizable Time Slots */}
+              <div className="p-3 rounded-xl bg-card border space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
+                    <span>Daily Posting Time Slots:</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetToDefaultTimes}
+                    className="text-[11px] text-primary hover:underline font-medium flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw className="size-3" /> Reset Peak Times
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                  {customTimes.slice(0, postsPerDay).map((timeVal, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between gap-2 p-2 rounded-lg border bg-background text-xs"
+                    >
+                      <div className="min-w-0">
+                        <span className="block text-[9px] uppercase font-bold text-muted-foreground">
+                          Post #{idx + 1}
+                        </span>
+                        <span className="font-bold text-primary text-[11px]">
+                          {formatTimeDisplay(timeVal)}
+                        </span>
+                      </div>
+                      <input
+                        type="time"
+                        value={timeVal}
+                        onChange={(e) => updateTimeSlot(idx, e.target.value)}
+                        className="h-7 px-1.5 rounded border bg-card text-foreground font-mono text-[11px] font-bold focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                        title={`Change time for Post #${idx + 1}`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Content Format Mix */}
+            <div className="space-y-3 p-3.5 rounded-xl border bg-muted/20">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                  <SlidersHorizontal className="size-3.5 text-primary" /> 3. Content Format Distribution
+                </Label>
+
+                {/* Mode Switcher: Auto Balanced vs Custom Mix */}
+                <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border">
+                  <button
+                    type="button"
+                    onClick={() => setIsCustomMix(false)}
+                    className={cn(
+                      "px-2.5 py-1 text-[11px] font-medium rounded-md transition-all cursor-pointer",
+                      !isCustomMix
+                        ? "bg-background text-foreground shadow-xs font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    ⚡ Auto Balanced
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsCustomMix(true);
+                      setCustomReels(reelsCount);
+                      setCustomImages(imagePostsCount);
+                      setCustomCarousels(carouselsCount);
+                    }}
+                    className={cn(
+                      "px-2.5 py-1 text-[11px] font-medium rounded-md transition-all flex items-center gap-1 cursor-pointer",
+                      isCustomMix
+                        ? "bg-background text-foreground shadow-xs font-semibold"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    <SlidersHorizontal className="size-3" /> Custom Steppers
+                  </button>
+                </div>
+              </div>
+
+              {!isCustomMix ? (
+                /* Auto Mix Breakdown */
+                <div className="p-3 rounded-xl bg-card border flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="font-semibold text-foreground">AI Rotation:</span>
+                    <span className="inline-flex items-center gap-1">
+                      <Video className="size-3.5 text-blue-500" />
+                      {reelsCount} {reelsCount === 1 ? "Reel" : "Reels"}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <FileText className="size-3.5 text-amber-500" />
+                      {imagePostsCount} {imagePostsCount === 1 ? "Image Post" : "Image Posts"}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <LayoutGrid className="size-3.5 text-purple-500" />
+                      {carouselsCount} {carouselsCount === 1 ? "Carousel" : "Carousels"}
+                    </span>
+                  </div>
+                  <Badge variant="outline" className="text-[10px] font-medium">
+                    {totalPostsToSchedule} Total Posts
+                  </Badge>
+                </div>
+              ) : (
+                /* Custom Mix Stepper Controls */
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {/* Reels */}
+                    <div className="p-3 rounded-xl border bg-card flex flex-col justify-between space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 font-semibold text-xs text-foreground">
+                          <Video className="size-3.5 text-blue-500" /> Reels
+                        </div>
+                        <Badge
+                          variant={customReels === 0 ? "secondary" : "default"}
+                          className="text-[10px] h-5 px-1.5"
+                        >
+                          {customReels === 0 ? "0 (Skipped)" : `${customReels} ${customReels === 1 ? "Reel" : "Reels"}`}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground leading-tight">
+                        9:16 Video scripts & hooks. Set to 0 to skip.
+                      </p>
+                      <div className="flex items-center gap-2 pt-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="size-7 shrink-0"
+                          onClick={() => setCustomReels((prev) => Math.max(0, prev - 1))}
+                          disabled={customReels <= 0}
+                        >
+                          <Minus className="size-3" />
+                        </Button>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={30}
+                          value={customReels}
+                          onChange={(e) => setCustomReels(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                          className="h-7 text-xs text-center font-bold px-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="size-7 shrink-0"
+                          onClick={() => setCustomReels((prev) => Math.min(30, prev + 1))}
+                        >
+                          <Plus className="size-3" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Image Posts */}
+                    <div className="p-3 rounded-xl border bg-card flex flex-col justify-between space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 font-semibold text-xs text-foreground">
+                          <FileText className="size-3.5 text-amber-500" /> Image Posts
+                        </div>
+                        <Badge
+                          variant={customImages === 0 ? "secondary" : "default"}
+                          className="text-[10px] h-5 px-1.5"
+                        >
+                          {customImages === 0 ? "0 (Skipped)" : `${customImages} ${customImages === 1 ? "Post" : "Posts"}`}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground leading-tight">
+                        High-converting single image posts.
+                      </p>
+                      <div className="flex items-center gap-2 pt-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="size-7 shrink-0"
+                          onClick={() => setCustomImages((prev) => Math.max(0, prev - 1))}
+                          disabled={customImages <= 0}
+                        >
+                          <Minus className="size-3" />
+                        </Button>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={30}
+                          value={customImages}
+                          onChange={(e) => setCustomImages(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                          className="h-7 text-xs text-center font-bold px-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="size-7 shrink-0"
+                          onClick={() => setCustomImages((prev) => Math.min(30, prev + 1))}
+                        >
+                          <Plus className="size-3" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Carousels */}
+                    <div className="p-3 rounded-xl border bg-card flex flex-col justify-between space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 font-semibold text-xs text-foreground">
+                          <LayoutGrid className="size-3.5 text-purple-500" /> Carousels
+                        </div>
+                        <Badge
+                          variant={customCarousels === 0 ? "secondary" : "default"}
+                          className="text-[10px] h-5 px-1.5"
+                        >
+                          {customCarousels === 0 ? "0 (Skipped)" : `${customCarousels} ${customCarousels === 1 ? "Deck" : "Decks"}`}
+                        </Badge>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground leading-tight">
+                        5-slide educational swipe breakdown decks.
+                      </p>
+                      <div className="flex items-center gap-2 pt-1">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="size-7 shrink-0"
+                          onClick={() => setCustomCarousels((prev) => Math.max(0, prev - 1))}
+                          disabled={customCarousels <= 0}
+                        >
+                          <Minus className="size-3" />
+                        </Button>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={30}
+                          value={customCarousels}
+                          onChange={(e) => setCustomCarousels(Math.max(0, parseInt(e.target.value, 10) || 0))}
+                          className="h-7 text-xs text-center font-bold px-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="size-7 shrink-0"
+                          onClick={() => setCustomCarousels((prev) => Math.min(30, prev + 1))}
+                        >
+                          <Plus className="size-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 4. Destination Channels */}
             <div className="space-y-2.5 p-3.5 rounded-xl border bg-muted/20">
               <div className="flex items-center justify-between">
                 <Label className="text-xs font-semibold uppercase tracking-wider text-foreground flex items-center gap-1.5">
-                  <Layers className="size-3.5 text-primary" /> Target Channels
+                  <Layers className="size-3.5 text-primary" /> 4. Target Channels
                 </Label>
                 {connectedChannels.length > 0 && (
                   <div className="flex items-center gap-2">
@@ -447,7 +811,96 @@ export default function AutonomousCampaignDialog({
               )}
             </div>
 
-            {/* Active Brand Context Preview (Managed exclusively in Brand Profile) */}
+            {/* 5. Advanced Publishing & Visual Generation Options */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-3.5 rounded-xl border bg-muted/20">
+              <div className="p-3 rounded-xl border bg-card flex items-center justify-between">
+                <div className="space-y-0.5 pr-2">
+                  <Label htmlFor="auto-pilot-gen-images" className="text-xs font-semibold text-foreground flex items-center gap-1.5 cursor-pointer">
+                    <FileText className="size-3.5 text-primary" /> 8K Photorealistic Visuals
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Generate authentic photography for each post
+                  </p>
+                </div>
+                <Switch
+                  id="auto-pilot-gen-images"
+                  checked={generateImages}
+                  onCheckedChange={setGenerateImages}
+                />
+              </div>
+
+              <div className="p-3 rounded-xl border bg-card flex items-center justify-between">
+                <div className="space-y-0.5 pr-2">
+                  <Label htmlFor="auto-pilot-post-status" className="text-xs font-semibold text-foreground flex items-center gap-1.5 cursor-pointer">
+                    <Send className="size-3.5 text-primary" /> Schedule for Auto-Publish
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    {postStatus === "queue" ? "Active in Calendar Queue" : "Placed as Drafts"}
+                  </p>
+                </div>
+                <Switch
+                  id="auto-pilot-post-status"
+                  checked={postStatus === "queue"}
+                  onCheckedChange={(checked) => setPostStatus(checked ? "queue" : "draft")}
+                />
+              </div>
+
+              <div className="p-3 rounded-xl border bg-card flex items-center justify-between sm:col-span-2">
+                <div className="space-y-0.5 pr-2">
+                  <Label htmlFor="auto-pilot-draft-ad" className="text-xs font-semibold text-foreground flex items-center gap-1.5 cursor-pointer">
+                    <Sparkles className="size-3.5 text-primary" /> Stage Meta Lead Ad Campaign
+                  </Label>
+                  <p className="text-[10px] text-muted-foreground">
+                    Drafts an ad campaign from the top-performing angle ready in Meta Ads Manager
+                  </p>
+                </div>
+                <Switch
+                  id="auto-pilot-draft-ad"
+                  checked={draftAd}
+                  onCheckedChange={setDraftAd}
+                />
+              </div>
+            </div>
+
+            {/* 6. Live Scheduling Plan Summary Banner */}
+            <div className="p-4 rounded-xl bg-gradient-to-r from-primary/15 via-primary/10 to-primary/5 border border-primary/25 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <Sparkles className="size-4 text-primary" />
+                  Scheduling Plan Summary
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-medium text-muted-foreground">
+                    {autoDays} Days × {postsPerDay} Post{postsPerDay > 1 ? "s" : ""}/Day =
+                  </span>
+                  <span className="text-xs font-extrabold text-primary bg-background/90 px-3 py-1 rounded-full border border-primary/30 shadow-2xs">
+                    {totalPostsToSchedule} Total Posts
+                  </span>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-1 text-muted-foreground">
+                <div>
+                  <span className="block text-[10px] uppercase font-bold text-muted-foreground">Duration</span>
+                  <strong className="text-foreground">{autoDays} Days</strong>
+                </div>
+                <div>
+                  <span className="block text-[10px] uppercase font-bold text-muted-foreground">Frequency</span>
+                  <strong className="text-foreground">{postsPerDay} Post{postsPerDay > 1 ? "s" : ""}/day</strong>
+                </div>
+                <div>
+                  <span className="block text-[10px] uppercase font-bold text-muted-foreground">Daily Times</span>
+                  <strong className="text-foreground text-[11px] truncate block" title={activeFormattedTimes.join(", ")}>
+                    {activeFormattedTimes.join(", ")}
+                  </strong>
+                </div>
+                <div>
+                  <span className="block text-[10px] uppercase font-bold text-muted-foreground">Calendar Span</span>
+                  <strong className="text-foreground">{dateRangePreview}</strong>
+                </div>
+              </div>
+            </div>
+
+            {/* Active Brand Context Preview */}
             <div className="flex items-center justify-between text-xs px-3.5 py-2.5 rounded-xl border bg-muted/20">
               <div className="space-y-0.5 min-w-0">
                 <div className="flex items-center gap-1.5">
@@ -463,17 +916,6 @@ export default function AutonomousCampaignDialog({
               </Badge>
             </div>
 
-            {/* Options */}
-            <div className="p-3 rounded-xl border bg-muted/10 flex items-center justify-between">
-              <div className="space-y-0.5">
-                <p className="text-xs font-semibold text-foreground">Stage Meta Lead Ad Campaign</p>
-                <p className="text-[11px] text-muted-foreground">
-                  Drafts an ad campaign from the top-performing angle ready in Meta Ads Manager
-                </p>
-              </div>
-              <Switch checked={draftAd} onCheckedChange={setDraftAd} />
-            </div>
-
             {/* In-Progress Loading Indicator */}
             {isPending && (
               <div className="p-4 rounded-xl border border-primary/30 bg-primary/5 text-center space-y-2">
@@ -482,7 +924,7 @@ export default function AutonomousCampaignDialog({
                   <span>Autonomous Pipeline In Progress...</span>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Scraping competitor copy → Synthesizing viral hooks → Creating {activeDays} multi-format posts → Staging to Social Calendar
+                  Scraping competitor copy → Synthesizing viral hooks → Creating {totalPostsToSchedule} multi-format posts → Staging to Social Calendar
                 </p>
               </div>
             )}

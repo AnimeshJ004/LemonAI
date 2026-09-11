@@ -408,7 +408,9 @@ export default function ReelsStudioPage() {
         open={isScheduleOpen}
         onOpenChange={setIsScheduleOpen}
         mode="single"
-        initialTopic={script?.caption || form.topic}
+        initialTopic={form.topic}
+        initialContent={script?.caption || form.topic}
+        initialVideoUrl={videoResult?.videoUrl}
         suggestedFormat="REEL"
         researchContext={{
           niche: form.topic,

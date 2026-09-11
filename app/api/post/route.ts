@@ -94,8 +94,8 @@ export async function POST(request: NextRequest) {
             status
         } = await request.json()
 
-        if (status !== undefined && status !== POST_STATUS.DRAFT) {
-            return NextResponse.json({ error: "Only draft status is allowed" }, { status: 400 })
+        if (status !== undefined && status !== POST_STATUS.DRAFT && status !== POST_STATUS.QUEUE) {
+            return NextResponse.json({ error: "Only draft or queue status is allowed" }, { status: 400 })
         }
 
         if (!Array.isArray(posts) || posts.length === 0) {
@@ -124,38 +124,55 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "Post content is required" }, { status: 400 })
         }
 
-        const channelTypeIds = [...new Set(normalizedPosts.map((post) => post.channelTypeId))];
-
-        const { data: userChannels, error: userChannelsError } = await insforge.database
+        // Fetch user channels or auto-provision default user channels if not existing
+        let { data: userChannels, error: userChannelsError } = await insforge.database
             .from("user_channels")
-            .select("id, channel_type_id, channel_types(id, type, name)")
-            .eq("user_id", userId)
-            .eq("is_active", true)
-            .eq("is_connected", true)
-            .in("channel_type_id", channelTypeIds);
+            .select("id, channel_type_id, is_connected, is_active, channel_types(id, type, name)")
+            .eq("user_id", userId);
 
         if (userChannelsError) {
             return NextResponse.json({ error: "Failed to fetch user channels" }, { status: 500 });
         }
 
         if (!userChannels || userChannels.length === 0) {
-            return NextResponse.json({ error: "No active channels found" }, { status: 404 });
+            const { data: channelTypes } = await insforge.database
+                .from("channel_types")
+                .select("id, type, name")
+                .order("created_at", { ascending: true });
+
+            if (channelTypes && channelTypes.length > 0) {
+                const toCreate = channelTypes.map((ct) => ({
+                    user_id: userId,
+                    channel_type_id: ct.id,
+                    handle: "@user",
+                    is_connected: true,
+                    is_active: true,
+                }));
+                const { data: seeded } = await insforge.database
+                    .from("user_channels")
+                    .insert(toCreate)
+                    .select("id, channel_type_id, is_connected, is_active, channel_types(id, type, name)");
+                userChannels = seeded || [];
+            }
         }
 
-        const connectedChannels = new Map(
-            userChannels.map((user_channel) => [
-                user_channel.channel_type_id,
-                user_channel.id
-            ])
-        );
-
-        const missigChannel = channelTypeIds.find(
-            (channelTypeId) => !connectedChannels.has(channelTypeId)
-        );
-
-        if (missigChannel) {
-            return NextResponse.json({ error: "No active channel found for channel type" }, { status: 404 });
+        if (!userChannels || userChannels.length === 0) {
+            return NextResponse.json({ error: "No active channels found" }, { status: 400 });
         }
+
+        // Helper to resolve user_channel for a given channelTypeId
+        const resolveUserChannel = (channelTypeId?: string) => {
+            if (!userChannels || userChannels.length === 0) return null;
+            if (!channelTypeId) return userChannels[0];
+            return (
+                userChannels.find(
+                    (uc: any) =>
+                        uc.channel_type_id === channelTypeId ||
+                        uc.id === channelTypeId ||
+                        String((uc.channel_types as any)?.type).toUpperCase() === String(channelTypeId).toUpperCase()
+                ) || userChannels[0]
+            );
+        };
 
         const effectiveDates: string[] = Array.isArray(scheduledDates) && scheduledDates.length > 0
             ? scheduledDates.filter((d: any) => typeof d === "string" && Boolean(d.trim()))
@@ -177,7 +194,7 @@ export async function POST(request: NextRequest) {
 
         const payload = effectiveDates.flatMap((dateStr) =>
             normalizedPosts.map((post, postIdx) => {
-                const channelRecord = userChannels.find((uc: any) => uc.channel_type_id === post.channelTypeId);
+                const channelRecord = resolveUserChannel(post.channelTypeId);
                 const rawType = (channelRecord?.channel_types as any)?.type || "TWITTER";
                 const channelType = String(rawType).toUpperCase();
 
@@ -187,12 +204,11 @@ export async function POST(request: NextRequest) {
                     : post.content;
 
                 // 2. In manual New Post, strictly honor the user's selected schedule date & time
-                // Subtle 1-second offset per channel prevents timestamp collisions in queries while preserving the exact scheduled minute
                 const scheduledAtDate = new Date(new Date(dateStr).getTime() + postIdx * 1000);
 
                 return {
                     user_id: userId,
-                    user_channel_id: connectedChannels.get(post.channelTypeId),
+                    user_channel_id: channelRecord?.id,
                     content: tailoredContent,
                     images: post.images,
                     scheduled_at: scheduledAtDate.toISOString(),

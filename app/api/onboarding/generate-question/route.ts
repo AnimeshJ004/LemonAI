@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { getInsforgeAdminClient } from "@/lib/insforge-server";
+import { callResilientCompletion } from "@/lib/ai-gateway";
 
 /**
  * POST /api/onboarding/generate-question
- * Uses Gemini via InsForge AI gateway to generate a smart contextual
+ * Uses Gemini / Groq via AI gateway to generate a smart contextual
  * follow-up question based on previous answers from the onboarding wizard.
  *
  * Body: {
@@ -50,15 +50,17 @@ Rules:
 Respond with ONLY a valid JSON object in this exact format (no markdown, no extra text):
 {"question": "...", "placeholder": "e.g. ...", "hint": "Why we ask: ..."}`;
 
-    const admin = getInsforgeAdminClient();
-
-    const completion = await admin.ai.chat.completions.create({
-      model: "google/gemini-3.8-flash",
+    const completion = await callResilientCompletion<{
+      question: string;
+      placeholder: string;
+      hint: string;
+    }>({
+      jsonMode: true,
       messages: [{ role: "user", content: prompt }],
       maxTokens: 150,
     });
 
-    const raw = completion.choices[0]?.message?.content?.trim() || "";
+    const raw = completion.content?.trim() || "";
 
     // Parse the JSON response
     let parsed: { question: string; placeholder: string; hint: string };

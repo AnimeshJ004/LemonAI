@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getInsforgeAdminClient, getInsforgeServerClient } from "@/lib/insforge-server";
 import { isValidUuid, normalizeSentiment } from "@/lib/social-comments-service";
+import { callResilientCompletion } from "@/lib/ai-gateway";
 
 export const maxDuration = 30;
 
@@ -48,11 +49,14 @@ export async function POST(req: NextRequest) {
   };
 
   try {
-    const { insforge } = await getInsforgeServerClient();
-
-    // AI: Analyze sentiment and generate reply
-    const completion = await insforge.ai.chat.completions.create({
-      model: "google/gemini-3.8-flash",
+    // AI: Analyze sentiment and generate reply with InsForge + Groq fallback
+    const completion = await callResilientCompletion<{
+      sentiment: string;
+      reply: string;
+      shouldSendDM: boolean;
+      dmMessage: string;
+    }>({
+      jsonMode: true,
       messages: [{
         role: "user",
         content: `Analyze this social media comment and respond professionally in brand voice.
@@ -69,15 +73,12 @@ Return ONLY valid JSON:
       }]
     });
 
-    const raw = completion.choices[0]?.message?.content || "{}";
-    const clean = raw.replace(/```(?:json)?\s*|\s*```/g, "").trim();
-    const parsed = JSON.parse(clean);
-    if (parsed && typeof parsed === "object") {
+    if (completion.data && typeof completion.data === "object") {
       aiResult = {
-        sentiment: parsed.sentiment || "NEUTRAL",
-        reply: parsed.reply || "Thank you for reaching out! 🙏",
-        shouldSendDM: Boolean(parsed.shouldSendDM),
-        dmMessage: parsed.dmMessage || ""
+        sentiment: completion.data.sentiment || "NEUTRAL",
+        reply: completion.data.reply || "Thank you for reaching out! 🙏",
+        shouldSendDM: Boolean(completion.data.shouldSendDM),
+        dmMessage: completion.data.dmMessage || ""
       };
     }
   } catch (err) {

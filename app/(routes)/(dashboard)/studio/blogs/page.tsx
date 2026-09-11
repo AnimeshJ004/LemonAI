@@ -318,7 +318,8 @@ export default function BlogStudioPage() {
         open={isScheduleOpen}
         onOpenChange={setIsScheduleOpen}
         mode="single"
-        initialTopic={selectedSnippet || blog?.title || form.topic}
+        initialTopic={form.topic}
+        initialContent={selectedSnippet || (blog?.title ? `${blog.title}\n\n${blog.summary || ""}` : form.topic)}
         suggestedFormat="FEED_POST"
         researchContext={{
           niche: form.topic,

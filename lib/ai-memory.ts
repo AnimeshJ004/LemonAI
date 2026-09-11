@@ -167,8 +167,10 @@ export function buildMemoryPromptBlock(memories: AIMemoryRow[]): string {
   return `\n\n=== PERSONALIZED AI MEMORY (learned from this user's past interactions) ===\n${sections.join("\n\n")}\n=== END MEMORY ===\n`;
 }
 
+import { callGroqChatCompletion, isGroqConfigured } from "@/lib/groq-client";
+
 /**
- * Generate a 1-line insight from an edit using a minimal Gemini call.
+ * Generate a 1-line insight from an edit using a minimal Gemini / Groq call.
  * This is extremely cheap (~100 tokens max).
  */
 async function generateInsight(
@@ -177,8 +179,7 @@ async function generateInsight(
   feedbackText: string | undefined,
   insforge: any
 ): Promise<string | null> {
-  try {
-    const prompt = `A user edited an AI-generated social media post.
+  const prompt = `A user edited an AI-generated social media post.
 
 ORIGINAL: "${original.slice(0, 300)}"
 EDITED TO: "${edited.slice(0, 300)}"${feedbackText ? `\nUSER COMMENT: "${feedbackText}"` : ""}
@@ -188,19 +189,38 @@ Examples: "User prefers shorter sentences" / "User wants casual tone, not formal
 
 Answer:`;
 
-    const completion = await insforge.ai.chat.completions.create({
-      model: "google/gemini-3.8-flash",
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 60,
-    });
+  try {
+    if (insforge?.ai?.chat?.completions) {
+      const completion = await insforge.ai.chat.completions.create({
+        model: "google/gemini-3.8-flash",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 60,
+      });
 
-    const raw = completion.choices[0]?.message?.content?.trim() || "";
-    // Clean any quotes or extra formatting
-    return raw.replace(/^["']|["']$/g, "").trim() || null;
+      const raw = completion.choices[0]?.message?.content?.trim() || "";
+      if (raw) {
+        return raw.replace(/^["']|["']$/g, "").trim() || null;
+      }
+    }
   } catch {
-    // Fallback: derive simple insight without AI
-    return deriveEditInsight(original, edited);
+    // InsForge failed, try Groq
   }
+
+  if (isGroqConfigured()) {
+    try {
+      const groqRes = await callGroqChatCompletion({
+        model: "openai/gpt-oss-20b",
+        messages: [{ role: "user", content: prompt }],
+        maxTokens: 60,
+      });
+      if (groqRes.success && groqRes.content) {
+        return groqRes.content.trim().replace(/^["']|["']$/g, "").trim() || null;
+      }
+    } catch {}
+  }
+
+  // Fallback: derive simple insight without AI
+  return deriveEditInsight(original, edited);
 }
 
 /**

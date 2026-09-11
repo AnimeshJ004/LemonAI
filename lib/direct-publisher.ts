@@ -759,14 +759,18 @@ async function publishToBlueskyDirect({
           const arrayBuffer = await fileRes.arrayBuffer();
           const contentType =
             fileRes.headers.get("content-type") || "image/jpeg";
-          const uploadRes = await agent.uploadBlob(
-            new Uint8Array(arrayBuffer),
-            { encoding: contentType }
-          );
-          uploadedImages.push({
-            image: uploadRes.data.blob,
-            alt: "",
-          });
+          
+          // Bluesky app.bsky.embed.images strictly accepts image/* mime types
+          if (contentType.startsWith("image/")) {
+            const uploadRes = await agent.uploadBlob(
+              new Uint8Array(arrayBuffer),
+              { encoding: contentType }
+            );
+            uploadedImages.push({
+              image: uploadRes.data.blob,
+              alt: "",
+            });
+          }
         }
       } catch (imgErr) {
         logger.warn("Bluesky image upload notice:", imgErr);
