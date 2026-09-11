@@ -36,14 +36,12 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
     tokenUrl: "https://graph.facebook.com/v22.0/oauth/access_token",
     profileUrl: "https://graph.facebook.com/v22.0/me?fields=id,name,picture",
     scope: [
+      "public_profile",
       "instagram_basic",
       "instagram_content_publish",
-      "instagram_manage_comments",   // Required: post replies to comments
-      "instagram_manage_messages",   // Required: send private DMs
       "pages_show_list",
       "pages_read_engagement",
       "pages_manage_posts",
-      "pages_read_user_content",     // Required: read Page published posts and user comments
     ],
   },
   [ChannelTypeEnum.YOUTUBE]: {
