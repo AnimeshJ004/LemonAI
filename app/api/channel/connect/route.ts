@@ -208,6 +208,7 @@ export async function POST(request: NextRequest) {
                 verifiedAccountId = providerAccountId.trim();
             }
 
+            try {
                 // Try 0: Direct query on Account ID (if provided)
                 if (verifiedAccountId) {
                     try {
