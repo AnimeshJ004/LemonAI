@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import { getInsforgeAdminClient } from "./insforge-server";
 
 export type LeadStage =
@@ -210,19 +211,32 @@ export async function getLeadById(leadId: string, userId?: string): Promise<Lead
   return localLead || null;
 }
 
-export async function createLead(payload: Partial<Lead> & { user_id: string }): Promise<Lead> {
+export async function createLead(
+  payload: Partial<Lead> & {
+    user_id: string;
+    company?: string;
+    notes?: string;
+  }
+): Promise<Lead> {
   const now = new Date().toISOString();
+  const leadId = payload.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload.id)
+    ? payload.id
+    : crypto.randomUUID();
   const newLead: Lead = {
-    id: payload.id || `lead-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    id: leadId,
     user_id: payload.user_id,
     name: payload.name || "Anonymous Lead",
     email: payload.email || null,
     phone: payload.phone || null,
     source: payload.source || "website",
     stage: payload.stage || "new",
-    score: payload.score ?? 0,
+    score: payload.score ?? 5,
     deal_value: payload.deal_value ?? 0,
-    metadata: payload.metadata || {},
+    metadata: {
+      ...(payload.metadata || {}),
+      ...(payload.company ? { company: payload.company } : {}),
+      ...(payload.notes ? { notes: payload.notes } : {}),
+    },
     created_at: now,
     updated_at: now,
   };
@@ -437,8 +451,9 @@ export async function createConversation(data: {
   is_ai_active?: boolean;
 }): Promise<CRMConversation> {
   const now = new Date().toISOString();
+  const convId = crypto.randomUUID();
   const newConv: CRMConversation = {
-    id: `conv-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    id: convId,
     user_id: data.user_id,
     lead_id: data.lead_id || null,
     channel: data.channel,
@@ -472,8 +487,9 @@ export async function addMessage(data: {
   content: string;
 }): Promise<CRMMessage> {
   const now = new Date().toISOString();
+  const msgId = crypto.randomUUID();
   const newMsg: CRMMessage = {
-    id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    id: msgId,
     conversation_id: data.conversation_id,
     sender_type: data.sender_type,
     content: data.content,
@@ -566,8 +582,9 @@ export async function recordActivity(params: {
   metadata?: any;
 }): Promise<CRMActivity> {
   const now = new Date().toISOString();
+  const actId = crypto.randomUUID();
   const activity: CRMActivity = {
-    id: `act-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    id: actId,
     user_id: params.user_id,
     lead_id: params.lead_id || null,
     type: params.type,

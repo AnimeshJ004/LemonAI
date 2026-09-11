@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
                 .select("*")
                 .order("created_at", { ascending: true });
 
-            channelTypes = typesRes.data ?? [];
+            channelTypes = (typesRes.data ?? []).filter((ct: any) => ct.type !== 'TIKTOK');
             if (channelTypes.length === 0) {
                 const defaultChannelTypes = [
                     { type: 'TWITTER', name: 'Twitter / X', color: '#000000', character_limit: 280 },
@@ -33,8 +33,7 @@ export async function GET(request: NextRequest) {
                     { type: 'THREADS', name: 'Threads', color: '#000000', character_limit: 500 },
                     { type: 'FACEBOOK', name: 'Facebook', color: '#1877F2', character_limit: 63206 },
                     { type: 'BLUESKY', name: 'Bluesky', color: '#1285fe', character_limit: 300 },
-                    { type: 'YOUTUBE', name: 'YouTube', color: '#FF0000', character_limit: 100 },
-                    { type: 'TIKTOK', name: 'Tiktok', color: '#000000', character_limit: 100 }
+                    { type: 'YOUTUBE', name: 'YouTube', color: '#FF0000', character_limit: 100 }
                 ];
 
                 const seedRes = await insforge.database
@@ -42,7 +41,7 @@ export async function GET(request: NextRequest) {
                     .insert(defaultChannelTypes)
                     .select();
                 if (seedRes.data && seedRes.data.length > 0) {
-                    channelTypes = seedRes.data;
+                    channelTypes = seedRes.data.filter((ct: any) => ct.type !== 'TIKTOK');
                 }
             }
             cachedChannelTypes = channelTypes;

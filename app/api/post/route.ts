@@ -105,7 +105,8 @@ export async function POST(request: NextRequest) {
         const normalizedPosts = posts.filter((post) => !!post).map((post) => ({
             channelTypeId: post.channelTypeId,
             content: post.content,
-            images: post.images || []
+            images: post.images || [],
+            scheduledAt: post.scheduledAt || null,
         }))
         if (normalizedPosts.length === 0) {
             return NextResponse.json({ error: "No valid posts provided" }, { status: 400 })
@@ -190,7 +191,6 @@ export async function POST(request: NextRequest) {
             .maybeSingle();
 
         const postStatus = status === POST_STATUS.DRAFT ? POST_STATUS.DRAFT : POST_STATUS.QUEUE;
-        const isMultiChannel = normalizedPosts.length > 1;
 
         const payload = effectiveDates.flatMap((dateStr) =>
             normalizedPosts.map((post, postIdx) => {
@@ -198,13 +198,12 @@ export async function POST(request: NextRequest) {
                 const rawType = (channelRecord?.channel_types as any)?.type || "TWITTER";
                 const channelType = String(rawType).toUpperCase();
 
-                // 1. Silently adapt caption to this specific social media platform
-                const tailoredContent = isMultiChannel
-                    ? adaptCaptionForPlatform(post.content, channelType, brand || undefined)
-                    : post.content;
+                // Respect the tailored caption from the UI/client
+                const tailoredContent = post.content;
 
-                // 2. In manual New Post, strictly honor the user's selected schedule date & time
-                const scheduledAtDate = new Date(new Date(dateStr).getTime() + postIdx * 1000);
+                // Support per-channel custom scheduledAt timestamp or default to global scheduledAt dateStr
+                const targetScheduledTime = post.scheduledAt || dateStr;
+                const scheduledAtDate = new Date(new Date(targetScheduledTime).getTime() + (post.scheduledAt ? 0 : postIdx * 1000));
 
                 return {
                     user_id: userId,

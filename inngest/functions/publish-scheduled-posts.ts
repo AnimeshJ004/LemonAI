@@ -242,15 +242,6 @@ export const publishScheduledPost = inngest.createFunction(
                         logger
                     });
                 }
-
-                if(providerType === ChannelTypeEnum.TIKTOK){
-                    return publishToTikTok({
-                        accessToken: currentAccessToken,
-                        content: post.content,
-                        images: post.images,
-                        logger
-                    });
-                }
                 
                 throw new Error(`Unsupported provider type: ${providerType}`)
             })
@@ -695,48 +686,33 @@ async function publishToInstagram({
     logger: any;
 }) {
     let resolvedAccountId = instagramAccountId;
+    let effectiveToken = accessToken;
 
-    // Auto-discover Instagram Account ID if missing from user_channels record
+    // Auto-discover Instagram Account ID & Page Access Token
+    try {
+        const accRes = await fetch(`https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${encodeURIComponent(accessToken)}`);
+        if (accRes.ok) {
+            const accData = await accRes.json();
+            const pageWithIg = accData?.data?.find((p: any) => p.instagram_business_account?.id);
+            if (pageWithIg?.instagram_business_account?.id) {
+                resolvedAccountId = pageWithIg.instagram_business_account.id;
+                if (pageWithIg.access_token) {
+                    effectiveToken = pageWithIg.access_token;
+                }
+            }
+        }
+    } catch {}
+
     if (!resolvedAccountId) {
-        logger.info("Instagram account ID not in record, auto-resolving from token...");
         try {
-            const meRes = await fetch(`https://graph.facebook.com/v21.0/me?fields=id,instagram_business_account&access_token=${encodeURIComponent(accessToken)}`);
+            const meRes = await fetch(`https://graph.facebook.com/v22.0/me?fields=id,instagram_business_account{id,username}&access_token=${encodeURIComponent(accessToken)}`);
             if (meRes.ok) {
                 const meData = await meRes.json();
                 if (meData?.instagram_business_account?.id) {
                     resolvedAccountId = meData.instagram_business_account.id;
-                } else if (meData?.id) {
-                    resolvedAccountId = meData.id;
                 }
             }
         } catch {}
-
-        if (!resolvedAccountId) {
-            try {
-                const accRes = await fetch(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account&access_token=${encodeURIComponent(accessToken)}`);
-                if (accRes.ok) {
-                    const accData = await accRes.json();
-                    const pageWithIg = accData?.data?.find((p: any) => p.instagram_business_account?.id);
-                    if (pageWithIg?.instagram_business_account?.id) {
-                        resolvedAccountId = pageWithIg.instagram_business_account.id;
-                    } else if (accData?.data?.[0]?.id) {
-                        resolvedAccountId = accData.data[0].id;
-                    }
-                }
-            } catch {}
-        }
-
-        if (!resolvedAccountId) {
-            try {
-                const igRes = await fetch(`https://graph.instagram.com/me?fields=id&access_token=${encodeURIComponent(accessToken)}`);
-                if (igRes.ok) {
-                    const igData = await igRes.json();
-                    if (igData?.id) {
-                        resolvedAccountId = igData.id;
-                    }
-                }
-            } catch {}
-        }
     }
 
     if (!resolvedAccountId) {
@@ -755,17 +731,17 @@ async function publishToInstagram({
             media_type: "REELS",
             video_url: mediaUrl,
             caption: content,
-            access_token: accessToken,
+            access_token: effectiveToken,
         }
         : {
             image_url: mediaUrl,
             caption: content,
-            access_token: accessToken,
+            access_token: effectiveToken,
         };
 
     // Step 1: Create Instagram Media Container
     const createRes = await fetch(
-        `https://graph.facebook.com/v21.0/${resolvedAccountId}/media`,
+        `https://graph.facebook.com/v22.0/${resolvedAccountId}/media`,
         {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -793,7 +769,7 @@ async function publishToInstagram({
             await new Promise((r) => setTimeout(r, 2500));
             try {
                 const statusRes = await fetch(
-                    `https://graph.facebook.com/v21.0/${containerId}?fields=status_code,status&access_token=${encodeURIComponent(accessToken)}`
+                    `https://graph.facebook.com/v22.0/${containerId}?fields=status_code,status&access_token=${encodeURIComponent(effectiveToken)}`
                 );
                 if (statusRes.ok) {
                     const statusData = await statusRes.json();
@@ -816,13 +792,13 @@ async function publishToInstagram({
 
     // Step 2: Publish Container
     const publishRes = await fetch(
-        `https://graph.facebook.com/v21.0/${resolvedAccountId}/media_publish`,
+        `https://graph.facebook.com/v22.0/${resolvedAccountId}/media_publish`,
         {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 creation_id: containerId,
-                access_token: accessToken,
+                access_token: effectiveToken,
             }),
         }
     );
@@ -835,7 +811,7 @@ async function publishToInstagram({
     // Query Meta Graph API for authentic public permalink / shortcode
     try {
         const permalinkRes = await fetch(
-            `https://graph.facebook.com/v21.0/${publishData.id}?fields=permalink,shortcode&access_token=${encodeURIComponent(accessToken)}`
+            `https://graph.facebook.com/v22.0/${publishData.id}?fields=permalink,shortcode&access_token=${encodeURIComponent(effectiveToken)}`
         );
         if (permalinkRes.ok) {
             const permalinkData = await permalinkRes.json();
@@ -1066,66 +1042,6 @@ async function publishToYouTube({
         return `https://youtube.com/channel/${channelId}`;
     }
     return cleanHandle ? `https://youtube.com/@${cleanHandle}` : "https://youtube.com";
-}
-
-async function publishToTikTok({
-    accessToken,
-    content,
-    images,
-    logger
-}: {
-    accessToken: string;
-    content: string;
-    images?: ImageObject[];
-    logger: any;
-}) {
-    logger.info("Publishing to TikTok...", { content, mediaCount: images?.length });
-
-    const mediaUrl = images?.[0]?.url;
-    if (!mediaUrl) {
-        throw new Error("TikTok requires a video or image media file to publish");
-    }
-
-    try {
-        // Direct Post to TikTok Content Posting API v2
-        const res = await fetch("https://open.tiktokapis.com/v2/post/publish/video/init/", {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${accessToken}`,
-                "Content-Type": "application/json; charset=UTF-8",
-            },
-            body: JSON.stringify({
-                post_info: {
-                    title: content.slice(0, 150),
-                    privacy_level: "PUBLIC_TO_EVERYONE",
-                    disable_duet: false,
-                    disable_comment: false,
-                    disable_stitch: false,
-                },
-                source_info: {
-                    source: "PULL_FROM_URL",
-                    video_url: mediaUrl,
-                },
-            }),
-        });
-
-        const data = await res.json();
-        if (!res.ok || data?.error?.code !== "ok") {
-            const errMsg = data?.error?.message || JSON.stringify(data);
-            logger.warn("TikTok publishing API returned notice:", { errMsg });
-            // If sandbox or testing creator account:
-            if (errMsg.includes("scope") || errMsg.includes("permission")) {
-                return `https://www.tiktok.com/upload?caption=${encodeURIComponent(content.slice(0, 100))}`;
-            }
-            throw new Error(`TikTok API Error: ${errMsg}`);
-        }
-
-        const publishId = data?.data?.publish_id;
-        return `https://www.tiktok.com/@creator/video/${publishId || Date.now()}`;
-    } catch (err: any) {
-        logger.error("TikTok publish error:", { err });
-        throw err;
-    }
 }
 
 

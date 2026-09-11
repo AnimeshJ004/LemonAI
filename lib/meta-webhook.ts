@@ -3,6 +3,13 @@ import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { callResilientCompletion } from "@/lib/ai-gateway";
 import { decrypt } from "@/lib/encryption";
 import { processSingleComment } from "@/lib/social-comments-service";
+import { socialDMService } from "@/lib/social-dm-service";
+import {
+  createLead,
+  createConversation,
+  addMessage,
+  recordActivity,
+} from "@/lib/crm-service";
 import crypto from "crypto";
 
 export const maxDuration = 60;
@@ -220,52 +227,69 @@ Customer message: "${msgText}"`,
           }),
         });
 
-        // Persist DM thread in social_dms table
+        // Persist DM thread in social_dms table and local fallback
         try {
-          await admin.database.from("social_dms").upsert(
-            {
-              user_id: userId,
-              platform: "FACEBOOK",
-              conversation_id: `dm_${senderId}`,
-              sender_id: senderId,
-              sender_name: `Customer (${senderId.slice(-4)})`,
-              last_message: msgText,
-              last_message_at: new Date().toISOString(),
-              last_reply: sendRes.ok ? replyText : undefined,
-              last_replied_at: sendRes.ok ? new Date().toISOString() : undefined,
-              is_read: true,
-              messages_count: 2,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "conversation_id" }
-          );
+          await socialDMService.upsertDM({
+            user_id: userId,
+            platform: "FACEBOOK",
+            conversation_id: `dm_${senderId}`,
+            sender_id: senderId,
+            sender_name: `Customer (${senderId.slice(-4)})`,
+            last_message: msgText,
+            last_message_at: new Date().toISOString(),
+            last_reply: sendRes.ok ? replyText : undefined,
+            last_replied_at: sendRes.ok ? new Date().toISOString() : undefined,
+            is_read: true,
+            messages_count: 2,
+          });
 
           // If buying / inquiry intent, record lead in CRM and log activity
           const lower = msgText.toLowerCase();
-          if (lower.includes("price") || lower.includes("cost") || lower.includes("buy") || lower.includes("quote") || lower.includes("hire") || lower.includes("book")) {
-            const { data: newLead } = await admin.database.from("leads").insert({
+          if (lower.includes("price") || lower.includes("cost") || lower.includes("buy") || lower.includes("quote") || lower.includes("hire") || lower.includes("book") || lower.includes("demo") || lower.includes("interested")) {
+            const lead = await createLead({
               user_id: userId,
               name: `DM Prospect (${senderId.slice(-4)})`,
               source: "meta_dm",
               stage: "new",
               score: 8,
               deal_value: 2000,
+              notes: `Inbound DM: "${msgText}"`,
               metadata: {
                 sender_id: senderId,
                 inquiry: msgText,
               },
-            }).select("id").maybeSingle();
+            });
 
-            if (newLead?.id) {
-              await admin.database.from("crm_activities").insert({
-                user_id: userId,
-                lead_id: newLead.id,
-                type: "direct_message",
-                title: "Direct message received via Meta",
-                description: `Inquiry: "${msgText.slice(0, 100)}..."`,
-                metadata: { sender_id: senderId },
+            const conv = await createConversation({
+              user_id: userId,
+              lead_id: lead.id,
+              channel: "facebook",
+              is_ai_active: true,
+            });
+
+            if (conv?.id) {
+              await addMessage({
+                conversation_id: conv.id,
+                sender_type: "lead",
+                content: msgText,
               });
+              if (sendRes.ok && replyText) {
+                await addMessage({
+                  conversation_id: conv.id,
+                  sender_type: "ai_assistant",
+                  content: replyText,
+                });
+              }
             }
+
+            await recordActivity({
+              user_id: userId,
+              lead_id: lead.id,
+              type: "direct_message",
+              title: "Direct message received via Meta",
+              description: `Inquiry: "${msgText.slice(0, 100)}..."`,
+              metadata: { sender_id: senderId },
+            });
           }
         } catch (storageErr) {
           console.warn("[Meta Webhook] DM persistence notice:", storageErr);

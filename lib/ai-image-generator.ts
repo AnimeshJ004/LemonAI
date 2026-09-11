@@ -212,7 +212,7 @@ export async function generateAdCreativeImage(options: GenerateImageOptions): Pr
 
 /**
  * Generate 9:16 Vertical Video Reel via Replicate (Wan 2.2 S2V / Wan 2.1)
- * Produces commercial cinematic video reels for Instagram Reels / Shorts / TikTok.
+ * Produces commercial cinematic video reels for Instagram Reels / YouTube Shorts.
  */
 export async function generateAdCreativeVideo(options: { prompt: string; userId?: string }): Promise<GeneratedVideoResult> {
   const startTime = Date.now();

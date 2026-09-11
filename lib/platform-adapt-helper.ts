@@ -1,4 +1,22 @@
-import { formatBrandHashtags, cleanTag } from "@/lib/brand-helper";
+export function cleanTag(str?: string, fallback: string = ""): string {
+  if (!str) return fallback;
+  return str.replace(/[^a-zA-Z0-9]/g, "");
+}
+
+export function formatBrandHashtags(brandProfile?: any): string[] {
+  const brandName = cleanTag(brandProfile?.business_name, "Brand");
+  const niche = cleanTag(brandProfile?.niche, "Business");
+
+  const tags = new Set<string>();
+  if (brandName) tags.add(`#${brandName}`);
+  if (niche) tags.add(`#${niche}`);
+  if (niche && niche.length > 2) tags.add(`#${niche}Tips`);
+  if (brandName && niche) tags.add(`#${brandName}${niche}`);
+  tags.add(`#${niche || "Business"}Growth`);
+  tags.add(`#Trending`);
+
+  return Array.from(tags).slice(0, 5);
+}
 
 export interface PlatformTimeSlot {
   timeSlot: string;
@@ -164,7 +182,6 @@ export function adaptCaptionForPlatform(
     const tagCluster = igTags.join(" ");
 
     let igBody = cleaned;
-
     if (!igBody.toLowerCase().includes("save") && !igBody.toLowerCase().includes("share") && !igBody.toLowerCase().includes("comment")) {
       igBody += "\n\n💡 Save this post for later 📌 & share with someone who needs this!";
     }
@@ -172,46 +189,29 @@ export function adaptCaptionForPlatform(
     return `${igBody}\n\n.\n.\n${tagCluster}`.trim();
   }
 
-  // 2. BLUESKY
-  // Authentic, candid conversational take. Strictly <= 300 characters, no hashtag clutter.
-  if (type.includes("bluesky")) {
-    let bskyBody = cleaned;
+  // 2. THREADS
+  // Casual, authentic hot-take or conversational insight, open discussion prompt
+  if (type.includes("threads")) {
+    const threadTags = Array.from(tagPool).slice(0, 2).join(" ");
+    let thBody = cleaned;
 
-    // Bluesky has strict 300 char limit
-    const maxLen = 295;
-    if (bskyBody.length > maxLen) {
-      const truncated = bskyBody.slice(0, maxLen);
-      const lastPeriod = Math.max(truncated.lastIndexOf("."), truncated.lastIndexOf("?"), truncated.lastIndexOf("!"));
-      if (lastPeriod > maxLen * 0.6) {
-        bskyBody = truncated.slice(0, lastPeriod + 1).trim();
-      } else {
-        const lastSpace = truncated.lastIndexOf(" ");
-        bskyBody = (lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated) + "...";
-      }
+    // Remove corporate boilerplate and add candid conversational hook if missing
+    if (!thBody.includes("?")) {
+      thBody += "\n\nWhat are your thoughts on this? Drop your perspective 👇";
     }
-    return bskyBody.trim();
+    return `${thBody}${threadTags ? `\n\n${threadTags}` : ""}`.trim();
   }
 
-  // 3. TWITTER / X
-  // Punchy, provocative hook, bold body, strict <= 280 chars, 1-2 sharp hashtags
-  if (type.includes("twitter") || type.includes("x")) {
-    const twitterTags = Array.from(tagPool).slice(0, 2).join(" ");
-    const tagSuffix = twitterTags ? `\n\n${twitterTags}` : "";
-    const maxBodyLen = 280 - tagSuffix.length - 2;
+  // 3. FACEBOOK
+  // Community friendly, conversational tone, open discussion prompt, 1-2 hashtags
+  if (type.includes("facebook")) {
+    const fbTags = Array.from(tagPool).slice(0, 2).join(" ");
+    let fbBody = cleaned;
 
-    let twBody = cleaned;
-
-    if (twBody.length > maxBodyLen) {
-      const truncated = twBody.slice(0, maxBodyLen);
-      const lastPeriod = Math.max(truncated.lastIndexOf("."), truncated.lastIndexOf("?"), truncated.lastIndexOf("!"));
-      if (lastPeriod > maxBodyLen * 0.6) {
-        twBody = truncated.slice(0, lastPeriod + 1).trim();
-      } else {
-        const lastSpace = truncated.lastIndexOf(" ");
-        twBody = (lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated) + "...";
-      }
+    if (!fbBody.includes("?")) {
+      fbBody += "\n\nWe'd love to hear your thoughts! Drop a comment below 👇";
     }
-    return `${twBody}${tagSuffix}`.trim();
+    return `${fbBody}${fbTags ? `\n\n${fbTags}` : ""}`.trim();
   }
 
   // 4. LINKEDIN
@@ -229,21 +229,44 @@ export function adaptCaptionForPlatform(
     return `${liBody}\n\n${linkedinTags}`.trim();
   }
 
-  // 5. FACEBOOK
-  // Community friendly, conversational tone, open discussion prompt, 1-2 hashtags
-  if (type.includes("facebook")) {
-    const fbTags = Array.from(tagPool).slice(0, 2).join(" ");
-    let fbBody = cleaned;
+  // 5. TWITTER / X
+  // Punchy, provocative hook, bold body, strict <= 280 chars, 1-2 sharp hashtags
+  if (type.includes("twitter") || type.includes("x")) {
+    const twitterTags = Array.from(tagPool).slice(0, 2).join(" ");
+    const tagSuffix = twitterTags ? `\n\n${twitterTags}` : "";
+    const maxBodyLen = 280 - tagSuffix.length - 2;
 
-    if (!fbBody.includes("?")) {
-      fbBody += "\n\nWe'd love to hear your thoughts! Drop a comment below 👇";
+    let twBody = cleaned;
+
+    if (twBody.length > maxBodyLen) {
+      const truncated = twBody.slice(0, maxBodyLen);
+      const lastPeriod = Math.max(truncated.lastIndexOf("."), truncated.lastIndexOf("?"), truncated.lastIndexOf("!"));
+      if (lastPeriod > maxLenBoundary(maxBodyLen)) {
+        twBody = truncated.slice(0, lastPeriod + 1).trim();
+      } else {
+        const lastSpace = truncated.lastIndexOf(" ");
+        twBody = (lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated) + "...";
+      }
     }
-    return `${fbBody}${fbTags ? `\n\n${fbTags}` : ""}`.trim();
+    return `${twBody}${tagSuffix}`.trim();
   }
 
-  // 6. THREADS
-  if (type.includes("threads")) {
-    return cleaned.trim();
+  // 6. BLUESKY
+  // Authentic, candid conversational take. Strictly <= 300 characters, no hashtag clutter.
+  if (type.includes("bluesky")) {
+    let bskyBody = cleaned;
+    const maxLen = 295;
+    if (bskyBody.length > maxLen) {
+      const truncated = bskyBody.slice(0, maxLen);
+      const lastPeriod = Math.max(truncated.lastIndexOf("."), truncated.lastIndexOf("?"), truncated.lastIndexOf("!"));
+      if (lastPeriod > maxLen * 0.6) {
+        bskyBody = truncated.slice(0, lastPeriod + 1).trim();
+      } else {
+        const lastSpace = truncated.lastIndexOf(" ");
+        bskyBody = (lastSpace > 0 ? truncated.slice(0, lastSpace) : truncated) + "...";
+      }
+    }
+    return bskyBody.trim();
   }
 
   // 7. YOUTUBE
@@ -253,4 +276,8 @@ export function adaptCaptionForPlatform(
 
   const defaultTags = Array.from(tagPool).slice(0, 3).join(" ");
   return `${cleaned}${defaultTags ? `\n\n${defaultTags}` : ""}`.trim();
+}
+
+function maxLenBoundary(len: number): number {
+  return len * 0.6;
 }

@@ -239,7 +239,7 @@ export default function ReelsStudioPage() {
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-foreground">Commercial Social Video Rendered</p>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Ultra-smooth 9:16 vertical video reel optimized for Instagram Reels, TikTok, and YouTube Shorts.
+                  Ultra-smooth 9:16 vertical video reel optimized for Instagram Reels, Facebook Reels, and YouTube Shorts.
                 </p>
                 <p className="text-[11px] text-muted-foreground/80 font-mono pt-1">
                   Prompt: "{videoResult.prompt || form.topic}"

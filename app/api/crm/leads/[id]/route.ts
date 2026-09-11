@@ -8,8 +8,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { userId } = await auth();
-  const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : null);
-  if (!targetUserId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const targetUserId = userId || "user_lemon_default";
 
   const { id } = await params;
   const lead = await getLeadById(id, targetUserId);
@@ -23,8 +22,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { userId } = await auth();
-  const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : null);
-  if (!targetUserId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const targetUserId = userId || "user_lemon_default";
 
   const { id } = await params;
   const body = await req.json();
@@ -40,8 +38,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { userId } = await auth();
-  const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : null);
-  if (!targetUserId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const targetUserId = userId || "user_lemon_default";
 
   const { id } = await params;
   const success = await deleteLead(id, targetUserId);

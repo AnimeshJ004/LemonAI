@@ -486,7 +486,7 @@ Include 3-5 relevant viral hashtags: ${researchContext?.hashtags?.slice(0, 5).jo
                   <Badge className="bg-blue-500/15 text-blue-600 dark:text-blue-400 border-blue-300 text-xs font-semibold">
                     <Video className="size-3 mr-1" /> 9:16 Vertical Reel Player
                   </Badge>
-                  <span className="text-xs text-muted-foreground font-medium">Ready for Instagram, TikTok & Shorts</span>
+                  <span className="text-xs text-muted-foreground font-medium">Ready for Instagram, YouTube Shorts & Facebook Reels</span>
                 </div>
                 {videoUrl && (
                   <Button size="sm" variant="outline" asChild className="h-7 text-xs font-semibold gap-1 px-2">

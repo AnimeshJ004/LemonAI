@@ -59,7 +59,6 @@ export function ConnectChannelDialog({
     const isLinkedIn = channel.type === ChannelTypeEnum.LINKEDIN
     const isThreads = channel.type === ChannelTypeEnum.THREADS || Boolean(channel.name?.toLowerCase().includes("thread"))
     const isYouTube = channel.type === ChannelTypeEnum.YOUTUBE
-    const isTikTok = channel.type === ChannelTypeEnum.TIKTOK
     const isMeta = isInstagram || isFacebook
 
     const handleConnect = async (e: React.FormEvent) => {
@@ -202,19 +201,31 @@ export function ConnectChannelDialog({
                                     <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/60 dark:border-amber-950 dark:bg-amber-950/30 space-y-2.5 text-xs text-amber-900 dark:text-amber-200">
                                         <div className="flex items-center gap-1.5 font-semibold">
                                             <AlertCircle className="size-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                                            <span>OAuth Client ID Required in .env.local</span>
+                                            <span>OAuth Setup Required in .env.local</span>
                                         </div>
                                         <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-amber-300/80">
-                                            1-Click OAuth requires {isThreads ? (
+                                            1-Click OAuth for {channel.name} requires {isThreads ? (
                                                 <><code className="font-mono font-semibold text-foreground">THREADS_APP_ID</code> and <code className="font-mono font-semibold text-foreground">THREADS_APP_SECRET</code> (from Meta Developers ➔ Use Cases ➔ Threads)</>
                                             ) : isMeta ? (
                                                 <>unified Meta credentials (<code className="font-mono font-semibold text-foreground">META_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">META_CLIENT_SECRET</code> shared for Facebook and Instagram)</>
+                                            ) : isYouTube ? (
+                                                <><code className="font-mono font-semibold text-foreground">YOUTUBE_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">YOUTUBE_CLIENT_SECRET</code> (from Google Cloud Console ➔ Credentials ➔ OAuth 2.0 Client ID)</>
+                                            ) : isLinkedIn ? (
+                                                <><code className="font-mono font-semibold text-foreground">LINKEDIN_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">LINKEDIN_CLIENT_SECRET</code> (from LinkedIn Developer Portal ➔ Auth)</>
+                                            ) : isTwitter ? (
+                                                <><code className="font-mono font-semibold text-foreground">TWITTER_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">TWITTER_CLIENT_SECRET</code> (from Twitter Developer Portal ➔ User Auth Settings)</>
                                             ) : (
                                                 <><code className="font-mono font-semibold text-foreground">{channel.type}_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">{channel.type}_CLIENT_SECRET</code></>
-                                            )} to be added in your <code className="font-mono font-semibold text-foreground">.env.local</code> file.
+                                            )} in your <code className="font-mono font-semibold text-foreground">.env.local</code> file.
                                         </p>
+                                        <div className="p-2 rounded-lg bg-amber-100/70 dark:bg-amber-900/40 text-[10px] space-y-0.5">
+                                            <div className="font-semibold text-foreground">OAuth Redirect URI:</div>
+                                            <code className="font-mono text-foreground break-all select-all">
+                                                {typeof window !== "undefined" ? `${window.location.origin}/api/channel/callback` : "http://localhost:3000/api/channel/callback"}
+                                            </code>
+                                        </div>
                                         <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-amber-300/80">
-                                            You can connect immediately without any developer setup using your token in the <strong className="font-semibold text-foreground">Manual Token</strong> tab.
+                                            Or connect instantly without any developer app setup using your token in the <strong className="font-semibold text-foreground">Manual Token</strong> tab.
                                         </p>
                                         <Button
                                             type="button"
@@ -397,18 +408,6 @@ export function ConnectChannelDialog({
                                     </div>
                                 )}
 
-                                {isTikTok && (
-                                    <div className="rounded-xl border border-pink-200 bg-pink-50/60 dark:border-pink-950 dark:bg-pink-950/30 p-3 space-y-1 text-xs text-pink-900 dark:text-pink-200">
-                                        <div className="flex items-center gap-1.5 font-semibold">
-                                            <KeyRound className="size-3.5" />
-                                            <span>TikTok API Token:</span>
-                                        </div>
-                                        <p className="leading-relaxed text-muted-foreground dark:text-pink-300/80 text-[11px]">
-                                            Generate your Access Token from the <span className="font-medium text-foreground">TikTok for Developers Portal</span>.
-                                        </p>
-                                    </div>
-                                )}
-
                                 {/* Handle / Username Input */}
                                 <div className="space-y-1.5">
                                     <Label htmlFor="channel-handle" className="text-xs font-semibold">
@@ -521,8 +520,6 @@ export function ConnectChannelDialog({
                                                          ? "YouTube / Google OAuth Access Token"
                                                          : isLinkedIn
                                                          ? "LinkedIn Member Access Token"
-                                                         : isTikTok
-                                                         ? "TikTok User Access Token"
                                                          : `${channel.name} Access Token / API Key`} {channel.has_token ? "" : "*"}
                                                  </Label>
                                                  {channel.has_token && (

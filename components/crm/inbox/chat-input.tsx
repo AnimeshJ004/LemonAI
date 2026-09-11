@@ -4,18 +4,24 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Send, Calendar, Sparkles } from "lucide-react";
+import { Send, Calendar, Sparkles, Bot, MessageSquare } from "lucide-react";
 
 interface ChatInputProps {
   onSendMessage: (content: string) => void;
+  onAIReply?: () => void;
+  onSimulateInbound?: () => void;
   isSending?: boolean;
+  isAIGenerating?: boolean;
   disabled?: boolean;
   calLink?: string;
 }
 
 export function ChatInput({
   onSendMessage,
+  onAIReply,
+  onSimulateInbound,
   isSending,
+  isAIGenerating,
   disabled,
   calLink,
 }: ChatInputProps) {
@@ -54,22 +60,53 @@ export function ChatInput({
 
   return (
     <div className="p-3 border-t border-border/70 space-y-2 bg-card/60">
-      {/* Canned Quick Replies */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-[11px]">
-        <span className="text-muted-foreground text-[10px] font-semibold uppercase shrink-0 flex items-center gap-1">
-          <Sparkles className="size-3 text-primary" />
-          Quick Reply:
-        </span>
-        {cannedReplies.map((reply, idx) => (
-          <Badge
-            key={idx}
-            variant="outline"
-            onClick={() => setText(reply.template)}
-            className="cursor-pointer hover:bg-muted/80 hover:border-primary/50 text-[10px] whitespace-nowrap transition-colors bg-background/60"
-          >
-            {reply.label}
-          </Badge>
-        ))}
+      {/* Canned Quick Replies & AI Action Buttons */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 text-[11px]">
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+          <span className="text-muted-foreground text-[10px] font-semibold uppercase shrink-0 flex items-center gap-1">
+            <Sparkles className="size-3 text-primary" />
+            Quick Reply:
+          </span>
+          {cannedReplies.map((reply, idx) => (
+            <Badge
+              key={idx}
+              variant="outline"
+              onClick={() => setText(reply.template)}
+              className="cursor-pointer hover:bg-muted/80 hover:border-primary/50 text-[10px] whitespace-nowrap transition-colors bg-background/60"
+            >
+              {reply.label}
+            </Badge>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
+          {onAIReply && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onAIReply}
+              disabled={isAIGenerating || disabled}
+              className="h-7 text-[11px] gap-1.5 font-medium border-primary/40 text-primary hover:bg-primary/10"
+            >
+              <Bot className="size-3.5" />
+              {isAIGenerating ? "Generating..." : "Let AI Reply"}
+            </Button>
+          )}
+          {onSimulateInbound && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onSimulateInbound}
+              disabled={disabled}
+              className="h-7 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
+            >
+              <MessageSquare className="size-3" />
+              Simulate Inbound
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Input Box */}
