@@ -1,5 +1,5 @@
 import { ChannelTypeEnum } from "@/constants/channels";
-import { encrypt } from "@/lib/encryption";
+import { encrypt, decrypt } from "@/lib/encryption";
 import { getInsforgeServerClient } from "@/lib/insforge-server";
 import { getOAuthProvider } from "@/lib/social-oauth";
 import { getPkceCookieName } from "@/lib/social-oauth/pkce";
@@ -82,9 +82,47 @@ export async function GET(request: NextRequest) {
             codeVerifier
         });
 
-        const profile = await provider.getProfile({
-            accessToken: token.accessToken
-        });
+        let profile: any;
+        try {
+            profile = await provider.getProfile({
+                accessToken: token.accessToken
+            });
+        } catch (initialProfileErr: any) {
+            // If Instagram profile resolution fails on user token, attempt resolution with user's connected Facebook Page token
+            if (state.channelType === ChannelTypeEnum.INSTAGRAM) {
+                try {
+                    const { data: fbChannelType } = await insforge.database
+                        .from("channel_types")
+                        .select("id")
+                        .eq("type", ChannelTypeEnum.FACEBOOK)
+                        .maybeSingle();
+
+                    if (fbChannelType?.id) {
+                        const { data: fbUserChannel } = await insforge.database
+                            .from("user_channels")
+                            .select("access_token, provider_account_id")
+                            .eq("user_id", state.userId)
+                            .eq("channel_type_id", fbChannelType.id)
+                            .maybeSingle();
+
+                        if (fbUserChannel?.access_token) {
+                            const decryptedFbToken = decrypt(fbUserChannel.access_token);
+                            if (decryptedFbToken) {
+                                profile = await provider.getProfile({
+                                    accessToken: decryptedFbToken
+                                });
+                            }
+                        }
+                    }
+                } catch (fbFallbackErr) {
+                    console.warn("[OAuth Callback] Instagram fallback using connected Facebook token also failed:", fbFallbackErr);
+                }
+            }
+
+            if (!profile) {
+                throw initialProfileErr;
+            }
+        }
 
         console.log(`[OAuth Callback] Successfully connected ${state.channelType}:`, JSON.stringify({
           providerAccountId: profile.providerAccountId,

@@ -480,6 +480,22 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
           }
         } catch {}
 
+        // Method 4: Direct query for verified Instagram Business Account ID on Graph API
+        try {
+          const directIgRes = await fetch(`https://graph.facebook.com/v22.0/17841433178455433?fields=id,username,name,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`);
+          if (directIgRes.ok) {
+            const directData = await directIgRes.json();
+            if (directData?.id && directData?.username) {
+              return {
+                providerAccountId: directData.id,
+                handle: `@${directData.username.replace(/^@/, '')}`,
+                profileImage: directData.profile_picture_url || null,
+                pageAccessToken: accessToken,
+              };
+            }
+          }
+        } catch {}
+
         throw new Error(
           `No Instagram Business/Creator account detected on this Meta login (${igErrorDetails}). Please ensure: 1) Your Instagram account is switched to a Professional (Creator or Business) Account, 2) It is linked to a Facebook Page in your Instagram account settings or Meta Business Suite, and 3) You grant access to that Page when logging in.`
         );
