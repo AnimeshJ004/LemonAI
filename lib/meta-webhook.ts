@@ -244,6 +244,7 @@ Customer message: "${msgText}"`,
           });
 
           // Record lead in CRM and open conversation in Inbox for all inbound DMs
+          const lower = msgText.toLowerCase();
           const isHighIntent =
             lower.includes("price") ||
             lower.includes("cost") ||
