@@ -4,6 +4,12 @@ import { callResilientCompletion } from "@/lib/ai-gateway";
 import { decrypt } from "@/lib/encryption";
 import { processSingleComment } from "@/lib/social-comments-service";
 import { socialDMService } from "@/lib/social-dm-service";
+import {
+  createLead,
+  createConversation,
+  addMessage,
+  recordActivity,
+} from "@/lib/crm-service";
 import crypto from "crypto";
 
 export const maxDuration = 60;
@@ -239,30 +245,51 @@ Customer message: "${msgText}"`,
 
           // If buying / inquiry intent, record lead in CRM and log activity
           const lower = msgText.toLowerCase();
-          if (lower.includes("price") || lower.includes("cost") || lower.includes("buy") || lower.includes("quote") || lower.includes("hire") || lower.includes("book")) {
-            const { data: newLead } = await admin.database.from("leads").insert({
+          if (lower.includes("price") || lower.includes("cost") || lower.includes("buy") || lower.includes("quote") || lower.includes("hire") || lower.includes("book") || lower.includes("demo") || lower.includes("interested")) {
+            const lead = await createLead({
               user_id: userId,
               name: `DM Prospect (${senderId.slice(-4)})`,
               source: "meta_dm",
               stage: "new",
               score: 8,
               deal_value: 2000,
+              notes: `Inbound DM: "${msgText}"`,
               metadata: {
                 sender_id: senderId,
                 inquiry: msgText,
               },
-            }).select("id").maybeSingle();
+            });
 
-            if (newLead?.id) {
-              await admin.database.from("crm_activities").insert({
-                user_id: userId,
-                lead_id: newLead.id,
-                type: "direct_message",
-                title: "Direct message received via Meta",
-                description: `Inquiry: "${msgText.slice(0, 100)}..."`,
-                metadata: { sender_id: senderId },
+            const conv = await createConversation({
+              user_id: userId,
+              lead_id: lead.id,
+              channel: "facebook",
+              is_ai_active: true,
+            });
+
+            if (conv?.id) {
+              await addMessage({
+                conversation_id: conv.id,
+                sender_type: "lead",
+                content: msgText,
               });
+              if (sendRes.ok && replyText) {
+                await addMessage({
+                  conversation_id: conv.id,
+                  sender_type: "ai_assistant",
+                  content: replyText,
+                });
+              }
             }
+
+            await recordActivity({
+              user_id: userId,
+              lead_id: lead.id,
+              type: "direct_message",
+              title: "Direct message received via Meta",
+              description: `Inquiry: "${msgText.slice(0, 100)}..."`,
+              metadata: { sender_id: senderId },
+            });
           }
         } catch (storageErr) {
           console.warn("[Meta Webhook] DM persistence notice:", storageErr);

@@ -1,6 +1,12 @@
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { callResilientCompletion } from "@/lib/ai-gateway";
 import { decrypt } from "@/lib/encryption";
+import {
+  createLead,
+  createConversation,
+  addMessage,
+  recordActivity,
+} from "@/lib/crm-service";
 
 // ---------------------------------------------------------------------------
 // In-Memory Idempotency & Concurrency Locks
@@ -400,7 +406,24 @@ Rules:
       }
 
       // Lead & CRM conversation capture for potential buyers
-      if (aiResult.shouldSendDM || aiResult.sentiment === "INQUIRY") {
+      const lowerComment = commentText.toLowerCase();
+      const hasInquiryKeywords =
+        lowerComment.includes("price") ||
+        lowerComment.includes("cost") ||
+        lowerComment.includes("how much") ||
+        lowerComment.includes("buy") ||
+        lowerComment.includes("quote") ||
+        lowerComment.includes("rate") ||
+        lowerComment.includes("hire") ||
+        lowerComment.includes("book") ||
+        lowerComment.includes("demo") ||
+        lowerComment.includes("interested") ||
+        lowerComment.includes("detail") ||
+        lowerComment.includes("info") ||
+        lowerComment.includes("dm") ||
+        lowerComment.includes("link");
+
+      if (aiResult.shouldSendDM || aiResult.sentiment === "INQUIRY" || hasInquiryKeywords) {
         try {
           const cleanHandle = commenterHandle.replace(/^@/, "");
           let leadId: string | null = null;
@@ -415,45 +438,57 @@ Rules:
           if (existingLead && existingLead.length > 0) {
             leadId = existingLead[0].id;
           } else {
-            const { data: newLead } = await admin.database
-              .from("leads")
-              .insert({
-                user_id: userId,
-                name: commenterHandle,
-                source: "instagram",
-                stage: "new",
-                score: 8,
-                deal_value: 3000,
-                metadata: {
-                  commentId,
-                  commentText,
-                  sentiment: aiResult.sentiment,
-                },
-              })
-              .select("id")
-              .single();
-            leadId = newLead?.id || null;
-          }
-
-          const { data: newConv } = await admin.database
-            .from("crm_conversations")
-            .insert({
+            const created = await createLead({
               user_id: userId,
-              lead_id: leadId,
-              channel: "instagram",
-              status: "open",
-              is_ai_active: true,
-              last_message_at: new Date().toISOString(),
-            })
-            .select("id")
-            .single();
-
-          if (newConv?.id) {
-            await admin.database.from("crm_messages").insert([
-              { conversation_id: newConv.id, sender_type: "lead", content: commentText },
-              { conversation_id: newConv.id, sender_type: "ai_assistant", content: aiResult.reply },
-            ]);
+              name: commenterHandle,
+              source: platform === "FACEBOOK" ? "facebook" : "instagram",
+              stage: "new",
+              score: 8,
+              deal_value: 3000,
+              notes: `Comment on ${platform} post ${mediaId || ""}: "${commentText}"`,
+              metadata: {
+                commentId,
+                commentText,
+                sentiment: aiResult.sentiment,
+                platform,
+              },
+            });
+            leadId = created.id;
           }
+
+          const conv = await createConversation({
+            user_id: userId,
+            lead_id: leadId,
+            channel: platform === "FACEBOOK" ? "facebook" : "instagram",
+            is_ai_active: true,
+          });
+
+          if (conv?.id) {
+            await addMessage({
+              conversation_id: conv.id,
+              sender_type: "lead",
+              content: commentText,
+            });
+            if (aiResult.reply) {
+              await addMessage({
+                conversation_id: conv.id,
+                sender_type: "ai_assistant",
+                content: aiResult.reply,
+              });
+            }
+          }
+
+          // Record in activity feed
+          await recordActivity({
+            user_id: userId,
+            lead_id: leadId,
+            type: "lead_created",
+            title: `New lead from ${platform} comment: ${commenterHandle}`,
+            description: `Inquiry: "${commentText.slice(0, 100)}"`,
+            metadata: { commentId, mediaId },
+          });
+
+          console.log(`[Social Comment Service] ✓ CRM Lead & Conversation created for ${commenterHandle}`);
         } catch (crmErr) {
           console.warn("[Social Comment Service] Notice creating CRM lead/conversation:", crmErr);
         }
