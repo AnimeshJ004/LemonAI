@@ -43,8 +43,6 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
       "pages_show_list",
       "pages_read_engagement",
       "pages_manage_posts",
-      "pages_manage_metadata",       // Required: subscribe to comment webhooks
-      "pages_messaging",             // Required: send Page messages / DMs
       "pages_read_user_content",     // Required: read Page published posts and user comments
     ],
   },
