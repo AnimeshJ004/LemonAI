@@ -489,6 +489,7 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
 
       // Resolve user's primary Facebook Page and Page Access Token for Facebook
       if (type === ChannelTypeEnum.FACEBOOK) {
+        let pageErrorDetails = "";
         // Method 1: Scan user's managed Facebook Pages
         try {
           const fbRes = await fetch(`https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,picture{url}&access_token=${encodeURIComponent(accessToken)}`, {
