@@ -243,54 +243,64 @@ Customer message: "${msgText}"`,
             messages_count: 2,
           });
 
-          // If buying / inquiry intent, record lead in CRM and log activity
-          const lower = msgText.toLowerCase();
-          if (lower.includes("price") || lower.includes("cost") || lower.includes("buy") || lower.includes("quote") || lower.includes("hire") || lower.includes("book") || lower.includes("demo") || lower.includes("interested")) {
-            const lead = await createLead({
-              user_id: userId,
-              name: `DM Prospect (${senderId.slice(-4)})`,
-              source: "meta_dm",
-              stage: "new",
-              score: 8,
-              deal_value: 2000,
-              notes: `Inbound DM: "${msgText}"`,
-              metadata: {
-                sender_id: senderId,
-                inquiry: msgText,
-              },
-            });
+          // Record lead in CRM and open conversation in Inbox for all inbound DMs
+          const isHighIntent =
+            lower.includes("price") ||
+            lower.includes("cost") ||
+            lower.includes("buy") ||
+            lower.includes("quote") ||
+            lower.includes("hire") ||
+            lower.includes("book") ||
+            lower.includes("demo") ||
+            lower.includes("interested") ||
+            lower.includes("detail") ||
+            lower.includes("info") ||
+            lower.includes("how");
 
-            const conv = await createConversation({
-              user_id: userId,
-              lead_id: lead.id,
-              channel: "facebook",
-              is_ai_active: true,
-            });
+          const lead = await createLead({
+            user_id: userId,
+            name: `DM Prospect (@${senderId.slice(-4)})`,
+            source: "meta_dm",
+            stage: isHighIntent ? "qualified" : "new",
+            score: isHighIntent ? 8 : 5,
+            deal_value: isHighIntent ? 2000 : 500,
+            notes: `Inbound DM: "${msgText}"`,
+            metadata: {
+              sender_id: senderId,
+              inquiry: msgText,
+            },
+          });
 
-            if (conv?.id) {
+          const conv = await createConversation({
+            user_id: userId,
+            lead_id: lead.id,
+            channel: "instagram",
+            is_ai_active: true,
+          });
+
+          if (conv?.id) {
+            await addMessage({
+              conversation_id: conv.id,
+              sender_type: "lead",
+              content: msgText,
+            });
+            if (sendRes.ok && replyText) {
               await addMessage({
                 conversation_id: conv.id,
-                sender_type: "lead",
-                content: msgText,
+                sender_type: "ai_assistant",
+                content: replyText,
               });
-              if (sendRes.ok && replyText) {
-                await addMessage({
-                  conversation_id: conv.id,
-                  sender_type: "ai_assistant",
-                  content: replyText,
-                });
-              }
             }
-
-            await recordActivity({
-              user_id: userId,
-              lead_id: lead.id,
-              type: "direct_message",
-              title: "Direct message received via Meta",
-              description: `Inquiry: "${msgText.slice(0, 100)}..."`,
-              metadata: { sender_id: senderId },
-            });
           }
+
+          await recordActivity({
+            user_id: userId,
+            lead_id: lead.id,
+            type: "direct_message",
+            title: `Direct message received from ${senderId.slice(-4)}`,
+            description: `Inquiry: "${msgText.slice(0, 100)}"`,
+            metadata: { sender_id: senderId },
+          });
         } catch (storageErr) {
           console.warn("[Meta Webhook] DM persistence notice:", storageErr);
         }
