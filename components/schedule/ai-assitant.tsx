@@ -241,7 +241,6 @@ export function AIAssistant({ className, content, channelId, onGenerate }: AIAss
               <option value="twitter">Twitter / X</option>
               <option value="bluesky">Bluesky</option>
               <option value="threads">Threads</option>
-              <option value="tiktok">TikTok</option>
               <option value="youtube">YouTube</option>
             </select>
           </div>

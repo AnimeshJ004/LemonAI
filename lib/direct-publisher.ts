@@ -142,10 +142,10 @@ export async function publishPostDirectly(postId: string): Promise<{
     } else if (providerType === ChannelTypeEnum.YOUTUBE) {
       publishedUrl = `https://youtube.com/${userChannel.handle || "channel"}`;
     } else {
-      publishedUrl = `https://${providerType.toLowerCase()}.com/${userChannel.handle || "user"}/status/${Date.now()}`;
+      publishedUrl = `https://${String(providerType).toLowerCase()}.com/${userChannel.handle || "user"}/status/${Date.now()}`;
     }
 
-    const finalUrl = publishedUrl || `https://${providerType.toLowerCase()}.com/${userChannel.handle || "user"}/post/${Date.now()}`;
+    const finalUrl = publishedUrl || `https://${String(providerType).toLowerCase()}.com/${userChannel.handle || "user"}/post/${Date.now()}`;
     await markPostPublished(admin, postId, finalUrl);
     return { success: true, publishedUrl: finalUrl };
   } catch (err: any) {
@@ -198,29 +198,34 @@ async function publishToInstagramDirect({
   images?: ImageObject[];
 }): Promise<string> {
   let resolvedAccountId = instagramAccountId;
+  let effectiveToken = accessToken;
 
-  // Auto-resolve Instagram account ID if not present in record
-  if (!resolvedAccountId) {
-    try {
-      const accRes = await fetch(
-        `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(accessToken)}`
+  // 1. Auto-discover & verify the true Instagram Business Account ID and Page Token from Meta Graph API
+  try {
+    const accRes = await fetch(
+      `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${encodeURIComponent(accessToken)}`
+    );
+    if (accRes.ok) {
+      const accData = await accRes.json();
+      const pages = accData?.data || [];
+      const pageWithIg = pages.find(
+        (p: any) => p.instagram_business_account?.id
       );
-      if (accRes.ok) {
-        const accData = await accRes.json();
-        const pageWithIg = accData?.data?.find(
-          (p: any) => p.instagram_business_account?.id
-        );
-        if (pageWithIg?.instagram_business_account?.id) {
-          resolvedAccountId = pageWithIg.instagram_business_account.id;
+      if (pageWithIg?.instagram_business_account?.id) {
+        resolvedAccountId = pageWithIg.instagram_business_account.id;
+        if (pageWithIg.access_token) {
+          effectiveToken = pageWithIg.access_token;
         }
       }
-    } catch {}
+    }
+  } catch (err) {
+    logger.warn("[Instagram Publisher] Notice checking me/accounts:", err);
   }
 
   if (!resolvedAccountId) {
     try {
       const meRes = await fetch(
-        `https://graph.facebook.com/v22.0/me?fields=id,instagram_business_account&access_token=${encodeURIComponent(accessToken)}`
+        `https://graph.facebook.com/v22.0/me?fields=id,instagram_business_account{id,username}&access_token=${encodeURIComponent(accessToken)}`
       );
       if (meRes.ok) {
         const meData = await meRes.json();
@@ -258,7 +263,7 @@ async function publishToInstagramDirect({
           body: JSON.stringify({
             image_url: img.url,
             is_carousel_item: true,
-            access_token: accessToken,
+            access_token: effectiveToken,
           }),
         }
       );
@@ -281,7 +286,7 @@ async function publishToInstagramDirect({
             media_type: "CAROUSEL",
             children: childIds.join(","),
             caption: content,
-            access_token: accessToken,
+            access_token: effectiveToken,
           }),
         }
       );
@@ -317,12 +322,12 @@ async function publishToInstagramDirect({
           media_type: "REELS",
           video_url: mediaUrl,
           caption: content,
-          access_token: accessToken,
+          access_token: effectiveToken,
         }
       : {
           image_url: mediaUrl,
           caption: content,
-          access_token: accessToken,
+          access_token: effectiveToken,
         };
 
     let isVideoCreated = false;
@@ -370,7 +375,7 @@ async function publishToInstagramDirect({
           body: JSON.stringify({
             image_url: photoUrl,
             caption: content,
-            access_token: accessToken,
+            access_token: effectiveToken,
           }),
         }
       );
@@ -392,7 +397,7 @@ async function publishToInstagramDirect({
       await new Promise((resolve) => setTimeout(resolve, 2500));
       try {
         const statusRes = await fetch(
-          `https://graph.facebook.com/v22.0/${mainContainerId}?fields=status_code,status&access_token=${accessToken}`
+          `https://graph.facebook.com/v22.0/${mainContainerId}?fields=status_code,status&access_token=${effectiveToken}`
         );
         if (statusRes.ok) {
           const sData = await statusRes.json();
@@ -427,7 +432,7 @@ async function publishToInstagramDirect({
             body: JSON.stringify({
               image_url: photoUrl,
               caption: content,
-              access_token: accessToken,
+              access_token: effectiveToken,
             }),
           }
         );
@@ -459,7 +464,7 @@ async function publishToInstagramDirect({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           creation_id: mainContainerId,
-          access_token: accessToken,
+          access_token: effectiveToken,
         }),
       }
     );

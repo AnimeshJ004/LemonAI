@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // 2. Real Credentials Connection for Instagram, Facebook, Twitter, LinkedIn, Threads, YouTube, TikTok
+        // 2. Real Credentials Connection for Instagram, Facebook, Twitter, LinkedIn, Threads, YouTube
         const rawHandle = (handle || "").trim();
         const rawToken = (accessToken || "").trim();
         const rawAccountId = (providerAccountId || "").trim();
@@ -345,38 +345,6 @@ export async function POST(request: NextRequest) {
 
             if (!profileImage && cleanThHandle) {
                 profileImage = `https://unavatar.io/threads/${cleanThHandle}`;
-            }
-        }
-
-        // 6. TikTok Profile Fetching
-        if (channelType.type === ChannelTypeEnum.TIKTOK) {
-            const cleanTtHandle = rawHandle.replace(/^@/, '').trim();
-            try {
-                const ttRes = await fetch("https://open.tiktokapis.com/v2/user/info/?fields=avatar_url,display_name,username", {
-                    headers: {
-                        Authorization: `Bearer ${rawToken}`,
-                        Accept: "application/json"
-                    }
-                });
-                if (ttRes.ok) {
-                    const ttData = await ttRes.json();
-                    const ttUser = ttData?.data?.user;
-                    if (ttUser) {
-                        profileImage = ttUser.avatar_url || null;
-                        if (ttUser.username) {
-                            formattedHandle = `@${ttUser.username.replace(/^@/, '')}`;
-                        }
-                    }
-                }
-
-                if (!profileImage && cleanTtHandle) {
-                    profileImage = `https://unavatar.io/tiktok/${cleanTtHandle}`;
-                }
-            } catch (ttErr) {
-                console.warn("TikTok verification request failed:", ttErr);
-                if (cleanTtHandle) {
-                    profileImage = `https://unavatar.io/tiktok/${cleanTtHandle}`;
-                }
             }
         }
 

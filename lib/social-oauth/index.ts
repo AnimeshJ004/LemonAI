@@ -50,7 +50,13 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
     authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
     tokenUrl: "https://oauth2.googleapis.com/token",
     profileUrl: "https://www.googleapis.com/oauth2/v2/userinfo",
-    scope: ["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube.readonly"],
+    scope: [
+      "https://www.googleapis.com/auth/youtube.upload",
+      "https://www.googleapis.com/auth/youtube.readonly",
+      "https://www.googleapis.com/auth/userinfo.profile",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "openid",
+    ],
   },
   [ChannelTypeEnum.THREADS]: {
     authUrl: "https://threads.net/oauth/authorize",
@@ -64,31 +70,35 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
     profileUrl: "https://bsky.social/xrpc/com.atproto.server.getSession",
     scope: [],
   },
-  [ChannelTypeEnum.TIKTOK]: {
-    authUrl: "https://www.tiktok.com/v2/auth/authorize/",
-    tokenUrl: "https://open.tiktok.com/v2/oauth/token/",
-    profileUrl: "https://open.tiktok.com/v2/user/info/",
-    scope: ["user.info.basic", "video.upload", "video.publish"],
-  },
 };
+
+function getEnvClean(key: string): string {
+  return process.env[key]?.replace(/^["']|["']$/g, "").trim() || "";
+}
 
 function getConfig(type: ChannelTypeEnum) {
   const defaults = DEFAULT_PROVIDER_CONFIGS[type];
   const isMetaChannel = type === ChannelTypeEnum.INSTAGRAM || type === ChannelTypeEnum.FACEBOOK;
 
-  // Unified Meta Credentials: One App ID and Secret for Facebook & Instagram
-  const metaClientId = process.env.META_CLIENT_ID?.replace(/^["']|["']$/g, "").trim() || 
-                       process.env.META_APP_ID?.replace(/^["']|["']$/g, "").trim() || "";
-  const metaClientSecret = process.env.META_CLIENT_SECRET?.replace(/^["']|["']$/g, "").trim() || 
-                            process.env.META_APP_SECRET?.replace(/^["']|["']$/g, "").trim() || "";
+  // Unified Meta Credentials (Facebook & Instagram)
+  const metaClientId = getEnvClean("META_CLIENT_ID") || getEnvClean("META_APP_ID") || getEnvClean("FACEBOOK_CLIENT_ID") || getEnvClean("INSTAGRAM_CLIENT_ID");
+  const metaClientSecret = getEnvClean("META_CLIENT_SECRET") || getEnvClean("META_APP_SECRET") || getEnvClean("FACEBOOK_CLIENT_SECRET") || getEnvClean("INSTAGRAM_CLIENT_SECRET");
 
-  // Threads API requires its own dedicated Threads App ID & App Secret from Meta for Developers (under Use Cases -> Threads)
-  // It CANNOT use the main Facebook App ID (META_CLIENT_ID), as Meta will reject it with error 4476002
-  const threadsClientId = process.env.THREADS_APP_ID?.replace(/^["']|["']$/g, "").trim() ||
-                          process.env.THREADS_CLIENT_ID?.replace(/^["']|["']$/g, "").trim() ||
-                          process.env.NEXT_PUBLIC_THREADS_APP_ID?.replace(/^["']|["']$/g, "").trim() || "";
-  const threadsClientSecret = process.env.THREADS_APP_SECRET?.replace(/^["']|["']$/g, "").trim() ||
-                              process.env.THREADS_CLIENT_SECRET?.replace(/^["']|["']$/g, "").trim() || "";
+  // Threads API
+  const threadsClientId = getEnvClean("THREADS_APP_ID") || getEnvClean("THREADS_CLIENT_ID") || getEnvClean("NEXT_PUBLIC_THREADS_APP_ID");
+  const threadsClientSecret = getEnvClean("THREADS_APP_SECRET") || getEnvClean("THREADS_CLIENT_SECRET");
+
+  // YouTube / Google OAuth
+  const youtubeClientId = getEnvClean("YOUTUBE_CLIENT_ID") || getEnvClean("GOOGLE_CLIENT_ID") || getEnvClean("GOOGLE_OAUTH_CLIENT_ID") || getEnvClean("YOUTUBE_APP_ID");
+  const youtubeClientSecret = getEnvClean("YOUTUBE_CLIENT_SECRET") || getEnvClean("GOOGLE_CLIENT_SECRET") || getEnvClean("GOOGLE_OAUTH_CLIENT_SECRET") || getEnvClean("YOUTUBE_APP_SECRET");
+
+  // Twitter / X OAuth
+  const twitterClientId = getEnvClean("TWITTER_CLIENT_ID") || getEnvClean("X_CLIENT_ID") || getEnvClean("TWITTER_API_KEY");
+  const twitterClientSecret = getEnvClean("TWITTER_CLIENT_SECRET") || getEnvClean("X_CLIENT_SECRET") || getEnvClean("TWITTER_API_SECRET");
+
+  // LinkedIn OAuth
+  const linkedinClientId = getEnvClean("LINKEDIN_CLIENT_ID") || getEnvClean("LINKEDIN_OAUTH_CLIENT_ID");
+  const linkedinClientSecret = getEnvClean("LINKEDIN_CLIENT_SECRET") || getEnvClean("LINKEDIN_OAUTH_CLIENT_SECRET");
 
   let clientId = "";
   let clientSecret = "";
@@ -96,15 +106,27 @@ function getConfig(type: ChannelTypeEnum) {
   if (type === ChannelTypeEnum.THREADS) {
     clientId = threadsClientId;
     clientSecret = threadsClientSecret;
+  } else if (type === ChannelTypeEnum.YOUTUBE) {
+    clientId = youtubeClientId;
+    clientSecret = youtubeClientSecret;
+  } else if (type === ChannelTypeEnum.TWITTER) {
+    clientId = twitterClientId;
+    clientSecret = twitterClientSecret;
+  } else if (type === ChannelTypeEnum.LINKEDIN) {
+    clientId = linkedinClientId;
+    clientSecret = linkedinClientSecret;
+  } else if (isMetaChannel) {
+    clientId = metaClientId || getEnvClean(`${type}_CLIENT_ID`);
+    clientSecret = metaClientSecret || getEnvClean(`${type}_CLIENT_SECRET`);
   } else {
-    clientId = process.env[`${type}_CLIENT_ID`]?.replace(/^["']|["']$/g, "").trim() || (isMetaChannel ? metaClientId : "");
-    clientSecret = process.env[`${type}_CLIENT_SECRET`]?.replace(/^["']|["']$/g, "").trim() || (isMetaChannel ? metaClientSecret : "");
+    clientId = getEnvClean(`${type}_CLIENT_ID`);
+    clientSecret = getEnvClean(`${type}_CLIENT_SECRET`);
   }
 
-  const authUrl = process.env[`${type}_AUTH_URL`] || defaults?.authUrl || "";
-  const tokenUrl = process.env[`${type}_TOKEN_URL`] || defaults?.tokenUrl || "";
-  const profileUrl = process.env[`${type}_PROFILE_URL`] || defaults?.profileUrl || "";
-  const rawScopes = process.env[`${type}_SCOPES`];
+  const authUrl = getEnvClean(`${type}_AUTH_URL`) || defaults?.authUrl || "";
+  const tokenUrl = getEnvClean(`${type}_TOKEN_URL`) || defaults?.tokenUrl || "";
+  const profileUrl = getEnvClean(`${type}_PROFILE_URL`) || defaults?.profileUrl || "";
+  const rawScopes = getEnvClean(`${type}_SCOPES`);
   const scope = rawScopes
     ? rawScopes.split(",").map((s) => s.trim()).filter(Boolean)
     : defaults?.scope || [];
@@ -225,11 +247,6 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
         params.append('prompt', 'consent');
       }
 
-      // TikTok v2 OAuth requires client_key in auth query
-      if (type === ChannelTypeEnum.TIKTOK) {
-        params.append('client_key', config.clientId);
-      }
-
       return `${config.authUrl}?${params.toString()}`;
     },
     exchangeCodeForToken: async ({ code, redirectUri, codeVerifier }): Promise<OAuthTokenResponse> => {
@@ -246,10 +263,6 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
       }
       if (codeVerifier) {
         params.append('code_verifier', codeVerifier);
-      }
-      // TikTok v2 requires client_key
-      if (type === ChannelTypeEnum.TIKTOK) {
-        params.append('client_key', config.clientId);
       }
 
       const data = await requestToken(type, params);
@@ -337,9 +350,6 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
       if (redirectUri) {
         params.append('redirect_uri', redirectUri);
       }
-      if (type === ChannelTypeEnum.TIKTOK) {
-        params.append('client_key', config.clientId);
-      }
 
       const data = await requestToken(type, params);
 
@@ -357,8 +367,10 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
 
       // Resolve linked Instagram Business Account from user's Facebook Pages
       if (type === ChannelTypeEnum.INSTAGRAM) {
+        let igErrorDetails = "";
         try {
-          const igRes = await fetch(`https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`, {
+          // Method 1: Scan all Facebook Pages for connected Instagram Business/Creator Account
+          const igRes = await fetch(`https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`, {
             headers: {
               Authorization: `Bearer ${accessToken}`,
               Accept: "application/json",
@@ -370,17 +382,62 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
             const pageWithIg = pages.find((p: any) => p.instagram_business_account?.id);
             if (pageWithIg?.instagram_business_account) {
               const ig = pageWithIg.instagram_business_account;
+              const igHandle = ig.username || ig.name;
               return {
                 providerAccountId: ig.id,
-                handle: ig.username ? `@${ig.username.replace(/^@/, '')}` : null,
+                handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : null,
                 profileImage: ig.profile_picture_url || null,
                 pageAccessToken: pageWithIg.access_token || accessToken,
               };
+            } else if (pages.length > 0) {
+              igErrorDetails = `Found ${pages.length} Facebook Page(s) ("${pages.map((p: any) => p.name).join('", "')}"), but none have a connected Instagram Professional account.`;
+            } else {
+              igErrorDetails = "No Facebook Pages found on this Meta account.";
             }
           }
-        } catch (igErr) {
+        } catch (igErr: any) {
           console.warn("[Instagram OAuth] Notice checking me/accounts:", igErr);
         }
+
+        // Method 2: Direct query on /me for instagram_business_account
+        try {
+          const meRes = await fetch(`https://graph.facebook.com/v22.0/me?fields=id,name,instagram_business_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`, {
+            headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" }
+          });
+          if (meRes.ok) {
+            const meData = await meRes.json();
+            if (meData?.instagram_business_account?.id) {
+              const ig = meData.instagram_business_account;
+              const igHandle = ig.username || ig.name;
+              return {
+                providerAccountId: ig.id,
+                handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : null,
+                profileImage: ig.profile_picture_url || null,
+                pageAccessToken: accessToken,
+              };
+            }
+          }
+        } catch {}
+
+        // Method 3: Instagram Graph / Basic Display API fallback
+        try {
+          const igBasicRes = await fetch(`https://graph.instagram.com/me?fields=id,username,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`);
+          if (igBasicRes.ok) {
+            const igBasicData = await igBasicRes.json();
+            if (igBasicData?.id) {
+              return {
+                providerAccountId: igBasicData.id,
+                handle: igBasicData.username ? `@${igBasicData.username.replace(/^@/, '')}` : null,
+                profileImage: igBasicData.profile_picture_url || null,
+                pageAccessToken: accessToken,
+              };
+            }
+          }
+        } catch {}
+
+        throw new Error(
+          `No Instagram Business/Creator account detected on this Meta login (${igErrorDetails}). Please ensure: 1) Your Instagram account is switched to a Professional (Creator or Business) Account, 2) It is linked to a Facebook Page in your Instagram account settings, and 3) You grant access to that Page when logging in.`
+        );
       }
 
       // Resolve user's primary Facebook Page and Page Access Token for Facebook
@@ -421,10 +478,89 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
         );
       }
 
-      // General fallback to profileUrl
-      const profileUrlWithToken = (type === ChannelTypeEnum.INSTAGRAM)
-        ? `${config.profileUrl}&access_token=${encodeURIComponent(accessToken)}`
-        : config.profileUrl;
+      // YouTube: Fetch verified Channel ID, handle, and avatar from YouTube Data API v3
+      if (type === ChannelTypeEnum.YOUTUBE) {
+        try {
+          const ytRes = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/json",
+            },
+          });
+          if (ytRes.ok) {
+            const ytData = await ytRes.json();
+            const channel = ytData?.items?.[0];
+            if (channel) {
+              const chSnippet = channel.snippet;
+              const chHandle = chSnippet?.customUrl || (chSnippet?.title ? `@${chSnippet.title.replace(/\s+/g, '')}` : null);
+              const chImage = chSnippet?.thumbnails?.high?.url || chSnippet?.thumbnails?.medium?.url || chSnippet?.thumbnails?.default?.url || null;
+              return {
+                providerAccountId: channel.id,
+                handle: chHandle,
+                profileImage: chImage,
+                pageAccessToken: accessToken,
+              };
+            }
+          }
+        } catch (ytErr) {
+          console.warn("[YouTube OAuth] Notice fetching channels?mine=true:", ytErr);
+        }
+      }
+
+      // LinkedIn: OpenID Connect UserInfo profile resolution
+      if (type === ChannelTypeEnum.LINKEDIN) {
+        try {
+          const liRes = await fetch("https://api.linkedin.com/v2/userinfo", {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/json",
+            },
+          });
+          if (liRes.ok) {
+            const liData = await liRes.json();
+            const liId = liData.sub || liData.id || null;
+            const liName = liData.name || `${liData.given_name || ''} ${liData.family_name || ''}`.trim() || null;
+            const liPicture = liData.picture || null;
+            return {
+              providerAccountId: liId,
+              handle: liName,
+              profileImage: liPicture,
+              pageAccessToken: accessToken,
+            };
+          }
+        } catch (liErr) {
+          console.warn("[LinkedIn OAuth] Notice fetching v2/userinfo:", liErr);
+        }
+      }
+
+      // Twitter / X: Fetch verified user info
+      if (type === ChannelTypeEnum.TWITTER) {
+        try {
+          const twRes = await fetch("https://api.twitter.com/2/users/me?user.fields=profile_image_url,name,username", {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              Accept: "application/json",
+            },
+          });
+          if (twRes.ok) {
+            const twData = await twRes.json();
+            const twUser = twData?.data;
+            if (twUser) {
+              return {
+                providerAccountId: twUser.id,
+                handle: twUser.username ? `@${twUser.username.replace(/^@/, '')}` : (twUser.name || null),
+                profileImage: twUser.profile_image_url || null,
+                pageAccessToken: accessToken,
+              };
+            }
+          }
+        } catch (twErr) {
+          console.warn("[Twitter OAuth] Notice fetching users/me:", twErr);
+        }
+      }
+
+      // General fallback to profileUrl for other providers
+      const profileUrlWithToken = config.profileUrl;
 
       const response = await fetch(profileUrlWithToken, {
         headers: {
@@ -463,7 +599,6 @@ const PROVIDERS: Record<ChannelTypeEnum, any> = {
     [ChannelTypeEnum.THREADS]: createProvider(ChannelTypeEnum.THREADS),
     [ChannelTypeEnum.BLUESKY]: createProvider(ChannelTypeEnum.BLUESKY),
     [ChannelTypeEnum.YOUTUBE]: createProvider(ChannelTypeEnum.YOUTUBE),
-    [ChannelTypeEnum.TIKTOK]: createProvider(ChannelTypeEnum.TIKTOK),
 }
 
 export function isProviderConfigured(type: ChannelTypeEnum): boolean {

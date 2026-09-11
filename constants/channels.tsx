@@ -1,4 +1,4 @@
-import { InstagramIcon, NewTwitterIcon, FacebookIcon, TiktokIcon, ThreadsIcon, YoutubeIcon, LinkedinIcon, BlueskyIcon } from '@hugeicons/core-free-icons'
+import { InstagramIcon, NewTwitterIcon, FacebookIcon, ThreadsIcon, YoutubeIcon, LinkedinIcon, BlueskyIcon } from '@hugeicons/core-free-icons'
 
 export enum ChannelTypeEnum {
   TWITTER = "TWITTER",
@@ -8,7 +8,6 @@ export enum ChannelTypeEnum {
   LINKEDIN = "LINKEDIN",
   BLUESKY = "BLUESKY",
   YOUTUBE = "YOUTUBE",
-  TIKTOK = "TIKTOK"
 }
 
 export const CHANNEL_TYPE_ICONS: Record<ChannelTypeEnum, any> = {
@@ -19,7 +18,6 @@ export const CHANNEL_TYPE_ICONS: Record<ChannelTypeEnum, any> = {
   [ChannelTypeEnum.FACEBOOK]: FacebookIcon,
   [ChannelTypeEnum.BLUESKY]: BlueskyIcon,
   [ChannelTypeEnum.YOUTUBE]: YoutubeIcon,
-  [ChannelTypeEnum.TIKTOK]: TiktokIcon,
 }
 
 export const CHANNEL_TYPE_URLS: Record<ChannelTypeEnum, string> = {
@@ -30,7 +28,6 @@ export const CHANNEL_TYPE_URLS: Record<ChannelTypeEnum, string> = {
   [ChannelTypeEnum.FACEBOOK]: "https://facebook.com",
   [ChannelTypeEnum.BLUESKY]: "https://bsky.app/profile",
   [ChannelTypeEnum.YOUTUBE]: "https://youtube.com",
-  [ChannelTypeEnum.TIKTOK]: "https://tiktok.com",
 }
 
 
@@ -52,7 +49,7 @@ export function getChannelProfileUrl(type: ChannelTypeEnum | undefined, handle: 
     return `${baseUrl}/@${cleanHandle}`
   }
 
-  if (type === ChannelTypeEnum.TIKTOK || type === ChannelTypeEnum.THREADS) {
+  if (type === ChannelTypeEnum.THREADS) {
     return `${baseUrl}/@${cleanHandle}`
   }
 
