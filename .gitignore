@@ -66,3 +66,4 @@ next-env.d.ts
 
 # local dev database & memory persistence
 .lemon_crm_memory.json
+.lemon_dms_memory.json

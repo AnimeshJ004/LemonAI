@@ -3,6 +3,7 @@ import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { callResilientCompletion } from "@/lib/ai-gateway";
 import { decrypt } from "@/lib/encryption";
 import { processSingleComment } from "@/lib/social-comments-service";
+import { socialDMService } from "@/lib/social-dm-service";
 import crypto from "crypto";
 
 export const maxDuration = 60;
@@ -220,25 +221,21 @@ Customer message: "${msgText}"`,
           }),
         });
 
-        // Persist DM thread in social_dms table
+        // Persist DM thread in social_dms table and local fallback
         try {
-          await admin.database.from("social_dms").upsert(
-            {
-              user_id: userId,
-              platform: "FACEBOOK",
-              conversation_id: `dm_${senderId}`,
-              sender_id: senderId,
-              sender_name: `Customer (${senderId.slice(-4)})`,
-              last_message: msgText,
-              last_message_at: new Date().toISOString(),
-              last_reply: sendRes.ok ? replyText : undefined,
-              last_replied_at: sendRes.ok ? new Date().toISOString() : undefined,
-              is_read: true,
-              messages_count: 2,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "conversation_id" }
-          );
+          await socialDMService.upsertDM({
+            user_id: userId,
+            platform: "FACEBOOK",
+            conversation_id: `dm_${senderId}`,
+            sender_id: senderId,
+            sender_name: `Customer (${senderId.slice(-4)})`,
+            last_message: msgText,
+            last_message_at: new Date().toISOString(),
+            last_reply: sendRes.ok ? replyText : undefined,
+            last_replied_at: sendRes.ok ? new Date().toISOString() : undefined,
+            is_read: true,
+            messages_count: 2,
+          });
 
           // If buying / inquiry intent, record lead in CRM and log activity
           const lower = msgText.toLowerCase();

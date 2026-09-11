@@ -56,10 +56,30 @@ export function DMInboxPanel() {
     try {
       const res = await fetch("/api/social/dms", { method: "POST" });
       const d = await res.json();
-      toast.success(d.message || "DMs synced");
+
+      if (!res.ok) {
+        toast.error(d.error || "Sync failed. Please try again.");
+        return;
+      }
+
+      if (d.synced > 0) {
+        toast.success(d.message || `Synced ${d.synced} DM conversation(s)!`);
+      } else if (d.message?.includes("No Instagram or Facebook")) {
+        toast.error("No Instagram/Facebook account connected.", {
+          description: "Go to Settings → Channels to connect your Meta account first.",
+          action: {
+            label: "Open Settings",
+            onClick: () => (window.location.href = "/settings"),
+          },
+          duration: 8000,
+        });
+      } else {
+        toast.info(d.message || "No new DMs found. Your inbox is up to date.");
+      }
+
       queryClient.invalidateQueries({ queryKey: ["social-dms"] });
     } catch {
-      toast.error("Failed to sync DMs");
+      toast.error("Failed to sync DMs. Check your internet connection.");
     } finally {
       setIsSyncing(false);
     }
@@ -140,10 +160,22 @@ export function DMInboxPanel() {
               {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
             </div>
           ) : dms.length === 0 ? (
-            <div className="p-6 text-center text-muted-foreground text-xs space-y-2">
-              <Bot className="size-8 mx-auto opacity-40" />
-              <p className="font-medium">No DMs yet</p>
-              <p>Click Sync to fetch DMs from your connected Instagram & Facebook accounts.</p>
+            <div className="p-6 text-center text-muted-foreground text-xs space-y-3">
+              <Bot className="size-8 mx-auto opacity-40 text-primary" />
+              <div className="space-y-1">
+                <p className="font-semibold text-foreground">No conversations yet</p>
+                <p className="text-[11px]">Sync customer inquiries from your connected Instagram & Facebook accounts.</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-1.5 text-xs h-8 mx-auto"
+                onClick={syncMutation}
+                disabled={isSyncing}
+              >
+                <RefreshCw className={cn("size-3", isSyncing && "animate-spin")} />
+                {isSyncing ? "Syncing..." : "Sync Conversations"}
+              </Button>
             </div>
           ) : (
             dms.map((dm) => (
