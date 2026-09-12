@@ -245,10 +245,15 @@ export default function PipelinePage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All Channels</SelectItem>
-              <SelectItem value="website">Website Bot</SelectItem>
-              <SelectItem value="whatsapp">WhatsApp</SelectItem>
-              <SelectItem value="meta_ads">Meta Ads</SelectItem>
-              <SelectItem value="voice">Voice Call</SelectItem>
+              <SelectItem value="instagram">📱 Instagram</SelectItem>
+              <SelectItem value="instagram_dm">📱 Instagram DM</SelectItem>
+              <SelectItem value="facebook">📘 Facebook</SelectItem>
+              <SelectItem value="facebook_dm">📘 Facebook DM</SelectItem>
+              <SelectItem value="lead_form">📋 Lead Form</SelectItem>
+              <SelectItem value="website">💬 Website Bot</SelectItem>
+              <SelectItem value="whatsapp">💚 WhatsApp</SelectItem>
+              <SelectItem value="meta_ads">🎯 Meta Ads</SelectItem>
+              <SelectItem value="voice">📞 Voice Call</SelectItem>
             </SelectContent>
           </Select>
         </div>

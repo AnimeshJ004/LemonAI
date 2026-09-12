@@ -445,6 +445,7 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
       reply: `Thank you for connecting with ${brandName}! 🙏`,
       shouldSendDM: false,
       dmMessage: "",
+      intentType: "general" as "booking" | "pricing" | "general",
     };
 
     try {
@@ -464,25 +465,33 @@ Commenter: @${commenterHandle}
 
 Rules:
 1. Public reply MUST be concise, under 140 characters. Do NOT say "Sent you a DM" or "check your DM" in the public reply — that will be added automatically if a DM is sent.
-2. If the user asks about price, cost, booking, demo, availability, or buying intent, set shouldSendDM to true and write a warm, helpful dmMessage with details.
-3. Return ONLY valid JSON (no markdown). Use exactly this structure:
+2. If the user expresses interest in booking, meeting, appointment, or consultation → set shouldSendDM true, intentType "booking", write a warm DM inviting them to book.
+3. If the user asks about price, cost, rate, quote, package, or fees → set shouldSendDM true, intentType "pricing", write a DM acknowledging their interest.
+4. For general inquiries → set shouldSendDM true if warranted, intentType "general".
+5. Return ONLY valid JSON (no markdown). Use exactly this structure:
 {
   "sentiment": "INQUIRY",
   "reply": "Your concise public comment reply here",
   "shouldSendDM": false,
-  "dmMessage": ""
+  "dmMessage": "",
+  "intentType": "general"
 }
-shouldSendDM must be a boolean true or false depending on whether a private DM is warranted.`,
+shouldSendDM must be a boolean. intentType must be one of: booking | pricing | general.`,
+
           },
         ],
       });
 
       if (completion.data && typeof completion.data === "object") {
+        const rawIntent = String(completion.data.intentType || "general").toLowerCase();
+        const parsedIntent: "booking" | "pricing" | "general" =
+          rawIntent === "booking" ? "booking" : rawIntent === "pricing" ? "pricing" : "general";
         aiResult = {
           sentiment: normalizeSentiment(completion.data.sentiment),
           reply: completion.data.reply || `Thanks for reaching out! 🙏`,
           shouldSendDM: Boolean(completion.data.shouldSendDM),
           dmMessage: completion.data.dmMessage || "",
+          intentType: parsedIntent,
         };
       } else {
         aiResult.sentiment = normalizeSentiment(aiResult.sentiment);
@@ -490,12 +499,28 @@ shouldSendDM must be a boolean true or false depending on whether a private DM i
     } catch (aiErr) {
       console.warn("[Social Comment Service] AI fallback triggered:", aiErr);
       const lower = commentText.toLowerCase();
-      if (lower.includes("price") || lower.includes("cost") || lower.includes("buy") || lower.includes("how much")) {
+      const isBookingIntent =
+        lower.includes("interested") || lower.includes("book") || lower.includes("appointment") ||
+        lower.includes("meet") || lower.includes("consult") || lower.includes("schedule");
+      const isPricingIntent =
+        lower.includes("price") || lower.includes("cost") || lower.includes("how much") ||
+        lower.includes("rate") || lower.includes("fees") || lower.includes("quote") || lower.includes("package");
+
+      if (isBookingIntent) {
         aiResult = {
           sentiment: "INQUIRY",
-          reply: "Sent you a DM with complete pricing details! 📩",
+          reply: `We'd love to connect! 📩 Sending you details now.`,
           shouldSendDM: true,
-          dmMessage: `Hey @${commenterHandle}! Thanks for your interest in ${brandName}. Here are the details...`,
+          dmMessage: `Hi @${commenterHandle}! We'd love to have a chat with you about ${brandName}. Let's get you booked in! 🙏`,
+          intentType: "booking",
+        };
+      } else if (isPricingIntent) {
+        aiResult = {
+          sentiment: "INQUIRY",
+          reply: `Great question! 📩 Sending you pricing details in DM.`,
+          shouldSendDM: true,
+          dmMessage: `Hi @${commenterHandle}! Thanks for your interest in ${brandName}. Here's a bit about what we offer — ${mainOffer}. Let's find the right plan for you!`,
+          intentType: "pricing",
         };
       } else if (lower.includes("love") || lower.includes("awesome") || lower.includes("great") || lower.includes("fire") || lower.includes("🔥")) {
         aiResult = {
@@ -503,7 +528,22 @@ shouldSendDM must be a boolean true or false depending on whether a private DM i
           reply: "Thank you so much! Really appreciate the love! ❤️✨",
           shouldSendDM: false,
           dmMessage: "",
+          intentType: "general",
         };
+      }
+    }
+
+    // ─── 6b. Append intent-aware form link to DM message ────────────────────────
+    // If AI wants to send a DM, embed the right lead capture form URL based on what the commenter said.
+    if (aiResult.shouldSendDM && aiResult.dmMessage && userId) {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+      const formType = aiResult.intentType === "booking" ? "booking" : aiResult.intentType === "pricing" ? "pricing" : null;
+      if (formType && baseUrl) {
+        const formUrl = `${baseUrl}/lead-form?type=${formType}&user=${encodeURIComponent(userId)}&source=${encodeURIComponent(platform.toLowerCase())}&name=${encodeURIComponent(commenterHandle)}`;
+        const formCta = formType === "booking"
+          ? `\n\n📅 Book your free consultation here:\n${formUrl}`
+          : `\n\n📋 Share your requirements & get a custom quote:\n${formUrl}`;
+        aiResult.dmMessage = aiResult.dmMessage.trim() + formCta;
       }
     }
 
