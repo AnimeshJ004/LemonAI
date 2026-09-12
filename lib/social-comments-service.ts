@@ -588,36 +588,87 @@ shouldSendDM must be a boolean. intentType must be one of: booking | pricing | g
     }
 
     // ─── 8. Send Private Direct Message (if purchase intent detected) ───────────
-    // Use igAccountId (the actual page/business account ID) as the sender — NOT 'me',
-    // which is invalid when using a page access token and causes silent DM delivery failures.
+    // DIAGNOSTIC: Log every variable that controls whether a DM is sent
+    console.log("[Social Comment Service] DM diagnostic:", {
+      shouldSendDM: aiResult.shouldSendDM,
+      hasDmMessage: Boolean(aiResult.dmMessage),
+      commenterId: commenterId || "(empty — DM will be skipped!)",
+      igAccountId: igAccountId || "(empty — will fallback to 'me')",
+      intentType: aiResult.intentType,
+      platform,
+    });
+
     let dmSuccess = false;
     if (aiResult.shouldSendDM && aiResult.dmMessage && commenterId) {
       try {
-        // igAccountId is the Meta Page/IG Business account ID — required for correct routing
         const senderId = igAccountId || "me";
+
+        // Instagram requires messaging_type: "RESPONSE" for DMs sent in response to user actions.
+        // Without this, the API rejects the request with code 10 (Permission Denied).
+        const dmPayload: Record<string, any> = {
+          recipient: { id: commenterId },
+          message: { text: aiResult.dmMessage },
+          messaging_type: "RESPONSE",
+          access_token: accessToken,
+        };
+
         const dmRes = await fetch(`https://graph.facebook.com/v22.0/${senderId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            recipient: { id: commenterId },
-            message: { text: aiResult.dmMessage },
-            access_token: accessToken,
-          }),
+          body: JSON.stringify(dmPayload),
         });
         const dmJson = await dmRes.json().catch(() => ({}));
+
         if (dmRes.ok && (dmJson?.message_id || dmJson?.recipient_id)) {
           dmSuccess = true;
-          console.log(`[Social Comment Service] ✓ Private DM sent to commenter ${commenterId} via account ${senderId}`);
+          console.log(`[Social Comment Service] ✓ DM sent to ${commenterId} via ${senderId}`);
         } else {
-          // Log the full error so we can diagnose permission/token issues
+          const errCode = dmJson?.error?.code;
+          const errMsg = dmJson?.error?.message || JSON.stringify(dmJson);
           console.warn(
-            `[Social Comment Service] DM to ${commenterId} failed (sender: ${senderId}):`,
-            JSON.stringify(dmJson)
+            `[Social Comment Service] ✗ DM to ${commenterId} failed (sender: ${senderId}, code: ${errCode}):`,
+            errMsg
           );
+
+          // Fallback: For Instagram, try sending DM using the comment_id as recipient
+          // (Private Reply API — works even if user hasn't messaged the page before)
+          if (!dmSuccess && !isFacebook && commentId) {
+            try {
+              console.log(`[Social Comment Service] Trying Instagram Private Reply to comment ${commentId}...`);
+              const prRes = await fetch(`https://graph.facebook.com/v22.0/${senderId}/messages`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  recipient: { comment_id: commentId },
+                  message: { text: aiResult.dmMessage },
+                  messaging_type: "RESPONSE",
+                  access_token: accessToken,
+                }),
+              });
+              const prJson = await prRes.json().catch(() => ({}));
+              if (prRes.ok && (prJson?.message_id || prJson?.recipient_id)) {
+                dmSuccess = true;
+                console.log(`[Social Comment Service] ✓ Instagram Private Reply sent to comment ${commentId}`);
+              } else {
+                console.warn(
+                  `[Social Comment Service] ✗ Private Reply also failed (comment: ${commentId}):`,
+                  JSON.stringify(prJson)
+                );
+              }
+            } catch (prErr) {
+              console.warn("[Social Comment Service] Private Reply network error:", prErr);
+            }
+          }
         }
       } catch (dmErr) {
         console.warn("[Social Comment Service] Network error sending private DM:", dmErr);
       }
+    } else if (aiResult.shouldSendDM) {
+      // Log WHY the DM was skipped despite shouldSendDM = true
+      console.warn("[Social Comment Service] DM skipped despite shouldSendDM=true:", {
+        missingCommenterId: !commenterId,
+        missingDmMessage: !aiResult.dmMessage,
+      });
     }
 
     // ─── 8b. Patch public reply text to reflect actual DM outcome ────────────
