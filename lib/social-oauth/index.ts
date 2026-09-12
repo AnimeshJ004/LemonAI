@@ -214,11 +214,19 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
     getAuthorizationUrl: ({ state, redirectUri, codeChallenge, codeChallengeMethod }) => {
       const config = getConfig(type);
       const isMeta = type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.INSTAGRAM;
+      let effectiveRedirectUri = redirectUri;
+      if (type === ChannelTypeEnum.THREADS || isMeta) {
+        if (effectiveRedirectUri.startsWith("http://")) {
+          effectiveRedirectUri = effectiveRedirectUri.replace(/^http:\/\//i, "https://");
+        }
+      }
+
       const isCommaScope = isMeta || type === ChannelTypeEnum.THREADS;
       const scopeStr = isCommaScope ? config.scope.join(',') : config.scope.join(' ');
+
       const params = new URLSearchParams({
         client_id: config.clientId,
-        redirect_uri: redirectUri,
+        redirect_uri: effectiveRedirectUri,
         response_type: 'code',
         scope: scopeStr,
         state,
@@ -251,10 +259,18 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
     },
     exchangeCodeForToken: async ({ code, redirectUri, codeVerifier }): Promise<OAuthTokenResponse> => {
       const config = getConfig(type);
+      const isMeta = type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.INSTAGRAM;
+      let effectiveRedirectUri = redirectUri;
+      if (type === ChannelTypeEnum.THREADS || isMeta) {
+        if (effectiveRedirectUri && effectiveRedirectUri.startsWith("http://")) {
+          effectiveRedirectUri = effectiveRedirectUri.replace(/^http:\/\//i, "https://");
+        }
+      }
+
       const params = new URLSearchParams({
         grant_type: 'authorization_code',
         code,
-        redirect_uri: redirectUri,
+        redirect_uri: effectiveRedirectUri,
         client_id: config.clientId,
       });
 

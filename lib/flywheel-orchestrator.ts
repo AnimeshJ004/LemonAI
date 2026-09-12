@@ -25,6 +25,8 @@ export interface FlywheelRequest {
   postStatus?: "queue" | "draft";
   autoDraftMetaAd?: boolean;
   selectedChannelIds?: string[];
+  clientTimezoneOffset?: number;
+  clientLocalToday?: { year: number; month: number; date: number };
   customMix?: {
     reelsCount?: number;
     imagePostsCount?: number;
@@ -476,8 +478,18 @@ Return ONLY valid JSON matching this schema:
         ? params.customTimeSlots[(i % postsPerDay) % params.customTimeSlots.length]
         : undefined;
 
-      const baseDayDate = addDays(now, Math.floor(i / postsPerDay));
-      const chScheduleDate = getPlatformStaggeredDate(baseDayDate, chType, cIdx, i % postsPerDay, slotStr);
+      const dayOffset = Math.floor(i / postsPerDay);
+      const baseDayDate = addDays(now, dayOffset);
+      const chScheduleDate = getPlatformStaggeredDate(
+        baseDayDate,
+        chType,
+        cIdx,
+        i % postsPerDay,
+        slotStr,
+        params.clientTimezoneOffset,
+        params.clientLocalToday,
+        dayOffset
+      );
 
       const postDesiredStatus = params.postStatus || "queue";
 

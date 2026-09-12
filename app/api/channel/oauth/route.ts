@@ -61,7 +61,21 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const redirectUri = `${appUrl}/api/channel/callback`;
+    let redirectUri = `${appUrl}/api/channel/callback`;
+
+    // Meta (Threads, Facebook, Instagram) strictly rejects HTTP redirect URIs with error 1349187 (Insecure Login Blocked).
+    // Enforce HTTPS across all Meta/Threads authorization requests.
+    const isMetaFamily = type === ChannelTypeEnum.THREADS || type === ChannelTypeEnum.FACEBOOK || type === ChannelTypeEnum.INSTAGRAM;
+    if (isMetaFamily) {
+      const publicHttpsUrl = process.env.NEXT_PUBLIC_APP_URL?.startsWith("https://")
+        ? process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")
+        : null;
+      if (publicHttpsUrl) {
+        redirectUri = `${publicHttpsUrl}/api/channel/callback`;
+      } else if (redirectUri.startsWith("http://")) {
+        redirectUri = redirectUri.replace(/^http:\/\//i, "https://");
+      }
+    }
 
     // Create OAuth state with embedded redirectUri for 100% callback match
     const state = createOAuthState({

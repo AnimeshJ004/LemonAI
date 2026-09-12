@@ -72,6 +72,13 @@ export default function FlywheelLauncherDialog({
           businessName,
           daysToSchedule: days,
           autoDraftMetaAd: draftAd,
+          customTimeSlots: ["14:30"],
+          clientTimezoneOffset: new Date().getTimezoneOffset(),
+          clientLocalToday: {
+            year: new Date().getFullYear(),
+            month: new Date().getMonth(),
+            date: new Date().getDate(),
+          },
         }),
       });
 
@@ -82,6 +89,9 @@ export default function FlywheelLauncherDialog({
     onSuccess: (data) => {
       setResult(data);
       toast.success("Autonomous Flywheel completed successfully!");
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === "posts" });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      queryClient.refetchQueries({ predicate: (q) => q.queryKey[0] === "posts" });
       queryClient.invalidateQueries({ queryKey: ["scheduled-posts"] });
       queryClient.invalidateQueries({ queryKey: ["meta-campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["analytics-overview"] });

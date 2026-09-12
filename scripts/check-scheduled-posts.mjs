@@ -29,7 +29,7 @@ async function checkPosts() {
     .from('scheduled_posts')
     .select('*, user_channels(*, channel_types(*))')
     .order('created_at', { ascending: false })
-    .limit(10);
+    .limit(30);
 
   if (error) {
     console.error('Error fetching posts:', error);

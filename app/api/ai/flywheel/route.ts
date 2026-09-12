@@ -31,6 +31,8 @@ export async function POST(req: NextRequest) {
       autoDraftMetaAd,
       selectedChannelIds,
       customMix,
+      clientTimezoneOffset,
+      clientLocalToday,
     } = body;
 
     const result = await executeAutonomousFlywheel({
@@ -47,6 +49,8 @@ export async function POST(req: NextRequest) {
       daysToSchedule: Number(daysToSchedule) || 7,
       postsPerDay: Number(postsPerDay) || 1,
       customTimeSlots: Array.isArray(customTimeSlots) ? customTimeSlots : undefined,
+      clientTimezoneOffset: typeof clientTimezoneOffset === "number" ? clientTimezoneOffset : undefined,
+      clientLocalToday: clientLocalToday && typeof clientLocalToday === "object" ? clientLocalToday : undefined,
       generateImages: generateImages !== false,
       postStatus: postStatus === "draft" ? "draft" : "queue",
       autoDraftMetaAd: autoDraftMetaAd !== false,

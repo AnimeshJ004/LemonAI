@@ -25,6 +25,8 @@ export interface AutoPilotRequest {
   daysToGenerate?: number; // fallback
   postsPerDay?: number; // 1 to 5 posts per day
   customTimeSlots?: string[]; // user-configured times e.g. ["09:00", "15:30"] or ["09:00 AM", "03:30 PM"]
+  clientTimezoneOffset?: number;
+  clientLocalToday?: { year: number; month: number; date: number };
   selectedChannelIds?: string[];
   generateImages?: boolean;
   postStatus?: "queue" | "draft";
@@ -273,7 +275,16 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
           // 1. Calculate optimal engagement time (strictly respects user custom time slot e.g. 2:30 PM / 14:30)
           const peak = getPlatformPeakTime(channelType, p);
           const baseDateForDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
-          const scheduledDate = getPlatformStaggeredDate(baseDateForDay, channelType, cIdx, p, slotStr);
+          const scheduledDate = getPlatformStaggeredDate(
+            baseDateForDay,
+            channelType,
+            cIdx,
+            p,
+            slotStr,
+            body.clientTimezoneOffset,
+            body.clientLocalToday,
+            d
+          );
           const customParsed = parseCustomTimeString(slotStr);
           const activeTimeSlotLabel = customParsed?.timeSlot || peak.timeSlot;
 
