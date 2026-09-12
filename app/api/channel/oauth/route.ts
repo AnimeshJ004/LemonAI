@@ -72,7 +72,7 @@ export async function GET(request: NextRequest) {
         : null;
       if (publicHttpsUrl) {
         redirectUri = `${publicHttpsUrl}/api/channel/callback`;
-      } else if (redirectUri.startsWith("http://")) {
+      } else if (redirectUri.startsWith("http://") && !redirectUri.includes("localhost") && !redirectUri.includes("127.0.0.1")) {
         redirectUri = redirectUri.replace(/^http:\/\//i, "https://");
       }
     }

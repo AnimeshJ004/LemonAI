@@ -136,6 +136,7 @@ export async function publishPostDirectly(postId: string): Promise<{
     } else if (providerType === ChannelTypeEnum.THREADS) {
       publishedUrl = await publishToThreadsDirect({
         accessToken: currentAccessToken,
+        threadsUserId: userChannel.provider_account_id,
         content: post.content,
         images: post.images,
       });
@@ -580,6 +581,39 @@ async function publishToFacebookDirect({
     logger.warn("Notice checking Facebook accounts for page:", err);
   }
 
+  // Fallback: If no page was found on this token, inspect any linked Instagram channel token for accessible Pages
+  if (!targetId || targetId === "me") {
+    try {
+      const admin = getInsforgeAdminClient();
+      const { data: igChannels } = await admin.database
+        .from("user_channels")
+        .select("access_token, channel_types(type)")
+        .not("access_token", "is", null);
+
+      for (const ch of igChannels || []) {
+        if ((ch.channel_types as any)?.type === "INSTAGRAM" && ch.access_token) {
+          const igToken = decrypt(ch.access_token);
+          if (igToken) {
+            const igAccRes = await fetch(
+              `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token&access_token=${encodeURIComponent(igToken)}`
+            );
+            if (igAccRes.ok) {
+              const igAccData = await igAccRes.json();
+              if (igAccData?.data?.length > 0) {
+                targetId = igAccData.data[0].id;
+                activeToken = igAccData.data[0].access_token || igToken;
+                logger.info(`[Facebook Publisher] Discovered Facebook Page (${igAccData.data[0].name}) via Instagram channel connection.`);
+                break;
+              }
+            }
+          }
+        }
+      }
+    } catch (igFallbackErr) {
+      logger.warn("Notice checking Instagram token for Facebook Page:", igFallbackErr);
+    }
+  }
+
   if (!targetId || targetId === "me") {
     throw new Error(
       "Meta Graph API only supports publishing to Facebook Pages, not personal profiles. Please create a Facebook Page on facebook.com/pages/create and connect it in Settings > Channels."
@@ -909,10 +943,12 @@ async function publishToLinkedInDirect({
 
 async function publishToThreadsDirect({
   accessToken,
+  threadsUserId,
   content,
   images,
 }: {
   accessToken: string;
+  threadsUserId?: string | null;
   content: string;
   images?: ImageObject[];
 }): Promise<string> {
@@ -926,6 +962,26 @@ async function publishToThreadsDirect({
       (images[0] as any)?.media_type === "video";
   }
 
+  // Resolve explicit Threads User ID (Threads API requires /{threads-user-id}/threads_publish, /me is not supported on publish)
+  let targetUserId = threadsUserId;
+  if (!targetUserId || targetUserId === "me") {
+    try {
+      const meRes = await fetch(
+        `https://graph.threads.net/v1.0/me?fields=id,username&access_token=${encodeURIComponent(accessToken)}`
+      );
+      if (meRes.ok) {
+        const meData = await meRes.json();
+        if (meData?.id) {
+          targetUserId = meData.id;
+        }
+      }
+    } catch (meErr) {
+      logger.warn("[Threads Publisher] Notice resolving Threads user id from /me:", meErr);
+    }
+  }
+
+  const endpointUser = targetUserId || "me";
+
   // Helper to create a Threads media or text container
   async function createThreadsContainer(type: "VIDEO" | "IMAGE" | "TEXT", url?: string | null): Promise<string> {
     const params = new URLSearchParams({
@@ -938,7 +994,7 @@ async function publishToThreadsDirect({
     }
 
     const createRes = await fetch(
-      `https://graph.threads.net/v1.0/me/threads?${params.toString()}`,
+      `https://graph.threads.net/v1.0/${endpointUser}/threads?${params.toString()}`,
       { method: "POST" }
     );
     const createData = await createRes.json();
@@ -986,7 +1042,7 @@ async function publishToThreadsDirect({
     } catch {}
   }
 
-  // Step 3: Publish container with retry loop
+  // Step 3: Publish container with retry loop using explicit /{threads-user-id}/threads_publish
   let pubData: any = null;
   const maxPublishAttempts = 5;
 
@@ -996,7 +1052,7 @@ async function publishToThreadsDirect({
     }
 
     const pubRes = await fetch(
-      `https://graph.threads.net/v1.0/me/threads_publish?creation_id=${containerId}&access_token=${encodeURIComponent(accessToken)}`,
+      `https://graph.threads.net/v1.0/${endpointUser}/threads_publish?creation_id=${containerId}&access_token=${encodeURIComponent(accessToken)}`,
       { method: "POST" }
     );
     pubData = await pubRes.json();
@@ -1017,7 +1073,7 @@ async function publishToThreadsDirect({
         const textContainerId = await createThreadsContainer("TEXT");
         await new Promise((resolve) => setTimeout(resolve, 1500));
         const emergencyPub = await fetch(
-          `https://graph.threads.net/v1.0/me/threads_publish?creation_id=${textContainerId}&access_token=${encodeURIComponent(accessToken)}`,
+          `https://graph.threads.net/v1.0/${endpointUser}/threads_publish?creation_id=${textContainerId}&access_token=${encodeURIComponent(accessToken)}`,
           { method: "POST" }
         );
         const emData = await emergencyPub.json();
