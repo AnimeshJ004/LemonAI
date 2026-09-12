@@ -599,7 +599,9 @@ shouldSendDM must be a boolean. intentType must be one of: booking | pricing | g
     });
 
     let dmSuccess = false;
-    if (aiResult.shouldSendDM && aiResult.dmMessage && commenterId) {
+    // Allow DM even if commenterId is empty — the private reply fallback uses commentId directly.
+    // Instagram often omits from.id on comments, so we must not block on it.
+    if (aiResult.shouldSendDM && aiResult.dmMessage && (commenterId || commentId)) {
       try {
         const senderId = igAccountId || "me";
 
@@ -666,7 +668,7 @@ shouldSendDM must be a boolean. intentType must be one of: booking | pricing | g
     } else if (aiResult.shouldSendDM) {
       // Log WHY the DM was skipped despite shouldSendDM = true
       console.warn("[Social Comment Service] DM skipped despite shouldSendDM=true:", {
-        missingCommenterId: !commenterId,
+        missingBothIds: !commenterId && !commentId,
         missingDmMessage: !aiResult.dmMessage,
       });
     }
