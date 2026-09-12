@@ -178,14 +178,11 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
     useEffect(() => {
         if (channels.length > 0 && Object.keys(channelContent).length === 0) {
             const initialContent: Record<string, ChannelContent> = {}
-            const initialTimings: Record<string, string> = {}
             channels.forEach(channel => {
                 initialContent[channel.id] = { text: "", images: [] }
-                const peak = getPlatformPeakTime(channel.type);
-                initialTimings[channel.id] = peak.timeSlot;
             })
             setChannelContent(initialContent)
-            setChannelTimings(initialTimings)
+            setChannelTimings({})
         }
     }, [channels])
 
@@ -373,13 +370,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                             images: [...globalContent.images]
                         }
                     }))
-                }
-                if (channelObj && !channelTimings[channelId]) {
-                    const peak = getPlatformPeakTime(channelObj.type);
-                    setChannelTimings((prev) => ({
-                        ...prev,
-                        [channelId]: peak.timeSlot
-                    }));
                 }
             } else {
                 setChannelContent((prev) => ({
@@ -822,10 +812,12 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                                             images: newImgs,
                                                         };
 
-                                                        // Automatically assign optimal peak timing per platform
+                                                        // Assign schedule timing if specified, or current timeSlot, or optimal peak timing
                                                         if (chObj) {
                                                             const peak = getPlatformPeakTime(chObj.type);
-                                                            updatedTimings[chId] = schedule?.time ? normalizeTimeSlot(schedule.time) : peak.timeSlot;
+                                                            updatedTimings[chId] = schedule?.time 
+                                                                ? normalizeTimeSlot(schedule.time) 
+                                                                : (timeSlot || peak.timeSlot);
                                                         }
                                                     });
                                                     setChannelContent(updatedChannelContent);
@@ -922,7 +914,10 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                     date={date}
                                     setDate={setDate}
                                     time={timeSlot}
-                                    setTime={setTimeSlot}
+                                    setTime={(newTime) => {
+                                        setTimeSlot(newTime);
+                                        setChannelTimings({});
+                                    }}
                                     renderButton={(isDatePassed, isTimeNotAvailable) => <Button
                                         size="lg"
                                         className="border py-4.5 px-4"

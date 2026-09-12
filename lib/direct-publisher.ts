@@ -44,7 +44,32 @@ export async function publishPostDirectly(postId: string): Promise<{
     .update({ status: "publishing" })
     .eq("id", postId);
 
-  const userChannel = post.user_channels;
+  let userChannel = post.user_channels;
+  if (!userChannel && post.user_id) {
+    try {
+      const { data: userChans } = await admin.database
+        .from("user_channels")
+        .select("*, channel_types(id, type, name)")
+        .eq("user_id", post.user_id);
+
+      if (userChans && userChans.length > 0) {
+        userChannel =
+          userChans.find((c: any) => c.channel_types?.type === ChannelTypeEnum.THREADS && c.is_connected) ||
+          userChans.find((c: any) => c.is_connected) ||
+          userChans[0];
+
+        if (userChannel?.id) {
+          await admin.database
+            .from("scheduled_posts")
+            .update({ user_channel_id: userChannel.id })
+            .eq("id", postId);
+        }
+      }
+    } catch (chanErr) {
+      logger.warn("Channel auto-resolution fallback notice:", chanErr);
+    }
+  }
+
   const channelType = userChannel?.channel_types;
   const providerType = channelType?.type as ChannelTypeEnum;
 

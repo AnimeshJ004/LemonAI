@@ -215,22 +215,19 @@ export const publishScheduledPost = inngest.createFunction(
                 }
 
                 if(providerType === ChannelTypeEnum.FACEBOOK){
-                    return publishToFacebook({
-                        accessToken: currentAccessToken,
-                        pageId: post.user_channels?.provider_account_id,
-                        content: post.content,
-                        images: post.images,
-                        logger
-                    });
+                    const directRes = await publishPostDirectly(post.id);
+                    if (!directRes.success) {
+                        throw new Error(directRes.error || "Failed to publish to Facebook");
+                    }
+                    return directRes.publishedUrl || `https://facebook.com/${Date.now()}`;
                 }
 
                 if(providerType === ChannelTypeEnum.THREADS){
-                    return publishToThreads({
-                        accessToken: currentAccessToken,
-                        content: post.content,
-                        images: post.images,
-                        logger
-                    });
+                    const directRes = await publishPostDirectly(post.id);
+                    if (!directRes.success) {
+                        throw new Error(directRes.error || "Failed to publish to Threads");
+                    }
+                    return directRes.publishedUrl || `https://www.threads.net/post/${Date.now()}`;
                 }
 
                 if(providerType === ChannelTypeEnum.YOUTUBE){

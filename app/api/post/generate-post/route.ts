@@ -170,8 +170,10 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
                 }
 
                 const targetChannelType = channelType || targetChannel || "TWITTER";
-                const peak = getPlatformPeakTime(targetChannelType, slotIndex);
-                scheduledDate.setHours(peak.hour, peak.minute, 0, 0);
+                if (!timeParts) {
+                    const peak = getPlatformPeakTime(targetChannelType, slotIndex);
+                    scheduledDate.setHours(peak.hour, peak.minute, 0, 0);
+                }
 
                 // Silently adapt caption according to the specific social media platform rules
                 let rawContent = item?.content || `Update from ${brandProfile?.business_name || "our team"}: We deliver top quality ${brandProfile?.niche || "solutions"} designed to give you the best results. Contact us today to learn more.`;

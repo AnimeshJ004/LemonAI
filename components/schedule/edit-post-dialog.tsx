@@ -7,6 +7,7 @@ import {
     Wand2,
     ScanEye,
     Lightbulb,
+    Zap,
 } from "lucide-react"
 import { ScheduleDatePicker } from "./schedule-date-picker"
 import { Button } from "@/components/ui/button"
@@ -91,6 +92,28 @@ export function EditPostDialog({
         onError: (error: any) => {
             console.error("Update error:", error);
             toast.error(error.message);
+        }
+    });
+
+    const publishMutation = useMutation({
+        mutationFn: async (postId: string) => {
+            const res = await fetch(`/api/post/${postId}/publish`, {
+                method: "POST",
+            });
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.error || "Failed to publish post");
+            }
+            return res.json();
+        },
+        onSuccess: () => {
+            toast.success("Post published successfully!");
+            queryClient.invalidateQueries({ queryKey: ["posts"] });
+            queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === "posts" });
+            onOpenChange(false);
+        },
+        onError: (err: any) => {
+            toast.error(err?.message || "Failed to publish post");
         }
     });
 
@@ -270,31 +293,47 @@ export function EditPostDialog({
                             variant="ghost"
                             size="lg"
                             onClick={() => handleUpdate(POST_STATUS.DRAFT)}
-                            disabled={updatePostMutation.isPending}
+                            disabled={updatePostMutation.isPending || publishMutation.isPending}
                         >
                             {updatePostMutation.isPending && updatePostMutation.variables?.status === POST_STATUS.DRAFT && <Spinner />}
                             Save Draft
                         </Button>
-                        <ButtonGroup className="p-0!">
-                            <ScheduleDatePicker
-                                date={date} setDate={setDate} time={time} setTime={setTime}
-                                renderButton={(isDatePassed, isTimeNotAvailable) => <Button
-                                    size="lg"
-                                    className="border py-4.5 px-4"
-                                    onClick={() => {
-                                        if (isDatePassed || isTimeNotAvailable) {
-                                            toast.error("Please select a valid time")
-                                            return;
-                                        }
-                                        handleUpdate()
-                                    }}
-                                    disabled={updatePostMutation.isPending || !date || !time || isTimeNotAvailable || isDatePassed}
-                                >
-                                    {updatePostMutation.isPending && updatePostMutation.variables?.status === undefined && <Spinner />}
-                                    Schedule Post
-                                </Button>}
-                            />
-                        </ButtonGroup>
+                        <div className="flex items-center gap-2">
+                            <Button
+                                type="button"
+                                size="lg"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-xs"
+                                disabled={publishMutation.isPending || updatePostMutation.isPending}
+                                onClick={() => {
+                                    if (post?.id) {
+                                        publishMutation.mutate(post.id);
+                                    }
+                                }}
+                            >
+                                {publishMutation.isPending ? <Spinner /> : <Zap className="size-4 mr-1.5 fill-white" />}
+                                Publish Now
+                            </Button>
+                            <ButtonGroup className="p-0!">
+                                <ScheduleDatePicker
+                                    date={date} setDate={setDate} time={time} setTime={setTime}
+                                    renderButton={(isDatePassed, isTimeNotAvailable) => <Button
+                                        size="lg"
+                                        className="border py-4.5 px-4"
+                                        onClick={() => {
+                                            if (isDatePassed || isTimeNotAvailable) {
+                                                toast.error("Please select a valid time")
+                                                return;
+                                            }
+                                            handleUpdate()
+                                        }}
+                                        disabled={updatePostMutation.isPending || publishMutation.isPending || !date || !time || isTimeNotAvailable || isDatePassed}
+                                    >
+                                        {updatePostMutation.isPending && updatePostMutation.variables?.status === undefined && <Spinner />}
+                                        Schedule Post
+                                    </Button>}
+                                />
+                            </ButtonGroup>
+                        </div>
                     </div>
                 </DialogFooter>
             </DialogContent>
