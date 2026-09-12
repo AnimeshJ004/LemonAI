@@ -463,15 +463,16 @@ Comment: "${commentText}"
 Commenter: @${commenterHandle}
 
 Rules:
-1. Public reply MUST be concise, under 140 characters.
-2. If the user asks about price, cost, booking, demo, or buying, set shouldSendDM to true and write a helpful private dmMessage.
-3. Return ONLY valid JSON:
+1. Public reply MUST be concise, under 140 characters. Do NOT say "Sent you a DM" or "check your DM" in the public reply — that will be added automatically if a DM is sent.
+2. If the user asks about price, cost, booking, demo, availability, or buying intent, set shouldSendDM to true and write a warm, helpful dmMessage with details.
+3. Return ONLY valid JSON (no markdown). Use exactly this structure:
 {
-  "sentiment": "INQUIRY|PRAISE|COMPLAINT|SPAM|NEUTRAL",
-  "reply": "Your public response",
-  "shouldSendDM": true,
-  "dmMessage": "Private direct message text if purchase intent"
-}`,
+  "sentiment": "INQUIRY",
+  "reply": "Your concise public comment reply here",
+  "shouldSendDM": false,
+  "dmMessage": ""
+}
+shouldSendDM must be a boolean true or false depending on whether a private DM is warranted.`,
           },
         ],
       });
@@ -547,10 +548,14 @@ Rules:
     }
 
     // ─── 8. Send Private Direct Message (if purchase intent detected) ───────────
+    // Use igAccountId (the actual page/business account ID) as the sender — NOT 'me',
+    // which is invalid when using a page access token and causes silent DM delivery failures.
     let dmSuccess = false;
     if (aiResult.shouldSendDM && aiResult.dmMessage && commenterId) {
       try {
-        const dmRes = await fetch(`https://graph.facebook.com/v22.0/me/messages`, {
+        // igAccountId is the Meta Page/IG Business account ID — required for correct routing
+        const senderId = igAccountId || "me";
+        const dmRes = await fetch(`https://graph.facebook.com/v22.0/${senderId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -560,14 +565,36 @@ Rules:
           }),
         });
         const dmJson = await dmRes.json().catch(() => ({}));
-        if (dmRes.ok) {
+        if (dmRes.ok && (dmJson?.message_id || dmJson?.recipient_id)) {
           dmSuccess = true;
-          console.log(`[Social Comment Service] ✓ Private DM sent to commenter ${commenterId}`);
+          console.log(`[Social Comment Service] ✓ Private DM sent to commenter ${commenterId} via account ${senderId}`);
         } else {
-          console.warn(`[Social Comment Service] Notice sending DM to ${commenterId}:`, JSON.stringify(dmJson));
+          // Log the full error so we can diagnose permission/token issues
+          console.warn(
+            `[Social Comment Service] DM to ${commenterId} failed (sender: ${senderId}):`,
+            JSON.stringify(dmJson)
+          );
         }
       } catch (dmErr) {
-        console.warn("[Social Comment Service] Network notice sending private DM:", dmErr);
+        console.warn("[Social Comment Service] Network error sending private DM:", dmErr);
+      }
+    }
+
+    // ─── 8b. Patch public reply text to reflect actual DM outcome ────────────
+    // Only promise a DM in the public comment if the DM was actually delivered.
+    // If DM failed, strip any DM-promise language so we don't mislead the commenter.
+    if (aiResult.shouldSendDM) {
+      const replyLower = aiResult.reply.toLowerCase();
+      const mentionsDM = replyLower.includes("dm") || replyLower.includes("direct message") || replyLower.includes("inbox");
+      if (dmSuccess && !mentionsDM) {
+        // Safely append DM confirmation within 140 char limit
+        const suffix = " 📩 Check your DMs!";
+        if ((aiResult.reply + suffix).length <= 140) {
+          aiResult.reply = aiResult.reply + suffix;
+        }
+      } else if (!dmSuccess && mentionsDM) {
+        // DM failed — replace the reply with a neutral version that doesn't lie
+        aiResult.reply = `Thanks for your interest, @${commenterHandle}! 🙏 We'll get back to you shortly.`;
       }
     }
 
