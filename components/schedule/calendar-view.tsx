@@ -44,7 +44,10 @@ const CalendarView = () => {
       if (!res.ok) throw new Error("Failed to fetch posts");
       return res.json();
     },
-    placeholderData: keepPreviousData
+    placeholderData: keepPreviousData,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   })
 
   const posts = data?.posts || [] as PostType[]

@@ -286,8 +286,10 @@ export default function AutonomousCampaignDialog({
     onSuccess: (data) => {
       setResult(data);
       toast.success(`Autonomous Campaign Scheduled: ${data.postsScheduledCount || totalPostsToSchedule} posts added to calendar`);
-      queryClient.invalidateQueries({ queryKey: ["scheduled-posts"] });
-      queryClient.invalidateQueries({ queryKey: ["calendar-posts"] });
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === "posts" });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      queryClient.invalidateQueries({ queryKey: ["posts", "totals"] });
+      queryClient.refetchQueries({ predicate: (q) => q.queryKey[0] === "posts" });
       queryClient.invalidateQueries({ queryKey: ["analytics-overview"] });
       queryClient.invalidateQueries({ queryKey: ["meta-campaigns"] });
     },
@@ -354,8 +356,10 @@ export default function AutonomousCampaignDialog({
           ),
         };
       });
-      queryClient.invalidateQueries({ queryKey: ["scheduled-posts"] });
-      queryClient.invalidateQueries({ queryKey: ["calendar-posts"] });
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === "posts" });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      queryClient.invalidateQueries({ queryKey: ["posts", "totals"] });
+      queryClient.refetchQueries({ predicate: (q) => q.queryKey[0] === "posts" });
       queryClient.invalidateQueries({ queryKey: ["analytics-overview"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to publish post to account");

@@ -8,7 +8,7 @@ import { inngest } from "@/inngest/client";
 import { publishPostDirectly } from "@/lib/direct-publisher";
 import { getUserMemoryContext, buildMemoryPromptBlock } from "@/lib/ai-memory";
 import { callResilientCompletion } from "@/lib/ai-gateway";
-import { getPlatformPeakTime, adaptCaptionForPlatform, getPlatformStaggeredDate } from "@/lib/platform-adapt-helper";
+import { getPlatformPeakTime, adaptCaptionForPlatform, getPlatformStaggeredDate, parseCustomTimeString } from "@/lib/platform-adapt-helper";
 
 export const maxDuration = 120; // Support extended AI batch generation
 
@@ -266,10 +266,16 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
             generatedPosts[0] ||
             null;
 
-          // 1. Silently calculate platform-specific optimal peak engagement time (guarantees no collisions)
+          const slotStr = body.customTimeSlots && body.customTimeSlots.length > 0
+            ? body.customTimeSlots[p % body.customTimeSlots.length]
+            : undefined;
+
+          // 1. Calculate optimal engagement time (strictly respects user custom time slot e.g. 2:30 PM / 14:30)
           const peak = getPlatformPeakTime(channelType, p);
           const baseDateForDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
-          const scheduledDate = getPlatformStaggeredDate(baseDateForDay, channelType, cIdx, p);
+          const scheduledDate = getPlatformStaggeredDate(baseDateForDay, channelType, cIdx, p, slotStr);
+          const customParsed = parseCustomTimeString(slotStr);
+          const activeTimeSlotLabel = customParsed?.timeSlot || peak.timeSlot;
 
           // 2. Silently adapt caption according to this specific social media platform's rules
           const baseText =
@@ -295,7 +301,7 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
             scheduled_at: scheduledDate.toISOString(),
             status: targetStatus,
             dayOffset: d,
-            timeSlot: peak.timeSlot,
+            timeSlot: activeTimeSlotLabel,
             pillar: aiPost?.pillar || (d === 0 ? "Announcement" : "Brand Update"),
             targetChannel,
             channelInfo: targetChannel

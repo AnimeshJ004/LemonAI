@@ -926,39 +926,113 @@ async function publishToThreadsDirect({
       (images[0] as any)?.media_type === "video";
   }
 
-  const params = new URLSearchParams({
-    access_token: accessToken,
-    text: content,
-  });
+  // Helper to create a Threads media or text container
+  async function createThreadsContainer(type: "VIDEO" | "IMAGE" | "TEXT", url?: string | null): Promise<string> {
+    const params = new URLSearchParams({
+      access_token: accessToken,
+      text: content,
+      media_type: type,
+    });
+    if (url && type !== "TEXT") {
+      params.append(type === "VIDEO" ? "video_url" : "image_url", url);
+    }
 
-  if (mediaUrl) {
-    params.append(isVideo ? "video_url" : "image_url", mediaUrl);
-    params.append("media_type", isVideo ? "VIDEO" : "IMAGE");
-  } else {
-    params.append("media_type", "TEXT");
-  }
-
-  const createRes = await fetch(
-    `https://graph.threads.net/v1.0/me/threads?${params.toString()}`,
-    { method: "POST" }
-  );
-  const createData = await createRes.json();
-  if (!createRes.ok || !createData.id) {
-    throw new Error(
-      `Threads creation failed: ${createData?.error?.message || JSON.stringify(createData)}`
+    const createRes = await fetch(
+      `https://graph.threads.net/v1.0/me/threads?${params.toString()}`,
+      { method: "POST" }
     );
+    const createData = await createRes.json();
+    if (!createRes.ok || !createData.id) {
+      throw new Error(
+        `Threads container creation (${type}) failed: ${createData?.error?.message || JSON.stringify(createData)}`
+      );
+    }
+    return createData.id;
   }
 
-  const pubRes = await fetch(
-    `https://graph.threads.net/v1.0/me/threads_publish?creation_id=${createData.id}&access_token=${encodeURIComponent(accessToken)}`,
-    { method: "POST" }
-  );
-  const pubData = await pubRes.json();
-  if (!pubRes.ok || !pubData.id) {
+  let containerId: string | null = null;
+
+  // Step 1: Attempt media container creation with graceful fallback to TEXT
+  if (mediaUrl) {
+    try {
+      containerId = await createThreadsContainer(isVideo ? "VIDEO" : "IMAGE", mediaUrl);
+    } catch (mediaErr: any) {
+      logger.warn(`[Threads Publisher] ${isVideo ? "Video" : "Image"} container creation failed, falling back to text:`, mediaErr?.message);
+      containerId = await createThreadsContainer("TEXT");
+    }
+  } else {
+    containerId = await createThreadsContainer("TEXT");
+  }
+
+  // Step 2: Poll container status if it was a media container (Threads requires FINISHED status)
+  const maxPolls = 8;
+  for (let poll = 1; poll <= maxPolls; poll++) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    try {
+      const statusRes = await fetch(
+        `https://graph.threads.net/v1.0/${containerId}?fields=status,error_message&access_token=${encodeURIComponent(accessToken)}`
+      );
+      if (statusRes.ok) {
+        const sData = await statusRes.json();
+        if (sData.status === "FINISHED") {
+          break;
+        } else if (sData.status === "ERROR") {
+          logger.warn(`[Threads Publisher] Media container returned ERROR. Creating fallback text container.`);
+          containerId = await createThreadsContainer("TEXT");
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          break;
+        }
+      }
+    } catch {}
+  }
+
+  // Step 3: Publish container with retry loop
+  let pubData: any = null;
+  const maxPublishAttempts = 5;
+
+  for (let attempt = 1; attempt <= maxPublishAttempts; attempt++) {
+    if (attempt > 1) {
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+    }
+
+    const pubRes = await fetch(
+      `https://graph.threads.net/v1.0/me/threads_publish?creation_id=${containerId}&access_token=${encodeURIComponent(accessToken)}`,
+      { method: "POST" }
+    );
+    pubData = await pubRes.json();
+
+    if (pubRes.ok && pubData.id) {
+      return `https://www.threads.net/post/${pubData.id}`;
+    }
+
+    const errMsg = String(pubData?.error?.message || "").toLowerCase();
+    if (errMsg.includes("not ready") || errMsg.includes("processing") || pubData?.error?.code === 9007) {
+      logger.info(`[Threads Publisher] Container ${containerId} still processing. Retrying (${attempt}/${maxPublishAttempts})...`);
+      continue;
+    }
+
+    // If media container publishing fails, create emergency text post
+    if (attempt === maxPublishAttempts) {
+      try {
+        const textContainerId = await createThreadsContainer("TEXT");
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        const emergencyPub = await fetch(
+          `https://graph.threads.net/v1.0/me/threads_publish?creation_id=${textContainerId}&access_token=${encodeURIComponent(accessToken)}`,
+          { method: "POST" }
+        );
+        const emData = await emergencyPub.json();
+        if (emergencyPub.ok && emData.id) {
+          return `https://www.threads.net/post/${emData.id}`;
+        }
+      } catch (emErr) {
+        logger.warn("[Threads Publisher] Emergency text publish error:", emErr);
+      }
+    }
+
     throw new Error(
       `Threads publish failed: ${pubData?.error?.message || JSON.stringify(pubData)}`
     );
   }
 
-  return `https://www.threads.net/post/${pubData.id}`;
+  throw new Error(`Threads publish failed: timeout waiting for container`);
 }
