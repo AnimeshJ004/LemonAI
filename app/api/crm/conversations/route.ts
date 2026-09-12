@@ -148,6 +148,61 @@ Keep the response to 2-3 sentences. Do not output markdown headers.`,
       content: content.trim(),
     });
 
+    // If an incoming lead message arrives and AI autopilot is active, automatically generate AI reply
+    if (sender_type === "lead") {
+      try {
+        const { conversation: currentConv, messages: history } = await getConversationWithMessages(
+          conversation_id,
+          targetUserId
+        );
+
+        if (currentConv?.is_ai_active !== false) {
+          const lead = currentConv?.lead;
+          const recentHistory = [...(history || [])]
+            .slice(-6)
+            .map((m) => `${m.sender_type === "lead" ? lead?.name || "Customer" : m.sender_type === "ai_assistant" ? "AI Agent" : "Human Agent"}: ${m.content}`)
+            .join("\n");
+
+          let aiText = "";
+          try {
+            const aiRes = await callResilientCompletion({
+              messages: [
+                {
+                  role: "system",
+                  content: `You are Lemon AI's autonomous omnichannel sales bot.
+You are chatting with ${lead?.name || "the prospect"}${lead?.metadata?.company ? ` from ${lead.metadata.company}` : ""}.
+Your tone is friendly, consultative, concise, and helpful.
+Answer their questions directly in 2-3 sentences. Suggest scheduling a quick 15-minute walkthrough if appropriate.`,
+                },
+                {
+                  role: "user",
+                  content: `Recent chat history:\n${recentHistory}\n\nDraft the next conversational response.`,
+                },
+              ],
+              temperature: 0.7,
+            });
+            if (aiRes.success && aiRes.content?.trim()) {
+              aiText = aiRes.content.trim();
+            }
+          } catch {}
+
+          if (!aiText) {
+            aiText = `Hi ${lead?.name ? lead.name.split(" ")[0] : "there"}! Thanks for your message. We can seamlessly assist you with this. Would you like to schedule a quick 15-minute demo to explore further?`;
+          }
+
+          const aiReply = await addMessage({
+            conversation_id,
+            sender_type: "ai_assistant",
+            content: aiText,
+          });
+
+          return NextResponse.json({ message, aiReply }, { status: 201 });
+        }
+      } catch (autoErr) {
+        console.warn("Auto AI reply notice:", autoErr);
+      }
+    }
+
     return NextResponse.json({ message }, { status: 201 });
   } catch (error: any) {
     console.error("Error sending message:", error);

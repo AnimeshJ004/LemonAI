@@ -7,6 +7,7 @@ import { ConversationList } from "@/components/crm/inbox/conversation-list";
 import { ChatWindow } from "@/components/crm/inbox/chat-window";
 import { ChatInput } from "@/components/crm/inbox/chat-input";
 import { HumanTakeoverBanner } from "@/components/crm/inbox/human-takeover-banner";
+import { NewConversationDialog } from "@/components/crm/inbox/new-conversation-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { generateCalcomBookingUrl } from "@/lib/calcom-url";
@@ -23,12 +24,14 @@ import {
   DollarSign,
   MessageSquare,
   RefreshCw,
+  Plus,
 } from "lucide-react";
 
 export default function InboxPage() {
   const queryClient = useQueryClient();
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [isCalling, setIsCalling] = useState(false);
+  const [isNewConvOpen, setIsNewConvOpen] = useState(false);
 
   // Fetch active conversations
   const { data: convsData, isLoading: isLoadingConvs, refetch: refetchConvs } = useQuery({
@@ -111,6 +114,8 @@ export default function InboxPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["crm-conversation-detail", selectedConvId] });
       queryClient.invalidateQueries({ queryKey: ["crm-conversations"] });
+      refetchActive();
+      refetchConvs();
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to send message");
@@ -136,6 +141,8 @@ export default function InboxPage() {
       toast.success("AI Sales Assistant replied!");
       queryClient.invalidateQueries({ queryKey: ["crm-conversation-detail", selectedConvId] });
       queryClient.invalidateQueries({ queryKey: ["crm-conversations"] });
+      refetchActive();
+      refetchConvs();
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to generate AI reply");
@@ -169,6 +176,8 @@ export default function InboxPage() {
       toast.success("Inbound prospect message received!");
       queryClient.invalidateQueries({ queryKey: ["crm-conversation-detail", selectedConvId] });
       queryClient.invalidateQueries({ queryKey: ["crm-conversations"] });
+      refetchActive();
+      refetchConvs();
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to simulate message");
@@ -244,6 +253,7 @@ export default function InboxPage() {
             conversations={conversations}
             selectedId={selectedConvId}
             onSelect={(conv) => setSelectedConvId(conv.id)}
+            onNewConversation={() => setIsNewConvOpen(true)}
           />
         </div>
 
@@ -414,6 +424,18 @@ export default function InboxPage() {
           )}
         </div>
       </div>
+
+      {/* Start New Conversation Modal */}
+      <NewConversationDialog
+        isOpen={isNewConvOpen}
+        onClose={() => setIsNewConvOpen(false)}
+        onCreated={(conv) => {
+          setSelectedConvId(conv.id);
+          queryClient.invalidateQueries({ queryKey: ["crm-conversations"] });
+          refetchConvs();
+          refetchActive();
+        }}
+      />
     </div>
   );
 }

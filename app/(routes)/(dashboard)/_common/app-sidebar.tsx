@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
-import { Calendar, CreditCard, Lightbulb, Plus, PlusCircleIcon, Settings, Building2, Megaphone, Search, Clapperboard, LayoutTemplate, BookOpen, TrendingUp, Bot, Globe, MessageCircle, CalendarClock, Kanban, Inbox, BarChart3, Phone } from 'lucide-react';
+import { Calendar, CreditCard, Lightbulb, Plus, PlusCircleIcon, Settings, Building2, Megaphone, Search, Clapperboard, LayoutTemplate, BookOpen, TrendingUp, Bot, Globe, MessageCircle, CalendarClock, Kanban, Inbox, BarChart3, Phone, Users } from 'lucide-react';
 import { useSidebar } from '@/components/ui/sidebar';
 import Logo from '@/components/logo';
 import { Button } from '@/components/ui/button';
@@ -52,6 +52,7 @@ const studioNav = [
 
 // Member 3: CRM & Growth nav
 const crmNav = [
+  { name: "CRM Overview", href: "/crm", icon: Users },
   { name: "Pipeline", href: "/crm/pipeline", icon: Kanban },
   { name: "Inbox", href: "/crm/inbox", icon: Inbox },
   { name: "Appointments", href: "/appointments", icon: CalendarClock },
