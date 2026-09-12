@@ -224,10 +224,10 @@ export const publishScheduledPost = inngest.createFunction(
 
                 if(providerType === ChannelTypeEnum.THREADS){
                     const directRes = await publishPostDirectly(post.id);
-                    if (!directRes.success) {
+                    if (!directRes.success || !directRes.publishedUrl) {
                         throw new Error(directRes.error || "Failed to publish to Threads");
                     }
-                    return directRes.publishedUrl || `https://www.threads.net/post/${Date.now()}`;
+                    return directRes.publishedUrl;
                 }
 
                 if(providerType === ChannelTypeEnum.YOUTUBE){
