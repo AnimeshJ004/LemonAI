@@ -76,9 +76,9 @@ const PRESET_POSTS_PER_DAY = [
 ];
 
 const DEFAULT_TIME_SLOTS: Record<number, string[]> = {
-  1: ["10:00"],
+  1: ["14:30"],
   2: ["09:30", "16:30"],
-  3: ["09:00", "14:00", "19:30"],
+  3: ["09:00", "14:30", "19:30"],
   4: ["08:30", "12:30", "17:00", "20:30"],
 };
 
@@ -115,7 +115,7 @@ export default function AutonomousCampaignDialog({
   const [draftAd, setDraftAd] = useState<boolean>(true);
   const [generateImages, setGenerateImages] = useState<boolean>(true);
   const [postStatus, setPostStatus] = useState<"queue" | "draft">("queue");
-  const [customTimes, setCustomTimes] = useState<string[]>(["10:00"]);
+  const [customTimes, setCustomTimes] = useState<string[]>(["14:30"]);
   const [result, setResult] = useState<any | null>(null);
   const [expandedPostIdx, setExpandedPostIdx] = useState<number | null>(null);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
@@ -127,10 +127,10 @@ export default function AutonomousCampaignDialog({
   // Keep customTimes synced when postsPerDay changes
   useEffect(() => {
     setCustomTimes((prev) => {
-      const defaults = DEFAULT_TIME_SLOTS[postsPerDay] || ["10:00"];
+      const defaults = DEFAULT_TIME_SLOTS[postsPerDay] || ["14:30"];
       const next: string[] = [];
       for (let i = 0; i < postsPerDay; i++) {
-        next.push(prev[i] || defaults[i] || "10:00");
+        next.push(prev[i] || defaults[i] || "14:30");
       }
       return next;
     });
@@ -267,6 +267,12 @@ export default function AutonomousCampaignDialog({
           daysToSchedule: autoDays,
           postsPerDay,
           customTimeSlots: customTimes.slice(0, postsPerDay),
+          clientTimezoneOffset: new Date().getTimezoneOffset(),
+          clientLocalToday: {
+            year: new Date().getFullYear(),
+            month: new Date().getMonth(),
+            date: new Date().getDate(),
+          },
           generateImages,
           postStatus,
           autoDraftMetaAd: draftAd,
@@ -286,8 +292,10 @@ export default function AutonomousCampaignDialog({
     onSuccess: (data) => {
       setResult(data);
       toast.success(`Autonomous Campaign Scheduled: ${data.postsScheduledCount || totalPostsToSchedule} posts added to calendar`);
-      queryClient.invalidateQueries({ queryKey: ["scheduled-posts"] });
-      queryClient.invalidateQueries({ queryKey: ["calendar-posts"] });
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === "posts" });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      queryClient.invalidateQueries({ queryKey: ["posts", "totals"] });
+      queryClient.refetchQueries({ predicate: (q) => q.queryKey[0] === "posts" });
       queryClient.invalidateQueries({ queryKey: ["analytics-overview"] });
       queryClient.invalidateQueries({ queryKey: ["meta-campaigns"] });
     },
@@ -354,8 +362,10 @@ export default function AutonomousCampaignDialog({
           ),
         };
       });
-      queryClient.invalidateQueries({ queryKey: ["scheduled-posts"] });
-      queryClient.invalidateQueries({ queryKey: ["calendar-posts"] });
+      queryClient.invalidateQueries({ predicate: (q) => q.queryKey[0] === "posts" });
+      queryClient.invalidateQueries({ queryKey: ["posts"] });
+      queryClient.invalidateQueries({ queryKey: ["posts", "totals"] });
+      queryClient.refetchQueries({ predicate: (q) => q.queryKey[0] === "posts" });
       queryClient.invalidateQueries({ queryKey: ["analytics-overview"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to publish post to account");

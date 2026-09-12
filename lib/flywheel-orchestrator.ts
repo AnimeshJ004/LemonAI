@@ -25,6 +25,8 @@ export interface FlywheelRequest {
   postStatus?: "queue" | "draft";
   autoDraftMetaAd?: boolean;
   selectedChannelIds?: string[];
+  clientTimezoneOffset?: number;
+  clientLocalToday?: { year: number; month: number; date: number };
   customMix?: {
     reelsCount?: number;
     imagePostsCount?: number;
@@ -471,19 +473,23 @@ Return ONLY valid JSON matching this schema:
         niche,
       });
 
-      // 2. Silently schedule at platform's distinct peak engagement time (or user-defined time slots)
-      let chScheduleDate = getPlatformStaggeredDate(addDays(now, Math.floor(i / postsPerDay)), chType, cIdx, i % postsPerDay);
-      if (params.customTimeSlots && params.customTimeSlots.length > 0) {
-        const slotStr = params.customTimeSlots[(i % postsPerDay) % params.customTimeSlots.length];
-        const match = slotStr ? slotStr.match(/^(\d{1,2}):(\d{2})/) : null;
-        if (match) {
-          const hours = parseInt(match[1], 10);
-          const minutes = parseInt(match[2], 10);
-          const targetDay = addDays(now, Math.floor(i / postsPerDay));
-          targetDay.setHours(hours, minutes, 0, 0);
-          chScheduleDate = targetDay;
-        }
-      }
+      // 2. Schedule at user-defined custom time slot (e.g. 2:30 PM / 14:30) or platform's peak engagement time
+      const slotStr = params.customTimeSlots && params.customTimeSlots.length > 0
+        ? params.customTimeSlots[(i % postsPerDay) % params.customTimeSlots.length]
+        : undefined;
+
+      const dayOffset = Math.floor(i / postsPerDay);
+      const baseDayDate = addDays(now, dayOffset);
+      const chScheduleDate = getPlatformStaggeredDate(
+        baseDayDate,
+        chType,
+        cIdx,
+        i % postsPerDay,
+        slotStr,
+        params.clientTimezoneOffset,
+        params.clientLocalToday,
+        dayOffset
+      );
 
       const postDesiredStatus = params.postStatus || "queue";
 
@@ -507,9 +513,10 @@ Return ONLY valid JSON matching this schema:
           let liveUrl: string | null = null;
           let failureMsg: string | null = null;
 
-          // For Day 1 (i === 0): Immediately execute direct publishing to account!
-          if (i === 0) {
-            console.log(`[Flywheel] Immediately executing publish for Day 1 post ${insertedPost.id} to ${channel.channel_types?.name} (${channel.handle})...`);
+          // Only publish immediately if the post's scheduled time has already arrived today
+          const isDueNow = chScheduleDate.getTime() <= Date.now() + 60_000;
+          if (isDueNow && postDesiredStatus === "queue") {
+            console.log(`[Flywheel] Immediately executing publish for due post ${insertedPost.id} to ${channel.channel_types?.name} (${channel.handle})...`);
             try {
               const pubRes = await publishPostDirectly(insertedPost.id);
               console.log(`[Flywheel] Direct publish result:`, pubRes);

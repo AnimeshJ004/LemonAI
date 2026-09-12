@@ -57,14 +57,59 @@ export function PostCalendar({
   rightActions,
 }: PostCalendarProps) {
 
-  const events = React.useMemo(() =>
-    isPending ? [] : posts.map(p => ({
-      ...p,
-      title: getEventTitle(p.content),
-      start: new Date(p.scheduled_at),
-      end: addHours(new Date(p.scheduled_at), 1),
-    })), [posts, isPending]
-  )
+  const events = React.useMemo(() => {
+    if (isPending || !posts || posts.length === 0) return []
+
+    // Group posts scheduled within the same 5-minute block with identical/similar content
+    const groupMap = new Map<string, PostType[]>()
+
+    posts.forEach((p) => {
+      if (!p.scheduled_at) return
+      const d = new Date(p.scheduled_at)
+      if (isNaN(d.getTime())) return
+
+      const timeBlock = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}-${d.getHours()}-${Math.floor(d.getMinutes() / 5) * 5}`
+      const titleKey = getEventTitle(p.content).slice(0, 25).toLowerCase()
+      const groupKey = `${timeBlock}_${titleKey}`
+
+      if (!groupMap.has(groupKey)) {
+        groupMap.set(groupKey, [])
+      }
+      groupMap.get(groupKey)!.push(p)
+    })
+
+    return Array.from(groupMap.values()).map((groupedPosts) => {
+      const primaryPost = groupedPosts[0]
+      const startDate = new Date(primaryPost.scheduled_at)
+      
+      // Keep duration strictly within the same day (30 mins or capped before midnight)
+      const maxSameDay = new Date(startDate)
+      maxSameDay.setHours(23, 59, 59, 999)
+      const endDate = new Date(Math.min(startDate.getTime() + 30 * 60 * 1000, maxSameDay.getTime()))
+
+      // Collect all unique channel types for this post card
+      const channels = groupedPosts
+        .map((p) => p.user_channels?.channel_types)
+        .filter(Boolean) as any[]
+
+      // Check status
+      const hasFailed = groupedPosts.some((p) => p.status === "failed")
+      const allPublished = groupedPosts.every((p) => p.status === "published")
+      const combinedStatus = hasFailed ? "failed" : allPublished ? "published" : "queue"
+
+      return {
+        ...primaryPost,
+        allPosts: groupedPosts,
+        channels,
+        isMultiChannel: groupedPosts.length > 1,
+        title: getEventTitle(primaryPost.content),
+        start: startDate,
+        end: endDate,
+        allDay: false,
+        status: combinedStatus,
+      }
+    })
+  }, [posts, isPending])
 
   const formats = React.useMemo(() => ({
     weekdayFormat: (date: Date, culture?: string, localizer?: any) =>
@@ -123,12 +168,32 @@ export function PostCalendar({
         formats={formats}
         step={60}
         timeslots={1}
-        min={new Date(0, 0, 0, 6, 0, 0)}
+        min={new Date(0, 0, 0, 0, 0, 0)}
         max={new Date(0, 0, 0, 23, 59, 59)}
+        scrollToTime={new Date(0, 0, 0, 8, 0, 0)}
+        allDayAccessor={() => false}
         onNavigate={onDateChange}
         view={view === "month" ? Views.MONTH : Views.WEEK}
+        views={{ month: true, week: true }}
+        drilldownView="week"
+        onDrillDown={(date) => {
+          onDateChange(date)
+          onViewChange("week")
+        }}
+        onShowMore={(events, date) => {
+          onDateChange(date)
+          onViewChange("week")
+        }}
         onView={(v) => onViewChange(v === Views.MONTH ? "month" : "week")}
-        onSelectEvent={(event: any) => onPostClick(event)}
+        onSelectEvent={(event: any) => {
+          if (view === "month") {
+            const targetDate = event.scheduled_at ? new Date(event.scheduled_at) : (event.start ? new Date(event.start) : new Date())
+            onDateChange(targetDate)
+            onViewChange("week")
+          } else {
+            onPostClick(event.allPosts?.[0] || event)
+          }
+        }}
         slotPropGetter={(date) => {
           const isPastSlot = isBefore(date, new Date())
           return isPastSlot
@@ -136,7 +201,6 @@ export function PostCalendar({
               className: "rbc-time-slot-disabled",
               style: {
                 backgroundColor: "hsl(var(--muted) / 0.25)",
-                pointerEvents: "none",
               },
             }
             : {}
@@ -144,50 +208,106 @@ export function PostCalendar({
         dayPropGetter={(date: Date) => {
           const isPastDate = isBefore(date, startOfDay(new Date()))
           return {
-            className: isPastDate ? "bg-[#331f000f]! pointer-events-none" : "",
+            className: isPastDate ? "bg-[#331f000f]!" : "",
             style: isPastDate ? { backgroundColor: "hsl(var(--muted) / 0.35)" } : {}
           }
         }}
         components={{
           toolbar: CustomToolbar,
-          event: ({ event }) => {
-            const channel = event.user_channels?.channel_types
-            const Icon = getChannelIcon(channel?.type || undefined)
-            const color = channel?.color || "#3b82f6"
-            const eventDate = event.scheduled_at ? new Date(event.scheduled_at) : (event.start ? new Date(event.start) : new Date())
-            const isValidDate = !isNaN(eventDate.getTime())
+          event: ({ event }: any) => {
+            const isMulti = event.isMultiChannel && event.channels?.length > 1;
+            const primaryChannel = event.channels?.[0] || event.user_channels?.channel_types;
+            const Icon = getChannelIcon(primaryChannel?.type || undefined);
+            const color = primaryChannel?.color || "#3b82f6";
+            const eventDate = event.scheduled_at ? new Date(event.scheduled_at) : (event.start ? new Date(event.start) : new Date());
+            const isValidDate = !isNaN(eventDate.getTime());
+            const status = event.status;
 
             return (
               <div
-                className="flex items-center gap-1.5 px-2 py-1 h-full w-full rounded-md overflow-hidden transition-all hover:brightness-95 cursor-pointer"
-                style={{
-                  backgroundColor: color + "18",
-                  borderLeft: `3.5px solid ${color}`,
-                  border: `1px solid ${color}35`,
+                className={cn(
+                  "flex flex-col justify-between p-1.5 h-full w-full rounded-md overflow-hidden transition-all hover:brightness-95 cursor-pointer shadow-xs border relative select-none",
+                  status === "failed" ? "bg-red-500/10 border-red-500/30 border-l-[3.5px] border-l-red-500" :
+                  status === "published" ? "bg-emerald-500/10 border-emerald-500/30 border-l-[3.5px] border-l-emerald-500" :
+                  "bg-card/95 border-border hover:border-primary/40"
+                )}
+                style={status === "queue" ? {
                   borderLeftWidth: "3.5px",
                   borderLeftColor: color,
+                } : undefined}
+                title={view === "month" ? `Click to open ${isValidDate ? format(eventDate, "MMMM d") : "date"} in week calendar` : undefined}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (view === "month") {
+                    onDateChange(eventDate);
+                    onViewChange("week");
+                  } else {
+                    onPostClick(event.allPosts?.[0] || event);
+                  }
                 }}
-                onClick={() => onPostClick(event)}
               >
-                {Icon && (
-                  <div
-                    className="size-4 rounded flex items-center justify-center shrink-0 shadow-xs"
-                    style={{ background: color }}
-                  >
-                    <HugeiconsIcon
-                      icon={Icon}
-                      className="size-2.5 text-white"
-                    />
+                {/* Top Header: Platform Icons + Time */}
+                <div className="flex items-center justify-between gap-1 w-full min-w-0">
+                  <div className="flex items-center gap-1 overflow-hidden shrink-0">
+                    {isMulti ? (
+                      event.channels.slice(0, 4).map((ch: any, cIdx: number) => {
+                        const ChIcon = getChannelIcon(ch.type);
+                        return ChIcon ? (
+                          <div
+                            key={cIdx}
+                            className="size-4 rounded flex items-center justify-center shrink-0 shadow-2xs"
+                            style={{ background: ch.color || color }}
+                            title={ch.name || ch.type}
+                          >
+                            <HugeiconsIcon icon={ChIcon} className="size-2.5 text-white" />
+                          </div>
+                        ) : null;
+                      })
+                    ) : (
+                      Icon && (
+                        <div
+                          className="size-4 rounded flex items-center justify-center shrink-0 shadow-2xs"
+                          style={{ background: color }}
+                        >
+                          <HugeiconsIcon icon={Icon} className="size-2.5 text-white" />
+                        </div>
+                      )
+                    )}
+                    {event.channels?.length > 4 && (
+                      <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-muted text-muted-foreground">
+                        +{event.channels.length - 4}
+                      </span>
+                    )}
                   </div>
-                )}
-                <div className="flex flex-col min-w-0 flex-1 leading-none justify-center">
-                  <span className="text-[11px] font-semibold text-foreground truncate block">
-                    {event?.title || "Scheduled Post"}
-                  </span>
-                  <span className="text-[9px] text-muted-foreground font-medium mt-0.5">
+
+                  <span className="text-[9px] font-semibold text-muted-foreground whitespace-nowrap ml-auto">
                     {isValidDate ? format(eventDate, "h:mm a") : ""}
                   </span>
                 </div>
+
+                {/* Title & Preview */}
+                <div className="min-w-0 mt-0.5 flex-1 flex flex-col justify-center">
+                  <span className="text-[11px] font-semibold text-foreground truncate block leading-snug">
+                    {event?.title || "Scheduled Post"}
+                  </span>
+                </div>
+
+                {/* Multi-channel badge footer */}
+                {isMulti && (
+                  <div className="flex items-center justify-between gap-1 mt-0.5 pt-0.5 border-t border-border/40 text-[9px] text-muted-foreground">
+                    <span className="font-semibold text-[9px] text-muted-foreground truncate">
+                      {event.allPosts.length} channels
+                    </span>
+                    <span className={cn(
+                      "text-[8px] uppercase font-bold px-1 rounded",
+                      status === "published" ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400" :
+                      status === "failed" ? "bg-red-500/20 text-red-600 dark:text-red-400" :
+                      "bg-primary/10 text-primary"
+                    )}>
+                      {status}
+                    </span>
+                  </div>
+                )}
               </div>
             )
           },
@@ -196,20 +316,54 @@ export function PostCalendar({
             dateHeader: ({ label, date: cellDate }: any) => {
               const isCellToday = format(cellDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')
               const isPastDate = isBefore(cellDate, startOfDay(new Date()))
+              const cellKey = format(cellDate, 'yyyy-MM-dd')
+              const dayEventsCount = events.filter((e) => {
+                const d = new Date(e.start)
+                return format(d, 'yyyy-MM-dd') === cellKey
+              }).length
+
               return (
                 <>
-                  <div className="group flex items-center justify-between w-full">
-                    <span className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full text-sm font-medium",
-                      isCellToday ? "bg-green-500 text-white" : isPastDate ? "text-muted-foreground" : "text-foreground"
-                    )}>
-                      {label}
-                    </span>
+                  <div className="group flex items-center justify-between w-full px-1 pt-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDateChange(cellDate)
+                          onViewChange("week")
+                        }}
+                        className={cn(
+                          "flex h-6 w-6 items-center justify-center rounded-full text-sm font-semibold transition-all hover:scale-110 cursor-pointer shadow-2xs shrink-0",
+                          isCellToday ? "bg-green-500 text-white hover:bg-green-600" : isPastDate ? "text-muted-foreground hover:bg-muted" : "text-foreground hover:bg-muted"
+                        )}
+                        title={`Open ${format(cellDate, "EEEE, MMMM d")} in full calendar`}
+                      >
+                        {label}
+                      </button>
+
+                      {dayEventsCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onDateChange(cellDate)
+                            onViewChange("week")
+                          }}
+                          className="text-[10px] font-semibold text-primary/90 bg-primary/10 hover:bg-primary/20 px-1.5 py-0.5 rounded-full transition-colors cursor-pointer whitespace-nowrap"
+                          title={`View all ${dayEventsCount} scheduled post${dayEventsCount > 1 ? "s" : ""} on ${format(cellDate, "MMM d")}`}
+                        >
+                          {dayEventsCount} {dayEventsCount === 1 ? "post" : "posts"}
+                        </button>
+                      )}
+                    </div>
+
                     {!isPastDate && !isPending && (
                       <Button
                         size="icon-sm"
                         variant="default"
-                        className="p-px! size-6! mt-1"
+                        className="p-px! size-6! hover:scale-105 transition-transform shrink-0"
+                        title={`Schedule post for ${format(cellDate, "MMM d")}`}
                         onClick={(e) => {
                           e.stopPropagation()
                           onCreatePost(cellDate)
@@ -218,7 +372,6 @@ export function PostCalendar({
                         <Plus className="size-3" />
                       </Button>
                     )}
-
                   </div>
                   {isPending && <Skeleton className="h-8 w-11/12 m-2 my-5" />}
                 </>

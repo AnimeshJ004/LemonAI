@@ -113,6 +113,9 @@ const ListView = ({
           if (!res.ok) throw new Error("Failed to fetch posts");
           return res.json();
         },
+        refetchOnMount: "always",
+        refetchOnWindowFocus: true,
+        staleTime: 0,
       },
       {
         queryKey: ["posts", "totals", channelIds],
@@ -123,6 +126,9 @@ const ListView = ({
           if (!res.ok) throw new Error("Failed to fetch totals");
           return res.json();
         },
+        refetchOnMount: "always",
+        refetchOnWindowFocus: true,
+        staleTime: 0,
       },
     ],
   });

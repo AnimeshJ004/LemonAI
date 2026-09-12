@@ -7,7 +7,7 @@ import { ImageObject } from "@/types/post.type";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, Lightbulb, ScanEye, Wand2, Sparkles, Clock, Zap, RotateCcw, Check } from "lucide-react";
+import { AlertTriangle, Lightbulb, ScanEye, Wand2, Sparkles, RotateCcw, Check } from "lucide-react";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
@@ -26,7 +26,7 @@ import Link from "next/link";
 import { Spinner } from "../ui/spinner";
 import { AIAssistant } from "./ai-assitant";
 import { AIVisualGenerator } from "./ai-visual-generator";
-import { adaptCaptionForPlatform, getPlatformPeakTime } from "@/lib/platform-adapt-helper";
+import { adaptCaptionForPlatform } from "@/lib/platform-adapt-helper";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 
 type PropsType = {
@@ -126,7 +126,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
     const queryClient = useQueryClient();
     const [globalContent, setGlobalContent] = useState<ChannelContent>({ text: "", images: [] })
     const [channelContent, setChannelContent] = useState<Record<string, ChannelContent>>({})
-    const [channelTimings, setChannelTimings] = useState<Record<string, string>>({})
     const [selectedChannels, setSelectedChannels] = useState<string[]>([])
     const [selectedRightTab, setSelectedRightTab] = useState<ActionTabType | null>(null)
     const [activePreview, setActivePreview] = useState<string>("")
@@ -178,14 +177,10 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
     useEffect(() => {
         if (channels.length > 0 && Object.keys(channelContent).length === 0) {
             const initialContent: Record<string, ChannelContent> = {}
-            const initialTimings: Record<string, string> = {}
             channels.forEach(channel => {
                 initialContent[channel.id] = { text: "", images: [] }
-                const peak = getPlatformPeakTime(channel.type);
-                initialTimings[channel.id] = peak.timeSlot;
             })
             setChannelContent(initialContent)
-            setChannelTimings(initialTimings)
         }
     }, [channels])
 
@@ -283,17 +278,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                 return update;
             })
 
-            setChannelTimings((prev) => {
-                const update = { ...prev };
-                connectedChannels.forEach((channel) => {
-                    if (!update[channel.id]) {
-                        const peak = getPlatformPeakTime(channel.type);
-                        update[channel.id] = peak.timeSlot;
-                    }
-                });
-                return update;
-            })
-
             return connectedChannels.map(channel => channel.id)
         })
     }
@@ -326,13 +310,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                 }
             }))
         }
-    }
-
-    const handleChannelTimeChange = (channelId: string, time: string) => {
-        setChannelTimings((prev) => ({
-            ...prev,
-            [channelId]: time
-        }));
     }
 
     const handleReAdaptChannel = (channel: ChannelType) => {
@@ -373,13 +350,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                             images: [...globalContent.images]
                         }
                     }))
-                }
-                if (channelObj && !channelTimings[channelId]) {
-                    const peak = getPlatformPeakTime(channelObj.type);
-                    setChannelTimings((prev) => ({
-                        ...prev,
-                        [channelId]: peak.timeSlot
-                    }));
                 }
             } else {
                 setChannelContent((prev) => ({
@@ -424,23 +394,20 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
             toast.error("Select at least one channel")
             return;
         }
+        const scheduleAt = getValidScheduleDate(date, timeSlot);
         const postToCreate = selectedChannelsList.map((channel) => {
             const content = channelContent[channel.id] ?? { text: "", images: [] }
-            const channelTime = channelTimings[channel.id] || timeSlot || getPlatformPeakTime(channel.type).timeSlot;
-            const scheduledAtDate = getValidScheduleDate(date, channelTime);
             return {
                 channelTypeId: channel.id,
                 content: content.text,
                 images: content.images,
-                scheduledAt: scheduledAtDate.toISOString()
+                scheduledAt: scheduleAt.toISOString()
             }
         })
         if (postToCreate.some((post) => !post.content)) {
             toast.error("Each selected channel must have content");
             return;
         }
-
-        const scheduleAt = getValidScheduleDate(date, timeSlot);
 
         createPostMutation.mutate({
             posts: postToCreate,
@@ -454,7 +421,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
         onOpenChange(open);
         setGlobalContent({ text: "", images: [] });
         setChannelContent({});
-        setChannelTimings({});
         setActiveAccordion("")
         setActivePreview("")
         setSelectedRightTab(null)
@@ -587,8 +553,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                             const content = channelContent[channel.id] || { text: "", images: [] };
                                             const isExpanded = activeAccordion === channel.id;
                                             const icon = getChannelIcon(channel.type);
-                                            const peak = getPlatformPeakTime(channel.type);
-                                            const scheduledTime = channelTimings[channel.id] || timeSlot || peak.timeSlot;
 
                                             return (
                                                 <AccordionItem
@@ -613,10 +577,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                                                 <div className="flex flex-col text-left min-w-0 flex-1">
                                                                     <div className="flex items-center gap-2">
                                                                         <span className="text-xs font-semibold text-foreground">{channel.name}</span>
-                                                                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                                                                            <Clock className="size-2.5" />
-                                                                            {scheduledTime}
-                                                                        </span>
                                                                     </div>
                                                                     {content.text ? (
                                                                         <p className="text-xs text-muted-foreground/80 truncate max-w-[420px] mt-0.5">
@@ -631,8 +591,8 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                                     )}
 
                                                     <AccordionContent className="overflow-visible pt-0">
-                                                        {/* Channel Customization Header: Platform Badge + Smart Adapt Button + Time Customizer */}
-                                                        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-muted/40 border-b border-border/50 text-xs">
+                                                        {/* Channel Customization Header: Platform Badge + Smart Adapt Button */}
+                                                        <div className="flex items-center justify-between gap-2 px-4 py-2 bg-muted/40 border-b border-border/50 text-xs">
                                                             <div className="flex items-center gap-2">
                                                                 <HugeiconsIcon
                                                                     icon={icon}
@@ -648,32 +608,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                                                 >
                                                                     <Sparkles className="size-3" />
                                                                     Tailor Copy
-                                                                </button>
-                                                            </div>
-
-                                                            {/* Per-Channel Posting Time Selector */}
-                                                            <div className="flex items-center gap-1.5">
-                                                                <span className="text-[11px] text-muted-foreground">Post at:</span>
-                                                                <input
-                                                                    type="text"
-                                                                    value={scheduledTime}
-                                                                    onChange={(e) => handleChannelTimeChange(channel.id, e.target.value)}
-                                                                    className="w-24 px-2 py-0.5 text-xs rounded border border-border bg-background font-medium text-foreground focus:outline-hidden focus:ring-1 focus:ring-primary"
-                                                                    placeholder="e.g. 6:45 PM"
-                                                                />
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => handleChannelTimeChange(channel.id, peak.timeSlot)}
-                                                                    className={cn(
-                                                                        "inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium rounded transition-all cursor-pointer",
-                                                                        scheduledTime === peak.timeSlot
-                                                                            ? "bg-primary/10 text-primary border border-primary/20"
-                                                                            : "bg-muted text-muted-foreground hover:text-foreground border border-transparent"
-                                                                    )}
-                                                                    title={`Use algorithmic peak engagement time for ${channel.name}`}
-                                                                >
-                                                                    <Zap className="size-2.5 text-amber-500 fill-amber-500" />
-                                                                    Peak ({peak.timeSlot})
                                                                 </button>
                                                             </div>
                                                         </div>
@@ -803,7 +737,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                                     }
 
                                                     const updatedChannelContent: Record<string, ChannelContent> = { ...channelContent };
-                                                    const updatedTimings: Record<string, string> = { ...channelTimings };
                                                     const effectiveChannels = channelsToSelect.length > 0 ? channelsToSelect : (connectedChannels.length > 0 ? connectedChannels.map((c) => c.id) : []);
 
                                                     effectiveChannels.forEach((chId) => {
@@ -821,15 +754,8 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                                             text: tailoredText.slice(0, limit),
                                                             images: newImgs,
                                                         };
-
-                                                        // Automatically assign optimal peak timing per platform
-                                                        if (chObj) {
-                                                            const peak = getPlatformPeakTime(chObj.type);
-                                                            updatedTimings[chId] = schedule?.time ? normalizeTimeSlot(schedule.time) : peak.timeSlot;
-                                                        }
                                                     });
                                                     setChannelContent(updatedChannelContent);
-                                                    setChannelTimings(updatedTimings);
 
                                                     let targetDate = date || new Date();
                                                     let targetTimeSlot = timeSlot;
@@ -853,14 +779,11 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                                     if (autoSchedule && effectiveChannels.length > 0 && textContent.trim()) {
                                                         const scheduleAt = getValidScheduleDate(targetDate, targetTimeSlot);
                                                         const postsToCreate = effectiveChannels.map((chId) => {
-                                                            const chObj = channels.find((c) => c.id === chId);
-                                                            const chTime = updatedTimings[chId] || targetTimeSlot || (chObj ? getPlatformPeakTime(chObj.type).timeSlot : "10:00 AM");
-                                                            const chScheduledAt = getValidScheduleDate(targetDate, chTime);
                                                             return {
                                                                 channelTypeId: chId,
                                                                 content: updatedChannelContent[chId]?.text || textContent,
                                                                 images: updatedChannelContent[chId]?.images || [],
-                                                                scheduledAt: chScheduledAt.toISOString(),
+                                                                scheduledAt: scheduleAt.toISOString(),
                                                             };
                                                         });
 

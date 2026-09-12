@@ -39,13 +39,7 @@ export function ConnectChannelDialog({
             setProviderAccountId(channel.connected ? ((channel as any).provider_account_id || "") : "")
             setAccessToken("")
             setPassword("")
-            const isThr = channel.type === ChannelTypeEnum.THREADS || Boolean(channel.name?.toLowerCase().includes("thread"))
-            // Default Threads or unconfigured OAuth to manual tab; otherwise if connected default to manual else oauth
-            if (channel.oauth_configured === false || isThr) {
-                setConnectMode("manual")
-            } else {
-                setConnectMode(channel.connected ? "manual" : "oauth")
-            }
+            setConnectMode(channel.connected ? "manual" : "oauth")
         }
     }, [channel, open])
 
@@ -192,135 +186,67 @@ export function ConnectChannelDialog({
                                         <ShieldCheck className="size-4 text-emerald-500" />
                                         Official {channel.name} OAuth 2.0
                                     </span>
-                                    <span className="text-[10px] text-muted-foreground font-semibold px-2 py-0.5 bg-muted rounded-full border">
-                                        {channel.oauth_configured === false ? "Setup Required" : "Official"}
+                                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold px-2 py-0.5 bg-emerald-500/10 rounded-full border border-emerald-500/20">
+                                        Secure Direct Connect
                                     </span>
                                 </div>
 
-                                {channel.oauth_configured === false ? (
-                                    <div className="p-3.5 rounded-xl border border-amber-200 bg-amber-50/60 dark:border-amber-950 dark:bg-amber-950/30 space-y-2.5 text-xs text-amber-900 dark:text-amber-200">
-                                        <div className="flex items-center gap-1.5 font-semibold">
-                                            <AlertCircle className="size-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                                            <span>OAuth Setup Required in .env.local</span>
-                                        </div>
-                                        <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-amber-300/80">
-                                            1-Click OAuth for {channel.name} requires {isThreads ? (
-                                                <><code className="font-mono font-semibold text-foreground">THREADS_APP_ID</code> and <code className="font-mono font-semibold text-foreground">THREADS_APP_SECRET</code> (from Meta Developers ➔ Use Cases ➔ Threads)</>
-                                            ) : isMeta ? (
-                                                <>unified Meta credentials (<code className="font-mono font-semibold text-foreground">META_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">META_CLIENT_SECRET</code> shared for Facebook and Instagram)</>
-                                            ) : isYouTube ? (
-                                                <><code className="font-mono font-semibold text-foreground">YOUTUBE_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">YOUTUBE_CLIENT_SECRET</code> (from Google Cloud Console ➔ Credentials ➔ OAuth 2.0 Client ID)</>
-                                            ) : isLinkedIn ? (
-                                                <><code className="font-mono font-semibold text-foreground">LINKEDIN_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">LINKEDIN_CLIENT_SECRET</code> (from LinkedIn Developer Portal ➔ Auth)</>
-                                            ) : isTwitter ? (
-                                                <><code className="font-mono font-semibold text-foreground">TWITTER_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">TWITTER_CLIENT_SECRET</code> (from Twitter Developer Portal ➔ User Auth Settings)</>
-                                            ) : (
-                                                <><code className="font-mono font-semibold text-foreground">{channel.type}_CLIENT_ID</code> and <code className="font-mono font-semibold text-foreground">{channel.type}_CLIENT_SECRET</code></>
-                                            )} in your <code className="font-mono font-semibold text-foreground">.env.local</code> file.
-                                        </p>
-                                        <div className="p-2 rounded-lg bg-amber-100/70 dark:bg-amber-900/40 text-[10px] space-y-0.5">
-                                            <div className="font-semibold text-foreground">OAuth Redirect URI:</div>
-                                            <code className="font-mono text-foreground break-all select-all">
-                                                {typeof window !== "undefined" ? `${window.location.origin}/api/channel/callback` : "http://localhost:3000/api/channel/callback"}
-                                            </code>
-                                        </div>
-                                        <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-amber-300/80">
-                                            Or connect instantly without any developer app setup using your token in the <strong className="font-semibold text-foreground">Manual Token</strong> tab.
-                                        </p>
-                                        <Button
-                                            type="button"
-                                            size="sm"
-                                            onClick={() => setConnectMode("manual")}
-                                            className="w-full text-xs font-semibold gap-1.5 h-8.5 bg-amber-600 hover:bg-amber-700 text-white shadow-xs"
-                                        >
-                                            <KeyRound className="size-3.5" />
-                                            Switch to Manual Token (Ready to Use)
-                                        </Button>
+                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                    Authorize directly through official {channel.name} authentication. No manual developer token copy-pasting required.
+                                </p>
+
+                                {channel.connected && channel.handle && (
+                                    <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300">
+                                        <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                                        <span>Currently linked to: <strong className="font-semibold">{channel.handle}</strong></span>
                                     </div>
-                                ) : (
-                                    <>
-                                        <p className="text-xs text-muted-foreground leading-relaxed">
-                                            Authorize directly through official {channel.name} authentication. No manual developer token copy-pasting required.
-                                        </p>
-
-                                        {channel.connected && channel.handle && (
-                                            <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-800 dark:text-emerald-300">
-                                                <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-                                                <span>Currently linked to: <strong className="font-semibold">{channel.handle}</strong></span>
-                                            </div>
-                                        )}
-
-                                        {isFacebook && (
-                                            <div className="p-3 rounded-xl border border-blue-200/80 bg-blue-50/70 dark:border-blue-900/50 dark:bg-blue-950/30 text-xs text-blue-950 dark:text-blue-200 space-y-1">
-                                                <div className="flex items-center gap-1.5 font-semibold text-blue-700 dark:text-blue-300">
-                                                    <AlertCircle className="size-3.5 shrink-0" />
-                                                    <span>Facebook Page Required</span>
-                                                </div>
-                                                <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-blue-300/85">
-                                                    Meta Graph API allows scheduling &amp; publishing <strong>only to Facebook Pages</strong> (Meta strictly forbids API posting to personal profiles).
-                                                    If you haven&apos;t created a Page yet, create one at{" "}
-                                                    <a
-                                                        href="https://www.facebook.com/pages/create"
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="underline font-medium text-primary hover:opacity-80 inline-flex items-center gap-0.5"
-                                                    >
-                                                        facebook.com/pages/create
-                                                        <ExternalLink className="size-2.5 ml-0.5 inline" />
-                                                    </a>
-                                                    {" "}and select it in the login popup.
-                                                </p>
-                                            </div>
-                                        )}
-
-                                        {isThreads && (
-                                            <div className="p-3 rounded-xl border border-neutral-300/80 bg-neutral-100/70 dark:border-neutral-800 dark:bg-neutral-900/40 text-xs space-y-1.5">
-                                                <div className="flex items-center gap-1.5 font-semibold text-foreground">
-                                                    <AlertCircle className="size-3.5 shrink-0 text-amber-500" />
-                                                    <span>Threads App ID Required for 1-Click OAuth</span>
-                                                </div>
-                                                <p className="text-[11px] leading-relaxed text-muted-foreground">
-                                                    Meta requires your app to have the <strong>Threads API</strong> use case added in Meta for Developers. If you see error 4476002 (&quot;No app ID was sent with the request&quot;), add the <strong>Threads API</strong> use case at{" "}
-                                                    <a
-                                                        href="https://developers.facebook.com"
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="underline font-medium text-primary hover:opacity-80 inline-flex items-center gap-0.5"
-                                                    >
-                                                        developers.facebook.com
-                                                        <ExternalLink className="size-2.5 ml-0.5 inline" />
-                                                    </a>
-                                                    {" "}and set your <strong>Threads App ID</strong> in <code className="font-mono font-semibold text-foreground">.env.local</code>.
-                                                </p>
-                                                <p className="text-[11px] leading-relaxed text-muted-foreground">
-                                                    Or connect immediately with your token in the <button type="button" onClick={() => setConnectMode("manual")} className="font-semibold text-primary underline cursor-pointer">Manual Token tab</button>.
-                                                </p>
-                                            </div>
-                                        )}
-
-                                        <Button
-                                            type="button"
-                                            className="w-full text-xs font-semibold gap-2 h-10 text-white shadow-xs hover:opacity-90 transition-opacity"
-                                            style={{ backgroundColor: channel.color || "#2563eb" }}
-                                            onClick={() => {
-                                                window.location.href = `/api/channel/oauth?channelTypeId=${channel.id}`;
-                                            }}
-                                        >
-                                            <HugeiconsIcon icon={icon} className="size-4" />
-                                            {channel.connected ? `Re-authorize with ${channel.name}` : `Connect with ${channel.name}`}
-                                        </Button>
-
-                                        <div className="pt-1 text-center">
-                                            <button
-                                                type="button"
-                                                onClick={() => setConnectMode("manual")}
-                                                className="text-[11px] text-muted-foreground hover:text-primary transition-colors underline underline-offset-4 cursor-pointer"
-                                            >
-                                                Or configure with manual Page Access Token / API Key
-                                            </button>
-                                        </div>
-                                    </>
                                 )}
+
+                                {isFacebook && (
+                                    <div className="p-3 rounded-xl border border-blue-200/80 bg-blue-50/70 dark:border-blue-900/50 dark:bg-blue-950/30 text-xs text-blue-950 dark:text-blue-200 space-y-1">
+                                        <div className="flex items-center gap-1.5 font-semibold text-blue-700 dark:text-blue-300">
+                                            <AlertCircle className="size-3.5 shrink-0" />
+                                            <span>Facebook Page Notice</span>
+                                        </div>
+                                        <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-blue-300/85">
+                                            Meta Graph API allows scheduling &amp; publishing <strong>to Facebook Pages</strong>. Please select your target Facebook Page when the authorization window appears.
+                                        </p>
+                                    </div>
+                                )}
+
+                                {isInstagram && (
+                                    <div className="p-3 rounded-xl border border-pink-200/80 bg-pink-50/70 dark:border-pink-900/50 dark:bg-pink-950/30 text-xs text-pink-950 dark:text-pink-200 space-y-1">
+                                        <div className="flex items-center gap-1.5 font-semibold text-pink-700 dark:text-pink-300">
+                                            <AlertCircle className="size-3.5 shrink-0" />
+                                            <span>Instagram Business Notice</span>
+                                        </div>
+                                        <p className="text-[11px] leading-relaxed text-muted-foreground dark:text-pink-300/85">
+                                            Automated publishing requires an <strong>Instagram Professional (Business or Creator)</strong> account linked to your Facebook Page.
+                                        </p>
+                                    </div>
+                                )}
+
+                                <Button
+                                    type="button"
+                                    className="w-full text-xs font-semibold gap-2 h-10 text-white shadow-xs hover:opacity-90 transition-opacity"
+                                    style={{ backgroundColor: channel.color || "#2563eb" }}
+                                    onClick={() => {
+                                        window.location.href = `/api/channel/oauth?channelTypeId=${channel.id}`;
+                                    }}
+                                >
+                                    <HugeiconsIcon icon={icon} className="size-4" />
+                                    {channel.connected ? `Re-authorize with ${channel.name}` : `Connect with ${channel.name}`}
+                                </Button>
+
+                                <div className="pt-1 text-center">
+                                    <button
+                                        type="button"
+                                        onClick={() => setConnectMode("manual")}
+                                        className="text-[11px] text-muted-foreground hover:text-primary transition-colors underline underline-offset-4 cursor-pointer"
+                                    >
+                                        Or configure with manual Access Token / API Key
+                                    </button>
+                                </div>
                             </div>
                         )}
 

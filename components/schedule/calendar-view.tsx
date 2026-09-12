@@ -44,17 +44,24 @@ const CalendarView = () => {
       if (!res.ok) throw new Error("Failed to fetch posts");
       return res.json();
     },
-    placeholderData: keepPreviousData
+    placeholderData: keepPreviousData,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    staleTime: 0,
   })
 
   const posts = data?.posts || [] as PostType[]
 
-  const handlePostClick = (_post: PostType) => {
-    const post = posts.find((post: PostType) => post.id === _post.id)
-    if (post) {
-      setSelectedPostForEdit(post)
-      setIsEditDialogOpen(true)
+  const handlePostClick = (_post: any) => {
+    if (!_post) return
+    const post = posts.find((p: PostType) => p.id === _post.id) || _post
+    const mergedPost = { ...post }
+    if (_post.allPosts && _post.allPosts.length > 0) {
+      (mergedPost as any).allPosts = _post.allPosts
+      (mergedPost as any).channels = _post.channels
     }
+    setSelectedPostForEdit(mergedPost)
+    setIsEditDialogOpen(true)
   }
 
   const toggleChannel = (channelId: string) => {
@@ -106,16 +113,16 @@ const CalendarView = () => {
         onOpenChange={setIsEditDialogOpen}
         post={selectedPostForEdit ? {
           id: selectedPostForEdit.id,
-          content: selectedPostForEdit.content,
+          content: selectedPostForEdit.content || "",
           images: selectedPostForEdit.images || [],
-          scheduledDate: selectedPostForEdit.scheduled_at,
+          scheduledDate: selectedPostForEdit.scheduled_at || (selectedPostForEdit as any).start || new Date().toISOString(),
           userChannelId: selectedPostForEdit.user_channel_id || "",
           channel: selectedPostForEdit.user_channels?.channel_types ? {
             ...selectedPostForEdit.user_channels.channel_types,
             profile_image: selectedPostForEdit.user_channels.profile_image,
             handle: selectedPostForEdit.user_channels.handle
-          } : null,
-          // status: selectedPostForEdit.status
+          } : ((selectedPostForEdit as any).channel || null),
+          allPosts: (selectedPostForEdit as any).allPosts || null,
         } : null}
       />
 

@@ -109,36 +109,116 @@ export function getPlatformPeakTime(channelType: string, slotIndex: number = 0):
 }
 
 /**
- * Computes a staggered schedule Date for a specific channel on a target date.
- * Guarantees that even if multiple channels are scheduled for the same calendar date,
- * every platform gets its own distinct hour/minute and never overlaps on the calendar.
+ * Parses user-provided time string (e.g. "14:30" or "02:30 PM" or "2:30 pm") into 24-hr hour/minute
+ */
+export function parseCustomTimeString(timeStr?: string): { hour: number; minute: number; timeSlot: string } | null {
+  if (!timeStr) return null;
+  const str = timeStr.trim();
+
+  // 1. Match 24-hour format: "14:30", "09:00", "14:30:00"
+  const match24 = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (match24) {
+    const hour = parseInt(match24[1], 10);
+    const minute = parseInt(match24[2], 10);
+    if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60) {
+      const ampm = hour >= 12 ? "PM" : "AM";
+      const displayHour = hour % 12 || 12;
+      const timeSlot = `${displayHour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")} ${ampm}`;
+      return { hour, minute, timeSlot };
+    }
+  }
+
+  // 2. Match 12-hour format: "2:30 PM", "02:30 PM", "10:00 am"
+  const match12 = str.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)$/i);
+  if (match12) {
+    let hour = parseInt(match12[1], 10);
+    const minute = parseInt(match12[2], 10);
+    const ampm = match12[3].toUpperCase();
+    if (ampm === "PM" && hour < 12) hour += 12;
+    if (ampm === "AM" && hour === 12) hour = 0;
+    if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60) {
+      const displayHour = hour % 12 || 12;
+      const timeSlot = `${displayHour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")} ${ampm}`;
+      return { hour, minute, timeSlot };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Computes a schedule Date for a specific channel on a target date.
+ * Strictly respects user-defined custom time slots (e.g. 2:30 PM / 14:30) and user timezone.
  */
 export function getPlatformStaggeredDate(
   baseDate: Date | string,
   channelType: string,
   channelIndex: number = 0,
-  slotIndex: number = 0
+  slotIndex: number = 0,
+  customTimeStr?: string,
+  clientTimezoneOffset?: number,
+  clientLocalToday?: { year: number; month: number; date: number },
+  dayOffset: number = 0
 ): Date {
-  const d = new Date(baseDate);
-  const peak = getPlatformPeakTime(channelType, slotIndex);
+  const customParsed = parseCustomTimeString(customTimeStr);
+  let hour: number;
+  let minute: number;
 
-  // Set to the platform's peak engagement hour and minute
-  d.setHours(peak.hour, peak.minute, 0, 0);
-
-  // If baseDate was for today and the peak time already passed, offset from now
-  const now = new Date();
-  const isToday =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-
-  if (isToday && d.getTime() <= now.getTime()) {
-    // Stagger channels starting 15 minutes from now, separated by 75 minutes each
-    const offsetMinutes = 15 + channelIndex * 75 + slotIndex * 120;
-    return new Date(now.getTime() + offsetMinutes * 60 * 1000);
+  if (customParsed) {
+    // User explicitly configured this time slot (e.g. 14:30 -> 2:30 PM)
+    hour = customParsed.hour;
+    minute = customParsed.minute;
+  } else {
+    // Algorithmic platform peak time fallback
+    const peak = getPlatformPeakTime(channelType, slotIndex);
+    hour = peak.hour;
+    minute = peak.minute;
   }
 
-  return d;
+  let scheduledDate: Date;
+
+  // If client timezone offset is supplied (in minutes, e.g. -330 for UTC+05:30),
+  // convert client local (year, month, day, hour, min) to the exact UTC timestamp.
+  if (typeof clientTimezoneOffset === "number" && !isNaN(clientTimezoneOffset)) {
+    let year: number;
+    let month: number;
+    let date: number;
+
+    if (clientLocalToday && typeof clientLocalToday.year === "number") {
+      year = clientLocalToday.year;
+      month = clientLocalToday.month;
+      date = clientLocalToday.date + dayOffset;
+    } else {
+      const b = new Date(baseDate);
+      year = b.getFullYear();
+      month = b.getMonth();
+      date = b.getDate();
+    }
+
+    // Date.UTC returns UTC ms for given components. Adding (offset in minutes * 60 * 1000) converts local time to UTC.
+    const utcMs = Date.UTC(year, month, date, hour, minute, 0, 0) + (clientTimezoneOffset * 60 * 1000);
+    scheduledDate = new Date(utcMs);
+  } else {
+    // Standard server local time fallback
+    scheduledDate = new Date(baseDate);
+    scheduledDate.setHours(hour, minute, 0, 0);
+  }
+
+  // Only if customTimeStr was NOT provided, apply platform staggering offset
+  if (!customParsed && channelIndex > 0) {
+    const channelStaggerMs = (channelIndex * 5) * 60 * 1000;
+    scheduledDate = new Date(scheduledDate.getTime() + channelStaggerMs);
+  }
+
+  // If the computed scheduled date has already passed in real-time, adjust slightly into the future
+  const nowMs = Date.now();
+  if (scheduledDate.getTime() <= nowMs) {
+    // For past times today, place 15 mins in future so it can still safely queue/publish
+    const graceMinutes = 15 + (customParsed ? 0 : channelIndex * 5);
+    return new Date(nowMs + graceMinutes * 60 * 1000);
+  }
+
+  return scheduledDate;
 }
 
 /**

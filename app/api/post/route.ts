@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: "No valid posts provided" }, { status: 400 })
         }
 
-        const isPaidPlan = has({ plan: "pro" }) || has({ plan: "premium" })
+        const isPaidPlan = has({ plan: "pro" }) || has({ plan: "premium" }) || process.env.NODE_ENV === "development"
         if (!isPaidPlan) {
             const canCreatePost = await checkCreatePostLimit(insforge, userId)
             if (!canCreatePost) {
@@ -284,16 +284,26 @@ async function checkCreatePostLimit(
     insforge: Awaited<ReturnType<typeof getInsforgeServerClient>>["insforge"],
     userId: string,
 ) {
+    if (process.env.NODE_ENV === "development") {
+        return true;
+    }
+
+    // Monthly quota: count posts created in the current calendar month
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+
     const { count, error } = await insforge.database
         .from("scheduled_posts")
         .select("id", { count: "exact", head: true })
-        .eq("user_id", userId);
+        .eq("user_id", userId)
+        .gte("created_at", startOfMonth.toISOString());
 
     if (error) {
         throw error;
     }
 
-    return (count ?? 0) < 100;
+    return (count ?? 0) < 500;
 }
 
 
