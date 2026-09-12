@@ -64,9 +64,9 @@ export function ConversationList({
   });
 
   return (
-    <div className="flex flex-col h-full min-h-0 border-r border-border/70 bg-card/40">
+    <div className="flex flex-col h-full border-r border-border/70 bg-card/40">
       {/* Search & New Chat Header */}
-      <div className="p-2.5 border-b border-border/60 flex items-center gap-1.5 shrink-0">
+      <div className="p-2.5 border-b border-border/60 flex items-center gap-1.5">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
           <Input
@@ -81,7 +81,7 @@ export function ConversationList({
           <button
             type="button"
             onClick={onNewConversation}
-            className="h-8 px-2.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold shrink-0 transition-colors cursor-pointer flex items-center gap-1"
+            className="h-8 px-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold shrink-0 transition-colors cursor-pointer flex items-center gap-1"
             title="Start new thread"
           >
             + New
@@ -90,7 +90,7 @@ export function ConversationList({
       </div>
 
       {/* Threads List */}
-      <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-border/40 scrollbar-thin">
+      <div className="flex-1 overflow-y-auto divide-y divide-border/40 scrollbar-thin">
         {filtered.map((conv) => {
           const isSelected = conv.id === selectedId;
           const lastMsg = conv.messages?.[conv.messages.length - 1];

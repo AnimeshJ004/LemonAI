@@ -59,10 +59,10 @@ export function ChatInput({
   };
 
   return (
-    <div className="p-2.5 sm:p-3 border-t border-border/70 space-y-2 bg-card/60 shrink-0">
+    <div className="p-3 border-t border-border/70 space-y-2 bg-card/60">
       {/* Canned Quick Replies & AI Action Buttons */}
-      <div className="flex items-center justify-between gap-2 pb-0.5 text-[11px] overflow-hidden">
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none min-w-0 flex-1 py-0.5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 text-[11px]">
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
           <span className="text-muted-foreground text-[10px] font-semibold uppercase shrink-0 flex items-center gap-1">
             <Sparkles className="size-3 text-primary" />
             Quick Reply:
@@ -72,14 +72,14 @@ export function ChatInput({
               key={idx}
               variant="outline"
               onClick={() => setText(reply.template)}
-              className="cursor-pointer hover:bg-muted/80 hover:border-primary/50 text-[10px] whitespace-nowrap transition-colors bg-background/60 shrink-0 select-none"
+              className="cursor-pointer hover:bg-muted/80 hover:border-primary/50 text-[10px] whitespace-nowrap transition-colors bg-background/60"
             >
               {reply.label}
             </Badge>
           ))}
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
           {onAIReply && (
             <Button
               type="button"
@@ -87,9 +87,9 @@ export function ChatInput({
               size="sm"
               onClick={onAIReply}
               disabled={isAIGenerating || disabled}
-              className="h-6 sm:h-7 text-[10px] sm:text-[11px] px-2 gap-1 font-medium border-primary/40 text-primary hover:bg-primary/10"
+              className="h-7 text-[11px] gap-1.5 font-medium border-primary/40 text-primary hover:bg-primary/10"
             >
-              <Bot className="size-3" />
+              <Bot className="size-3.5" />
               {isAIGenerating ? "Generating..." : "Let AI Reply"}
             </Button>
           )}
@@ -100,10 +100,10 @@ export function ChatInput({
               size="sm"
               onClick={onSimulateInbound}
               disabled={disabled}
-              className="h-6 sm:h-7 text-[10px] px-1.5 gap-1 text-muted-foreground hover:text-foreground"
+              className="h-7 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
             >
               <MessageSquare className="size-3" />
-              Simulate
+              Simulate Inbound
             </Button>
           )}
         </div>
@@ -116,16 +116,16 @@ export function ChatInput({
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Type your message as Human Agent (Enter to send, Shift+Enter for new line)..."
-          rows={1}
+          rows={2}
           disabled={disabled}
-          className="resize-none text-xs bg-background min-h-[44px] max-h-[80px] py-2"
+          className="resize-none text-xs bg-background min-h-[52px]"
         />
         <Button
           type="button"
           size="icon"
           onClick={handleSend}
           disabled={!text.trim() || isSending || disabled}
-          className="size-9 sm:size-10 shrink-0"
+          className="size-10 shrink-0"
         >
           <Send className="size-4" />
         </Button>

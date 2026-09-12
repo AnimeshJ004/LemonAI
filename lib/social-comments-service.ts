@@ -603,7 +603,21 @@ shouldSendDM must be a boolean. intentType must be one of: booking | pricing | g
     // Instagram often omits from.id on comments, so we must not block on it.
     if (aiResult.shouldSendDM && aiResult.dmMessage && (commenterId || commentId)) {
       try {
-        const senderId = igAccountId || "me";
+        // In Meta Graph API, sending Instagram DMs and Private Replies requires the linked Facebook Page ID
+        let senderId = igAccountId || "me";
+        let tokenToUse = accessToken;
+
+        try {
+          const { data: fbChannels } = await admin.database
+            .from("user_channels")
+            .select("*, channel_types(*)")
+            .eq("user_id", userId);
+          const fbCh = fbChannels?.find((c: any) => c.channel_types?.type === "FACEBOOK" && c.access_token);
+          if (fbCh?.provider_account_id && fbCh?.access_token) {
+            senderId = fbCh.provider_account_id;
+            tokenToUse = decrypt(fbCh.access_token) || accessToken;
+          }
+        } catch {}
 
         // Instagram requires messaging_type: "RESPONSE" for DMs sent in response to user actions.
         // Without this, the API rejects the request with code 10 (Permission Denied).
@@ -611,7 +625,7 @@ shouldSendDM must be a boolean. intentType must be one of: booking | pricing | g
           recipient: { id: commenterId },
           message: { text: aiResult.dmMessage },
           messaging_type: "RESPONSE",
-          access_token: accessToken,
+          access_token: tokenToUse,
         };
 
         const dmRes = await fetch(`https://graph.facebook.com/v22.0/${senderId}/messages`, {
@@ -644,7 +658,7 @@ shouldSendDM must be a boolean. intentType must be one of: booking | pricing | g
                   recipient: { comment_id: commentId },
                   message: { text: aiResult.dmMessage },
                   messaging_type: "RESPONSE",
-                  access_token: accessToken,
+                  access_token: tokenToUse,
                 }),
               });
               const prJson = await prRes.json().catch(() => ({}));

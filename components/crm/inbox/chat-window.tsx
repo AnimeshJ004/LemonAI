@@ -12,19 +12,14 @@ interface ChatWindowProps {
 }
 
 export function ChatWindow({ messages, leadName }: ChatWindowProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (containerRef.current) {
-      containerRef.current.scrollTo({
-        top: containerRef.current.scrollHeight,
-        behavior: "smooth",
-      });
-    }
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   return (
-    <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 scrollbar-thin">
+    <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
       {messages.map((msg) => {
         const isLead = msg.sender_type === "lead";
         const isAI = msg.sender_type === "ai_assistant";
@@ -70,8 +65,8 @@ export function ChatWindow({ messages, leadName }: ChatWindowProps) {
                   {isLead
                     ? leadName || "Visitor"
                     : isAI
-                    ? "AI Assistant"
-                    : "Human Agent"}
+                      ? "AI Assistant"
+                      : "Human Agent"}
                 </span>
                 <span>•</span>
                 <span>
@@ -96,6 +91,8 @@ export function ChatWindow({ messages, leadName }: ChatWindowProps) {
           </div>
         );
       })}
+
+      <div ref={bottomRef} />
     </div>
   );
 }

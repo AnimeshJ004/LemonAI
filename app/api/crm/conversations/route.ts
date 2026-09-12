@@ -8,6 +8,7 @@ import {
   createConversation,
 } from "@/lib/crm-service";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { dispatchCRMOutboundMessage } from "@/lib/crm-outbound-dispatcher";
 
 export async function GET(request: NextRequest) {
   try {
@@ -106,7 +107,14 @@ Keep the response to 2-3 sentences. Do not output markdown headers.`,
         content: aiReplyContent,
       });
 
-      return NextResponse.json({ message, success: true }, { status: 201 });
+      const dispatch = await dispatchCRMOutboundMessage({
+        conversationId: conversation_id,
+        senderType: "ai_assistant",
+        content: aiReplyContent,
+        userId: targetUserId,
+      });
+
+      return NextResponse.json({ message, dispatch, success: true }, { status: 201 });
     }
 
     // If starting a brand new conversation
@@ -124,7 +132,15 @@ Keep the response to 2-3 sentences. Do not output markdown headers.`,
           sender_type,
           content,
         });
-        return NextResponse.json({ conversation: newConv, message }, { status: 201 });
+
+        const dispatch = await dispatchCRMOutboundMessage({
+          conversationId: newConv.id,
+          senderType: (sender_type === "human_agent" ? "human_agent" : "ai_assistant"),
+          content,
+          userId: targetUserId,
+        });
+
+        return NextResponse.json({ conversation: newConv, message, dispatch }, { status: 201 });
       }
 
       return NextResponse.json({ conversation: newConv }, { status: 201 });
@@ -147,6 +163,16 @@ Keep the response to 2-3 sentences. Do not output markdown headers.`,
       sender_type,
       content: content.trim(),
     });
+
+    let dispatchResult: any = null;
+    if (sender_type === "human_agent" || sender_type === "ai_assistant") {
+      dispatchResult = await dispatchCRMOutboundMessage({
+        conversationId: conversation_id,
+        senderType: sender_type,
+        content: content.trim(),
+        userId: targetUserId,
+      });
+    }
 
     // If an incoming lead message arrives and AI autopilot is active, automatically generate AI reply
     if (sender_type === "lead") {
@@ -196,14 +222,21 @@ Answer their questions directly in 2-3 sentences. Suggest scheduling a quick 15-
             content: aiText,
           });
 
-          return NextResponse.json({ message, aiReply }, { status: 201 });
+          const aiDispatch = await dispatchCRMOutboundMessage({
+            conversationId: conversation_id,
+            senderType: "ai_assistant",
+            content: aiText,
+            userId: targetUserId,
+          });
+
+          return NextResponse.json({ message, aiReply, dispatch: aiDispatch }, { status: 201 });
         }
       } catch (autoErr) {
         console.warn("Auto AI reply notice:", autoErr);
       }
     }
 
-    return NextResponse.json({ message }, { status: 201 });
+    return NextResponse.json({ message, dispatch: dispatchResult }, { status: 201 });
   } catch (error: any) {
     console.error("Error sending message:", error);
     return NextResponse.json({ error: error.message || "Failed to send message" }, { status: 500 });

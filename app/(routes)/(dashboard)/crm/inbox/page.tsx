@@ -111,11 +111,21 @@ export default function InboxPage() {
       if (!res.ok) throw new Error("Failed to send message");
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["crm-conversation-detail", selectedConvId] });
       queryClient.invalidateQueries({ queryKey: ["crm-conversations"] });
       refetchActive();
       refetchConvs();
+
+      if (data?.dispatch?.warning) {
+        toast.warning(data.dispatch.warning);
+      } else if (data?.dispatch?.error) {
+        toast.error(`Outbound dispatch error: ${data.dispatch.error}`);
+      } else if (data?.dispatch?.dispatched) {
+        toast.success(`Message delivered to ${data.dispatch.channel?.toUpperCase()}!`);
+      } else {
+        toast.success("Message sent");
+      }
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to send message");
@@ -137,12 +147,21 @@ export default function InboxPage() {
       if (!res.ok) throw new Error("Failed to generate AI reply");
       return res.json();
     },
-    onSuccess: () => {
-      toast.success("AI Sales Assistant replied!");
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["crm-conversation-detail", selectedConvId] });
       queryClient.invalidateQueries({ queryKey: ["crm-conversations"] });
       refetchActive();
       refetchConvs();
+
+      if (data?.dispatch?.warning) {
+        toast.warning(data.dispatch.warning);
+      } else if (data?.dispatch?.error) {
+        toast.error(`AI reply dispatch error: ${data.dispatch.error}`);
+      } else if (data?.dispatch?.dispatched) {
+        toast.success(`AI replied & delivered to ${data.dispatch.channel?.toUpperCase()}!`);
+      } else {
+        toast.success("AI Sales Assistant replied!");
+      }
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to generate AI reply");
