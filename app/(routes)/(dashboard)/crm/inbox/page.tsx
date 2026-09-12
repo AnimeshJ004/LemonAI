@@ -216,17 +216,17 @@ export default function InboxPage() {
   const bant = activeLead?.metadata?.bant;
 
   return (
-    <div className="flex-1 flex flex-col h-[calc(100vh-4rem)] overflow-hidden max-w-[1700px] mx-auto p-4 md:p-6 space-y-3">
+    <div className="h-full flex-1 flex flex-col min-h-0 overflow-hidden max-w-[1700px] w-full mx-auto space-y-2">
       {/* Top Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between shrink-0">
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
+          <h1 className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
             Omnichannel CRM Inbox
             <Badge variant="outline" className="text-[10px] font-semibold uppercase">
               Unified Threads
             </Badge>
           </h1>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted-foreground hidden sm:block">
             Live stream from Website Chatbot, WhatsApp Cloud API, and Voice qualification.
           </p>
         </div>
@@ -238,7 +238,7 @@ export default function InboxPage() {
             refetchConvs();
             refetchActive();
           }}
-          className="h-8 gap-1.5 text-xs"
+          className="h-7 gap-1.5 text-xs"
         >
           <RefreshCw className="size-3.5" />
           Sync
@@ -246,9 +246,9 @@ export default function InboxPage() {
       </div>
 
       {/* 3-Column Main Workspace */}
-      <div className="flex-1 flex border border-border/70 rounded-2xl overflow-hidden bg-card/50 backdrop-blur-xs shadow-xs">
+      <div className="flex-1 min-h-0 flex border border-border/70 rounded-2xl overflow-hidden bg-card/50 backdrop-blur-xs shadow-xs">
         {/* Column 1: Conversations List */}
-        <div className="w-72 md:w-80 shrink-0 h-full flex flex-col">
+        <div className="w-64 sm:w-72 lg:w-80 shrink-0 h-full min-h-0 flex flex-col">
           <ConversationList
             conversations={conversations}
             selectedId={selectedConvId}
@@ -258,11 +258,11 @@ export default function InboxPage() {
         </div>
 
         {/* Column 2: Active Chat Area */}
-        <div className="flex-1 flex flex-col h-full border-r border-border/70 min-w-0 bg-background/50">
+        <div className="flex-1 min-h-0 flex flex-col h-full border-r border-border/70 min-w-0 bg-background/50">
           {activeConv ? (
             <>
               {/* Chat Top Banner with Human Takeover */}
-              <div className="p-3 border-b border-border/70 bg-card/60 space-y-2">
+              <div className="p-2.5 sm:p-3 border-b border-border/70 bg-card/60 space-y-2 shrink-0">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 truncate">
                     <h3 className="font-bold text-sm text-foreground truncate">
@@ -314,7 +314,7 @@ export default function InboxPage() {
         </div>
 
         {/* Column 3: Lead Intelligence Dossier */}
-        <div className="w-80 shrink-0 h-full overflow-y-auto p-4 space-y-4 bg-card/30 hidden lg:block scrollbar-thin">
+        <div className="w-72 lg:w-80 shrink-0 h-full min-h-0 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 bg-card/30 hidden lg:block scrollbar-thin">
           <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
             <h3 className="font-bold text-xs uppercase tracking-wider text-muted-foreground">
               Lead Dossier
