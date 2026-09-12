@@ -32,7 +32,7 @@ interface PostCalendarProps {
   view: "month" | "week"
   onViewChange: (view: string) => void
   onDateChange: (date: Date) => void
-  onPostClick: (post: PostType) => void
+  onPostClick: (post: any, allPosts?: any[], activeChannelType?: string) => void
   onCreatePost: (date: Date) => void
   rightActions?: React.ReactNode
 }
@@ -82,10 +82,10 @@ export function PostCalendar({
       const primaryPost = groupedPosts[0]
       const startDate = new Date(primaryPost.scheduled_at)
       
-      // Keep duration strictly within the same day (30 mins or capped before midnight)
+      // 25-minute duration guarantees half-hour intervals (2:00 vs 2:30) never collide on boundaries
       const maxSameDay = new Date(startDate)
       maxSameDay.setHours(23, 59, 59, 999)
-      const endDate = new Date(Math.min(startDate.getTime() + 30 * 60 * 1000, maxSameDay.getTime()))
+      const endDate = new Date(Math.min(startDate.getTime() + 25 * 60 * 1000, maxSameDay.getTime()))
 
       // Collect all unique channel types for this post card
       const channels = groupedPosts
@@ -166,8 +166,8 @@ export function PostCalendar({
         events={events}
         date={currentDate}
         formats={formats}
-        step={60}
-        timeslots={1}
+        step={30}
+        timeslots={2}
         min={new Date(0, 0, 0, 0, 0, 0)}
         max={new Date(0, 0, 0, 23, 59, 59)}
         scrollToTime={new Date(0, 0, 0, 8, 0, 0)}
@@ -191,7 +191,7 @@ export function PostCalendar({
             onDateChange(targetDate)
             onViewChange("week")
           } else {
-            onPostClick(event.allPosts?.[0] || event)
+            onPostClick(event.allPosts?.[0] || event, event.allPosts)
           }
         }}
         slotPropGetter={(date) => {
@@ -222,14 +222,15 @@ export function PostCalendar({
             const eventDate = event.scheduled_at ? new Date(event.scheduled_at) : (event.start ? new Date(event.start) : new Date());
             const isValidDate = !isNaN(eventDate.getTime());
             const status = event.status;
+            const allPostsList: any[] = event.allPosts && event.allPosts.length > 0 ? event.allPosts : [event];
 
             return (
               <div
                 className={cn(
-                  "flex flex-col justify-between p-1.5 h-full w-full rounded-md overflow-hidden transition-all hover:brightness-95 cursor-pointer shadow-xs border relative select-none",
+                  "flex flex-col justify-between p-1.5 h-full w-full rounded-md overflow-hidden transition-all hover:brightness-98 cursor-pointer shadow-2xs border relative select-none",
                   status === "failed" ? "bg-red-500/10 border-red-500/30 border-l-[3.5px] border-l-red-500" :
                   status === "published" ? "bg-emerald-500/10 border-emerald-500/30 border-l-[3.5px] border-l-emerald-500" :
-                  "bg-card/95 border-border hover:border-primary/40"
+                  "bg-card/95 border-border/80 hover:border-primary/50"
                 )}
                 style={status === "queue" ? {
                   borderLeftWidth: "3.5px",
@@ -242,51 +243,54 @@ export function PostCalendar({
                     onDateChange(eventDate);
                     onViewChange("week");
                   } else {
-                    onPostClick(event.allPosts?.[0] || event);
+                    onPostClick(allPostsList[0] || event, allPostsList);
                   }
                 }}
               >
                 {/* Top Header: Platform Icons + Time */}
                 <div className="flex items-center justify-between gap-1 w-full min-w-0">
-                  <div className="flex items-center gap-1 overflow-hidden shrink-0">
-                    {isMulti ? (
-                      event.channels.slice(0, 4).map((ch: any, cIdx: number) => {
-                        const ChIcon = getChannelIcon(ch.type);
-                        return ChIcon ? (
-                          <div
-                            key={cIdx}
-                            className="size-4 rounded flex items-center justify-center shrink-0 shadow-2xs"
-                            style={{ background: ch.color || color }}
-                            title={ch.name || ch.type}
-                          >
-                            <HugeiconsIcon icon={ChIcon} className="size-2.5 text-white" />
-                          </div>
-                        ) : null;
-                      })
-                    ) : (
-                      Icon && (
-                        <div
-                          className="size-4 rounded flex items-center justify-center shrink-0 shadow-2xs"
-                          style={{ background: color }}
+                  <div className="flex items-center gap-1 overflow-x-hidden shrink-0 py-0.5">
+                    {allPostsList.map((p: any, idx: number) => {
+                      const ch = p.user_channels?.channel_types || event.channels?.[idx] || primaryChannel;
+                      const ChIcon = getChannelIcon(ch?.type);
+                      const chColor = ch?.color || color;
+                      const chHandle = p.user_channels?.handle;
+                      const chStatus = p.status;
+
+                      return ChIcon ? (
+                        <button
+                          key={p.id || idx}
+                          type="button"
+                          title={`Click to view ${ch?.name || ch?.type || "account"} (@${chHandle || "account"}) - ${chStatus || "scheduled"}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (view === "month") {
+                              onDateChange(eventDate);
+                              onViewChange("week");
+                            } else {
+                              onPostClick(p, allPostsList, ch?.type);
+                            }
+                          }}
+                          className={cn(
+                            "size-4 sm:size-4.5 rounded flex items-center justify-center shrink-0 shadow-2xs transition-all hover:scale-115 active:scale-95 cursor-pointer",
+                            chStatus === "published" && "ring-1 ring-emerald-500/80",
+                            chStatus === "failed" && "ring-1 ring-red-500/80"
+                          )}
+                          style={{ background: chColor }}
                         >
-                          <HugeiconsIcon icon={Icon} className="size-2.5 text-white" />
-                        </div>
-                      )
-                    )}
-                    {event.channels?.length > 4 && (
-                      <span className="text-[8px] font-bold px-1 py-0.5 rounded bg-muted text-muted-foreground">
-                        +{event.channels.length - 4}
-                      </span>
-                    )}
+                          <HugeiconsIcon icon={ChIcon} className="size-2.5 text-white" />
+                        </button>
+                      ) : null;
+                    })}
                   </div>
 
-                  <span className="text-[9px] font-semibold text-muted-foreground whitespace-nowrap ml-auto">
+                  <span className="text-[9px] font-semibold text-muted-foreground whitespace-nowrap ml-auto shrink-0">
                     {isValidDate ? format(eventDate, "h:mm a") : ""}
                   </span>
                 </div>
 
                 {/* Title & Preview */}
-                <div className="min-w-0 mt-0.5 flex-1 flex flex-col justify-center">
+                <div className="min-w-0 my-0.5 flex-1 flex flex-col justify-center overflow-hidden">
                   <span className="text-[11px] font-semibold text-foreground truncate block leading-snug">
                     {event?.title || "Scheduled Post"}
                   </span>
@@ -294,9 +298,9 @@ export function PostCalendar({
 
                 {/* Multi-channel badge footer */}
                 {isMulti && (
-                  <div className="flex items-center justify-between gap-1 mt-0.5 pt-0.5 border-t border-border/40 text-[9px] text-muted-foreground">
+                  <div className="flex items-center justify-between gap-1 pt-0.5 border-t border-border/40 text-[9px] text-muted-foreground">
                     <span className="font-semibold text-[9px] text-muted-foreground truncate">
-                      {event.allPosts.length} channels
+                      {allPostsList.length} accounts
                     </span>
                     <span className={cn(
                       "text-[8px] uppercase font-bold px-1 rounded",

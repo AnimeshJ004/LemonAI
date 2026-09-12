@@ -8,6 +8,10 @@ import {
     ScanEye,
     Lightbulb,
     Zap,
+    ExternalLink,
+    AlertCircle,
+    CheckCircle2,
+    Clock,
 } from "lucide-react"
 import { ScheduleDatePicker } from "./schedule-date-picker"
 import { Button } from "@/components/ui/button"
@@ -43,6 +47,11 @@ interface EditPostDialogProps {
         scheduledDate: string
         channel?: ChannelType | null
         allPosts?: any[] | null
+        status?: string
+        publishedUrl?: string | null
+        errorMessage?: string | null
+        handle?: string | null
+        activeChannelType?: string | null
     } | null
 }
 
@@ -126,16 +135,36 @@ export function EditPostDialog({
     const [selectedRightTab, setSeletedRightTab] = React.useState<ActionTabType | null>(null)
     const [activeChannel, setActiveChannel] = React.useState<any>(null)
     const [activeUserChannelId, setActiveUserChannelId] = React.useState<string>("")
+    const [activeStatus, setActiveStatus] = React.useState<string>("")
+    const [activePublishedUrl, setActivePublishedUrl] = React.useState<string | null>(null)
+    const [activeErrorMessage, setActiveErrorMessage] = React.useState<string | null>(null)
+    const [activeHandle, setActiveHandle] = React.useState<string | null>(null)
 
     // Sync state when post changes
     React.useEffect(() => {
         if (post) {
-            setActivePostId(post.id)
-            setContent(post.content)
-            setImages(post.images ?? [])
-            setActiveChannel(post.channel)
-            setActiveUserChannelId(post.userChannelId)
-            const rawDate = post.scheduledDate ? new Date(post.scheduledDate) : new Date()
+            let targetPost: any = post
+            if (post.activeChannelType && post.allPosts && post.allPosts.length > 0) {
+                const found = post.allPosts.find((p: any) => p.user_channels?.channel_types?.type === post.activeChannelType)
+                if (found) targetPost = found
+            }
+
+            setActivePostId(targetPost.id)
+            setContent(targetPost.content || "")
+            setImages(targetPost.images ?? [])
+            const ch = targetPost.user_channels?.channel_types ? {
+                ...targetPost.user_channels.channel_types,
+                profile_image: targetPost.user_channels.profile_image,
+                handle: targetPost.user_channels.handle
+            } : (targetPost.channel || null)
+            setActiveChannel(ch)
+            setActiveUserChannelId(targetPost.user_channel_id || targetPost.userChannelId || "")
+            setActiveStatus(targetPost.status || "")
+            setActivePublishedUrl(targetPost.published_url || targetPost.publishedUrl || null)
+            setActiveErrorMessage(targetPost.error_message || targetPost.errorMessage || null)
+            setActiveHandle(targetPost.user_channels?.handle || targetPost.handle || null)
+
+            const rawDate = targetPost.scheduled_at || targetPost.scheduledDate ? new Date(targetPost.scheduled_at || targetPost.scheduledDate) : new Date()
             const safeDate = !isNaN(rawDate.getTime()) ? rawDate : new Date()
             setDate(safeDate)
             // Extract time from scheduledDate
@@ -158,7 +187,11 @@ export function EditPostDialog({
             handle: targetPost.user_channels.handle
         } : (targetPost.channel || null)
         setActiveChannel(ch)
-        setActiveUserChannelId(targetPost.user_channel_id || "")
+        setActiveUserChannelId(targetPost.user_channel_id || targetPost.userChannelId || "")
+        setActiveStatus(targetPost.status || "")
+        setActivePublishedUrl(targetPost.published_url || targetPost.publishedUrl || null)
+        setActiveErrorMessage(targetPost.error_message || targetPost.errorMessage || null)
+        setActiveHandle(targetPost.user_channels?.handle || targetPost.handle || null)
     }
 
     const channel = activeChannel || post?.channel
@@ -235,39 +268,114 @@ export function EditPostDialog({
                                             bg-muted/10
                                             ">
                                 <div className="space-y-4">
-                                    {post?.allPosts && post.allPosts.length > 1 && (
-                                        <div className="flex flex-wrap items-center gap-1.5 p-2 bg-muted/40 rounded-xl border border-border/60">
-                                            <span className="text-[11px] font-semibold text-muted-foreground mr-1">Channels ({post.allPosts.length}):</span>
-                                            {post.allPosts.map((p: any) => {
-                                                const ch = p.user_channels?.channel_types
-                                                const chIcon = ch ? getChannelIcon(ch.type) : null
-                                                const isSelected = (activePostId || post.id) === p.id
-                                                return (
-                                                    <button
-                                                        key={p.id}
-                                                        type="button"
-                                                        onClick={() => handleSwitchChannel(p)}
-                                                        className={cn(
-                                                            "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer",
-                                                            isSelected 
-                                                                ? "bg-background text-foreground shadow-xs border border-border ring-1 ring-primary/20" 
-                                                                : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
-                                                        )}
+                                    {/* Social Account Selector & Details Card */}
+                                    <div className="flex flex-col gap-2.5 p-3.5 bg-muted/40 border border-border/80 rounded-2xl shadow-2xs">
+                                        {/* Channel Switcher Tabs (if multi-channel post) */}
+                                        {post?.allPosts && post.allPosts.length > 1 && (
+                                            <div className="flex flex-wrap items-center gap-1.5 pb-2.5 border-b border-border/60">
+                                                <span className="text-[11px] font-semibold text-muted-foreground mr-1">
+                                                    Platforms ({post.allPosts.length}):
+                                                </span>
+                                                {post.allPosts.map((p: any) => {
+                                                    const ch = p.user_channels?.channel_types;
+                                                    const chIcon = ch ? getChannelIcon(ch.type) : null;
+                                                    const isSelected = (activePostId || post.id) === p.id;
+                                                    const pStatus = p.status;
+                                                    return (
+                                                        <button
+                                                            key={p.id}
+                                                            type="button"
+                                                            onClick={() => handleSwitchChannel(p)}
+                                                            className={cn(
+                                                                "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+                                                                isSelected
+                                                                    ? "bg-background text-foreground shadow-xs border border-border ring-2 ring-primary/30"
+                                                                    : "text-muted-foreground hover:bg-muted/80 hover:text-foreground border border-transparent"
+                                                            )}
+                                                        >
+                                                            {chIcon && (
+                                                                <div
+                                                                    className="size-4.5 rounded flex items-center justify-center shrink-0 shadow-2xs"
+                                                                    style={{ background: ch?.color || "#3b82f6" }}
+                                                                >
+                                                                    <HugeiconsIcon icon={chIcon} className="size-2.5 text-white" />
+                                                                </div>
+                                                            )}
+                                                            <span>{ch?.name || ch?.type || "Channel"}</span>
+                                                            <span
+                                                                className={cn(
+                                                                    "size-1.5 rounded-full shrink-0 ml-0.5",
+                                                                    pStatus === "published" ? "bg-emerald-500" :
+                                                                    pStatus === "failed" ? "bg-red-500" :
+                                                                    "bg-amber-500"
+                                                                )}
+                                                                title={pStatus}
+                                                            />
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+
+                                        {/* Active Social Account Details */}
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                {icon && (
+                                                    <div
+                                                        className="size-8 rounded-xl flex items-center justify-center shrink-0 shadow-xs"
+                                                        style={{ background: channel?.color || "#3b82f6" }}
                                                     >
-                                                        {chIcon && (
-                                                            <div 
-                                                                className="size-4 rounded flex items-center justify-center shrink-0 shadow-2xs" 
-                                                                style={{ background: ch?.color || "#3b82f6" }}
-                                                            >
-                                                                <HugeiconsIcon icon={chIcon} className="size-2.5 text-white" />
-                                                            </div>
+                                                        <HugeiconsIcon icon={icon} className="size-4.5 text-white" />
+                                                    </div>
+                                                )}
+                                                <div className="flex flex-col min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="font-bold text-xs text-foreground truncate">
+                                                            {channel?.name || channel?.type || "Connected Account"}
+                                                        </span>
+                                                        {activeHandle && (
+                                                            <span className="text-[11px] font-medium text-muted-foreground truncate bg-muted px-2 py-0.5 rounded-md border border-border/40">
+                                                                @{activeHandle.replace(/^@/, "")}
+                                                            </span>
                                                         )}
-                                                        <span>{ch?.name || ch?.type || "Channel"}</span>
-                                                    </button>
-                                                )
-                                            })}
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                                        <span className={cn(
+                                                            "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full flex items-center gap-1",
+                                                            activeStatus === "published" ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" :
+                                                            activeStatus === "failed" ? "bg-red-500/15 text-red-600 dark:text-red-400" :
+                                                            "bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                                                        )}>
+                                                            {activeStatus === "published" ? "● Live on Platform" :
+                                                             activeStatus === "failed" ? "● Publish Failed" :
+                                                             "● Scheduled in Queue"}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Live URL Link Button */}
+                                            {activePublishedUrl && (
+                                                <a
+                                                    href={activePublishedUrl}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 bg-emerald-500/10 hover:bg-emerald-500/20 px-3 py-1.5 rounded-lg border border-emerald-500/30 transition-colors shadow-2xs"
+                                                >
+                                                    <ExternalLink className="size-3.5" />
+                                                    <span>View Live Post</span>
+                                                </a>
+                                            )}
                                         </div>
-                                    )}
+
+                                        {/* Error Alert Banner if active channel failed */}
+                                        {activeStatus === "failed" && activeErrorMessage && (
+                                            <div className="mt-1 p-2 text-xs bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 rounded-lg flex items-start gap-1.5">
+                                                <AlertCircle className="size-3.5 shrink-0 mt-0.5" />
+                                                <span className="truncate">{activeErrorMessage}</span>
+                                            </div>
+                                        )}
+                                    </div>
 
                                     <div className="relative">
                                         {icon && (

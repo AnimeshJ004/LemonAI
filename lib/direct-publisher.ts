@@ -159,19 +159,12 @@ export async function publishPostDirectly(postId: string): Promise<{
         images: post.images,
       });
     } else if (providerType === ChannelTypeEnum.THREADS) {
-      try {
-        publishedUrl = await publishToThreadsDirect({
-          accessToken: currentAccessToken,
-          threadsUserId: userChannel.provider_account_id,
-          content: post.content,
-          images: post.images,
-        });
-      } catch (thErr: any) {
-        logger.warn("[Threads Publisher] Meta Threads API returned notice:", thErr?.message);
-        // If Meta Threads API container had restrictions, ensure post successfully publishes
-        const cleanHandle = (userChannel.handle || "user").replace(/^@/, "");
-        publishedUrl = `https://www.threads.net/@${encodeURIComponent(cleanHandle)}/post/${Date.now()}`;
-      }
+      publishedUrl = await publishToThreadsDirect({
+        accessToken: currentAccessToken,
+        threadsUserId: userChannel.provider_account_id,
+        content: post.content,
+        images: post.images,
+      });
     } else if (providerType === ChannelTypeEnum.YOUTUBE) {
       publishedUrl = `https://youtube.com/${userChannel.handle || "channel"}`;
     } else {
@@ -957,10 +950,23 @@ async function publishToThreadsDirect({
   let isVideo = false;
 
   if (images && images.length > 0) {
-    mediaUrl = images[0].url;
-    isVideo =
-      mediaUrl.toLowerCase().includes(".mp4") ||
-      (images[0] as any)?.media_type === "video";
+    const vidCandidate = images.find(
+      (img) =>
+        (img.url && (img.url.toLowerCase().includes(".mp4") || img.url.toLowerCase().includes(".mov"))) ||
+        img.media_type === "video" ||
+        (img as any)?.type === "video"
+    );
+
+    if (vidCandidate?.url) {
+      mediaUrl = vidCandidate.url;
+      isVideo = true;
+    } else {
+      const imgCandidate = images.find(
+        (img) => img.url && !img.url.toLowerCase().includes(".mp4") && !img.url.toLowerCase().includes(".mov")
+      );
+      mediaUrl = imgCandidate?.url || images[0]?.url;
+      isVideo = false;
+    }
   }
 
   // Resolve explicit Threads User ID (Threads API requires /{threads-user-id}/threads_publish, /me is not supported on publish)
@@ -985,18 +991,22 @@ async function publishToThreadsDirect({
 
   // Helper to create a Threads media or text container
   async function createThreadsContainer(type: "VIDEO" | "IMAGE" | "TEXT", url?: string | null): Promise<string> {
-    const params = new URLSearchParams({
+    const bodyParams = new URLSearchParams({
       access_token: accessToken,
       text: content,
       media_type: type,
     });
     if (url && type !== "TEXT") {
-      params.append(type === "VIDEO" ? "video_url" : "image_url", url);
+      bodyParams.append(type === "VIDEO" ? "video_url" : "image_url", url);
     }
 
     const createRes = await fetch(
-      `https://graph.threads.net/v1.0/${endpointUser}/threads?${params.toString()}`,
-      { method: "POST" }
+      `https://graph.threads.net/v1.0/${endpointUser}/threads`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: bodyParams.toString(),
+      }
     );
     const createData = await createRes.json();
     if (!createRes.ok || !createData.id) {
@@ -1008,53 +1018,69 @@ async function publishToThreadsDirect({
   }
 
   let containerId: string | null = null;
+  let isMediaContainer = false;
 
   // Step 1: Attempt media container creation with graceful fallback to TEXT
   if (mediaUrl) {
     try {
       containerId = await createThreadsContainer(isVideo ? "VIDEO" : "IMAGE", mediaUrl);
+      isMediaContainer = true;
     } catch (mediaErr: any) {
       logger.warn(`[Threads Publisher] ${isVideo ? "Video" : "Image"} container creation failed, falling back to text:`, mediaErr?.message);
       containerId = await createThreadsContainer("TEXT");
+      isMediaContainer = false;
     }
   } else {
     containerId = await createThreadsContainer("TEXT");
+    isMediaContainer = false;
   }
 
   // Step 2: Poll container status if it was a media container (Threads requires FINISHED status)
-  const maxPolls = 8;
-  for (let poll = 1; poll <= maxPolls; poll++) {
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    try {
-      const statusRes = await fetch(
-        `https://graph.threads.net/v1.0/${containerId}?fields=status,error_message&access_token=${encodeURIComponent(accessToken)}`
-      );
-      if (statusRes.ok) {
-        const sData = await statusRes.json();
-        if (sData.status === "FINISHED") {
-          break;
-        } else if (sData.status === "ERROR") {
-          logger.warn(`[Threads Publisher] Media container returned ERROR. Creating fallback text container.`);
-          containerId = await createThreadsContainer("TEXT");
-          await new Promise((resolve) => setTimeout(resolve, 1500));
-          break;
+  if (isMediaContainer) {
+    const maxPolls = 30; // 30 x 2s = up to 60s for video transcoding
+    for (let poll = 1; poll <= maxPolls; poll++) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      try {
+        const statusRes = await fetch(
+          `https://graph.threads.net/v1.0/${containerId}?fields=status,error_message&access_token=${encodeURIComponent(accessToken)}`
+        );
+        if (statusRes.ok) {
+          const sData = await statusRes.json();
+          logger.info(`[Threads Publisher] Container ${containerId} status (poll ${poll}/${maxPolls}): ${sData.status}`);
+          if (sData.status === "FINISHED") {
+            break;
+          } else if (sData.status === "ERROR") {
+            logger.warn(`[Threads Publisher] Media container error (${sData.error_message}). Creating fallback text container.`);
+            containerId = await createThreadsContainer("TEXT");
+            await new Promise((resolve) => setTimeout(resolve, 1500));
+            break;
+          }
         }
+      } catch (pollErr) {
+        logger.warn("[Threads Publisher] Poll check notice:", pollErr);
       }
-    } catch {}
+    }
   }
 
   // Step 3: Publish container with retry loop using explicit /{threads-user-id}/threads_publish
   let pubData: any = null;
-  const maxPublishAttempts = 5;
+  const maxPublishAttempts = 6;
 
   for (let attempt = 1; attempt <= maxPublishAttempts; attempt++) {
     if (attempt > 1) {
-      await new Promise((resolve) => setTimeout(resolve, 2500));
+      await new Promise((resolve) => setTimeout(resolve, 3000));
     }
 
     const pubRes = await fetch(
-      `https://graph.threads.net/v1.0/${endpointUser}/threads_publish?creation_id=${containerId}&access_token=${encodeURIComponent(accessToken)}`,
-      { method: "POST" }
+      `https://graph.threads.net/v1.0/${endpointUser}/threads_publish`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          creation_id: containerId!,
+          access_token: accessToken,
+        }).toString(),
+      }
     );
     pubData = await pubRes.json();
 
@@ -1068,14 +1094,21 @@ async function publishToThreadsDirect({
       continue;
     }
 
-    // If media container publishing fails, create emergency text post
-    if (attempt === maxPublishAttempts) {
+    // If media container publishing fails on final attempt, create emergency text post
+    if (attempt === maxPublishAttempts && isMediaContainer) {
       try {
         const textContainerId = await createThreadsContainer("TEXT");
         await new Promise((resolve) => setTimeout(resolve, 1500));
         const emergencyPub = await fetch(
-          `https://graph.threads.net/v1.0/${endpointUser}/threads_publish?creation_id=${textContainerId}&access_token=${encodeURIComponent(accessToken)}`,
-          { method: "POST" }
+          `https://graph.threads.net/v1.0/${endpointUser}/threads_publish`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              creation_id: textContainerId,
+              access_token: accessToken,
+            }).toString(),
+          }
         );
         const emData = await emergencyPub.json();
         if (emergencyPub.ok && emData.id) {
