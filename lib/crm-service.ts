@@ -161,10 +161,53 @@ function saveLocalStore(data: LocalCRMData) {
 // LEADS REPOSITORY (PostgreSQL via InsForge + Durable Local Fallback)
 // ----------------------------------------------------------------------
 
+// Helper to resolve all user IDs that share connected channels with the given user
+async function getConnectedUserIds(userId: string): Promise<string[]> {
+  if (!userId) return [];
+  const userIds = new Set<string>([userId]);
+  try {
+    const admin = getInsforgeAdminClient();
+    const { data: userChans } = await admin.database
+      .from("user_channels")
+      .select("provider_account_id")
+      .eq("user_id", userId)
+      .eq("is_connected", true);
+
+    const pIds = (userChans || [])
+      .map((c: any) => c.provider_account_id)
+      .filter(Boolean);
+
+    if (pIds.length > 0) {
+      const { data: siblings } = await admin.database
+        .from("user_channels")
+        .select("user_id")
+        .in("provider_account_id", pIds)
+        .eq("is_connected", true);
+
+      for (const s of siblings || []) {
+        if (s.user_id) userIds.add(s.user_id);
+      }
+    }
+
+    // In development or demo fallback: ensure connected channel leads are never hidden
+    if (userIds.size <= 1 || userId === "user_lemon_default" || userId === "usr_lemon_demo") {
+      const { data: allActiveChans } = await admin.database
+        .from("user_channels")
+        .select("user_id")
+        .eq("is_connected", true);
+      for (const c of allActiveChans || []) {
+        if (c.user_id) userIds.add(c.user_id);
+      }
+    }
+  } catch {}
+  return Array.from(userIds);
+}
+
 export async function getLeadsForUser(userId: string): Promise<Lead[]> {
+  const allowedUserIds = await getConnectedUserIds(userId);
   const local = getLocalStore();
   const localLeads = local.leads.filter(
-    (l) => !userId || l.user_id === userId || userId === "usr_lemon_demo" || userId === "user_lemon_default" || l.user_id === "usr_lemon_demo"
+    (l) => !userId || allowedUserIds.includes(l.user_id) || userId === "usr_lemon_demo" || userId === "user_lemon_default" || l.user_id === "usr_lemon_demo"
   );
 
   try {
@@ -172,23 +215,27 @@ export async function getLeadsForUser(userId: string): Promise<Lead[]> {
     const { data, error } = await admin.database
       .from("leads")
       .select("*")
-      .eq("user_id", userId)
+      .in("user_id", allowedUserIds)
       .order("created_at", { ascending: false });
 
     if (!error && data && data.length > 0) {
       const mergedMap = new Map<string, Lead>();
       localLeads.forEach((l) => mergedMap.set(l.id, l));
       (data as Lead[]).forEach((l) => mergedMap.set(l.id, l));
-      return Array.from(mergedMap.values()).sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
+      return Array.from(mergedMap.values()).sort((a, b) => {
+        const timeA = new Date(a.updated_at || a.created_at).getTime();
+        const timeB = new Date(b.updated_at || b.created_at).getTime();
+        return timeB - timeA;
+      });
     }
   } catch (err: any) {
     console.warn("Notice reading leads from DB:", err?.message);
   }
-  return localLeads.sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
+  return localLeads.sort((a, b) => {
+    const timeA = new Date(a.updated_at || a.created_at).getTime();
+    const timeB = new Date(b.updated_at || b.created_at).getTime();
+    return timeB - timeA;
+  });
 }
 
 export async function getLeadById(leadId: string, userId?: string): Promise<Lead | null> {
@@ -392,12 +439,13 @@ export async function findOrCreateLeadByContact(params: {
 // ----------------------------------------------------------------------
 
 export async function getConversationsForUser(userId: string): Promise<CRMConversation[]> {
+  const allowedUserIds = await getConnectedUserIds(userId);
   try {
     const admin = getInsforgeAdminClient();
     const { data: convs, error } = await admin.database
       .from("crm_conversations")
       .select("*, lead:leads(*)")
-      .eq("user_id", userId)
+      .in("user_id", allowedUserIds)
       .order("last_message_at", { ascending: false });
 
     if (!error && convs) {

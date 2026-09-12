@@ -3,6 +3,7 @@ import { callResilientCompletion } from "@/lib/ai-gateway";
 import { decrypt } from "@/lib/encryption";
 import {
   createLead,
+  updateLead,
   createConversation,
   addMessage,
   recordActivity,
@@ -43,6 +44,30 @@ const VALID_SENTIMENTS: AllowedSentiment[] = ["INQUIRY", "PRAISE", "COMPLAINT", 
 export function isValidUuid(id?: string | null): boolean {
   if (!id) return false;
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
+
+/**
+ * Checks whether a comment contains buying, pricing, contact, or collaboration intent.
+ * Covers both English and common Hinglish / Indian market patterns.
+ */
+export function isCommentInquiry(text: string): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase().trim();
+  const inquiryKeywords = [
+    "price", "pricing", "cost", "costing", "how much", "rate", "rates", "quote", "quotation",
+    "buy", "buying", "purchase", "order", "ordering",
+    "hire", "book", "booking", "appointment", "demo",
+    "interested", "intrested", "intrest", "want", "need", "looking for",
+    "detail", "details", "info", "information",
+    "dm", "link", "collab", "collaboration", "work with",
+    "call", "connect", "contact", "phone", "whatsapp", "number",
+    "service", "services", "solution", "solutions", "plan", "plans",
+    "package", "packages", "fees", "fee", "charges", "charge",
+    // Hinglish / Indian phrasing
+    "kya price", "kitna", "kitne", "chahiye", "batao", "bataiye", "kaise", "sampark",
+    "inquire", "inquiry"
+  ];
+  return inquiryKeywords.some((k) => lower.includes(k));
 }
 
 /**
@@ -89,6 +114,133 @@ export interface ProcessCommentResult {
   replyId?: string;
   replyText?: string;
   dmSent?: boolean;
+}
+
+export interface CaptureLeadParams {
+  userId: string;
+  commentId: string;
+  commentText: string;
+  commenterHandle: string;
+  commenterId?: string | null;
+  mediaId?: string | null;
+  platform: string;
+  sentiment?: AllowedSentiment;
+  replyText?: string | null;
+}
+
+/**
+ * Captures a prospect who commented with buying/pricing/service intent as a CRM Lead,
+ * opens a conversation in the Omnichannel Inbox, and logs an activity timeline event.
+ * Bulletproof and independent of whether automated public replies succeed.
+ */
+export async function captureLeadFromComment(params: CaptureLeadParams): Promise<string | null> {
+  const {
+    userId,
+    commentId,
+    commentText,
+    commenterHandle,
+    commenterId,
+    mediaId,
+    platform,
+    sentiment = "INQUIRY",
+    replyText,
+  } = params;
+
+  if (!userId || !commenterHandle) return null;
+  const admin = getInsforgeAdminClient();
+  const cleanHandle = commenterHandle.replace(/^@/, "").trim();
+  const normalizedPlatform = String(platform || "").toUpperCase() === "FACEBOOK" ? "facebook" : "instagram";
+
+  try {
+    let leadId: string | null = null;
+
+    // 1. Check if a lead already exists for this handle under this user
+    const { data: existingLead } = await admin.database
+      .from("leads")
+      .select("id")
+      .eq("user_id", userId)
+      .ilike("name", `%${cleanHandle}%`)
+      .limit(1);
+
+    if (existingLead && existingLead.length > 0 && existingLead[0]?.id) {
+      const existingId = existingLead[0].id;
+      leadId = existingId;
+      // Update existing lead with latest comment inquiry details and bump updated_at
+      await updateLead(existingId, {
+        stage: "new",
+        metadata: {
+          notes: `Recent inquiry on ${normalizedPlatform.toUpperCase()} post ${mediaId || ""}: "${commentText}"`,
+          commentId,
+          commentText,
+          sentiment,
+          platform: normalizedPlatform,
+          commenterId,
+          mediaId,
+          latestInquiryAt: new Date().toISOString(),
+        },
+      });
+    } else {
+      const created = await createLead({
+        user_id: userId,
+        name: commenterHandle,
+        source: normalizedPlatform,
+        stage: "new",
+        score: 8,
+        deal_value: 3000,
+        notes: `Comment on ${normalizedPlatform.toUpperCase()} post ${mediaId || ""}: "${commentText}"`,
+        metadata: {
+          commentId,
+          commentText,
+          sentiment,
+          platform: normalizedPlatform,
+          commenterId,
+          mediaId,
+        },
+      });
+      leadId = created.id;
+    }
+
+    if (leadId) {
+      // 2. Create or find conversation in Omnichannel Inbox
+      const conv = await createConversation({
+        user_id: userId,
+        lead_id: leadId,
+        channel: normalizedPlatform,
+        is_ai_active: true,
+      });
+
+      if (conv?.id) {
+        await addMessage({
+          conversation_id: conv.id,
+          sender_type: "lead",
+          content: commentText,
+        });
+        if (replyText) {
+          await addMessage({
+            conversation_id: conv.id,
+            sender_type: "ai_assistant",
+            content: replyText,
+          });
+        }
+      }
+
+      // 3. Record in activity timeline
+      await recordActivity({
+        user_id: userId,
+        lead_id: leadId,
+        type: "lead_created",
+        title: `New lead from ${normalizedPlatform.toUpperCase()} comment: ${commenterHandle}`,
+        description: `Inquiry: "${commentText.slice(0, 100)}"`,
+        metadata: { commentId, mediaId, platform: normalizedPlatform },
+      });
+
+      console.log(`[Social Comment Service] ✓ CRM Lead & Conversation captured for ${commenterHandle} (${normalizedPlatform})`);
+    }
+    return leadId;
+  } catch (err: any) {
+    console.error("[Social Comment Service] Failed to capture lead from comment:", err?.message || err);
+    return null;
+  }
 }
 
 /**
@@ -152,7 +304,7 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
 
   const admin = getInsforgeAdminClient();
 
-  // ─── 3. Check if Instagram ALREADY has a reply from our page ─────────────────
+  // ─── 3. Check if Instagram/Facebook ALREADY has a reply from our page ──────
   if (childReplies.length > 0) {
     const alreadyRepliedOnInstagram = childReplies.some((reply) => {
       const fromId = String(reply?.from?.id || "");
@@ -165,8 +317,23 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
     });
 
     if (alreadyRepliedOnInstagram) {
-      console.log(`[Social Comment Service] Comment ${commentId} already answered on Instagram. Recording to DB.`);
+      console.log(`[Social Comment Service] Comment ${commentId} already answered on Instagram/Facebook. Recording to DB.`);
       recentRepliedCommentIds.set(commentId, Date.now());
+
+      // If inquiry or buyer intent detected, ensure the CRM lead is recorded
+      if (isCommentInquiry(commentText)) {
+        await captureLeadFromComment({
+          userId,
+          commentId,
+          commentText,
+          commenterHandle,
+          commenterId,
+          mediaId,
+          platform,
+          sentiment: "INQUIRY",
+          replyText: childReplies[0]?.text || "Replied",
+        });
+      }
 
       // Sync into DB so future checks find it immediately
       try {
@@ -179,7 +346,7 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
             platform_comment_id: commentId,
             commenter_handle: commenterHandle,
             comment_text: commentText,
-            sentiment: "NEUTRAL",
+            sentiment: isCommentInquiry(commentText) ? "INQUIRY" : "NEUTRAL",
             reply_text: childReplies[0]?.text || "Replied",
             status: "replied",
           },
@@ -203,7 +370,20 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
 
     if (existing && existing.length > 0) {
       recentRepliedCommentIds.set(commentId, Date.now());
-      console.log(`[Social Comment Service] Comment ${commentId} already in DB with status '${existing[0].status}'. Skipping.`);
+      // Ensure CRM lead is captured/updated if this was an inquiry
+      if (isCommentInquiry(commentText)) {
+        await captureLeadFromComment({
+          userId,
+          commentId,
+          commentText,
+          commenterHandle,
+          commenterId,
+          mediaId,
+          platform,
+          sentiment: "INQUIRY",
+        });
+      }
+      console.log(`[Social Comment Service] Comment ${commentId} already in DB with status '${existing[0].status}'. Skipping duplicate reply.`);
       return { success: true, skipped: true, reason: "already_in_db" };
     }
   } catch (checkErr) {
@@ -327,11 +507,17 @@ Rules:
     }
 
     // ─── 7. Post Public Reply via Meta Graph API ──────────────────────────────
+    const isFacebook = String(platform || "").toUpperCase() === "FACEBOOK";
+    // Facebook Page comments use /{comment_id}/comments, Instagram uses /{comment_id}/replies
+    const replyEndpoint = isFacebook
+      ? `https://graph.facebook.com/v22.0/${commentId}/comments`
+      : `https://graph.facebook.com/v22.0/${commentId}/replies`;
+
     let replySuccess = false;
     let replyId: string | undefined = undefined;
 
     try {
-      const replyRes = await fetch(`https://graph.facebook.com/v22.0/${commentId}/replies`, {
+      const replyRes = await fetch(replyEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -346,7 +532,7 @@ Rules:
         replyId = replyJson.id;
         ourPostedReplyIds.add(replyJson.id);
         recentRepliedCommentIds.set(commentId, Date.now());
-        console.log(`[Social Comment Service] ✓ Auto-reply posted to comment ${commentId}, reply ID: ${replyJson.id}`);
+        console.log(`[Social Comment Service] ✓ Auto-reply posted to comment ${commentId} (${isFacebook ? "Facebook" : "Instagram"}), reply ID: ${replyJson.id}`);
       } else {
         const errMsg = replyJson?.error?.message || JSON.stringify(replyJson);
         console.error(`[Social Comment Service] Meta Graph API returned error for comment ${commentId}:`, errMsg);
@@ -362,7 +548,7 @@ Rules:
 
     // ─── 8. Send Private Direct Message (if purchase intent detected) ───────────
     let dmSuccess = false;
-    if (replySuccess && aiResult.shouldSendDM && aiResult.dmMessage && commenterId) {
+    if (aiResult.shouldSendDM && aiResult.dmMessage && commenterId) {
       try {
         const dmRes = await fetch(`https://graph.facebook.com/v22.0/me/messages`, {
           method: "POST",
@@ -385,137 +571,55 @@ Rules:
       }
     }
 
-    // ─── 9. Finalize Database Record ──────────────────────────────────────────
-    if (replySuccess) {
-      try {
-        const { error: updateErr } = await admin.database
-          .from("social_comments")
-          .update({
-            sentiment: aiResult.sentiment,
-            reply_text: aiResult.reply,
-            dm_sent: dmSuccess,
-            status: "replied",
-          })
-          .eq("platform_comment_id", commentId);
+    // ─── 9. Lead & CRM Capture (CRITICAL FIX: Runs INDEPENDENTLY of public reply success) ───
+    const hasIntent =
+      isCommentInquiry(commentText) ||
+      aiResult.shouldSendDM ||
+      aiResult.sentiment === "INQUIRY";
 
-        if (updateErr) {
-          console.error("[Social Comment Service] Failed to update social_comments status:", updateErr.message);
-        }
-      } catch (dbUpdateErr) {
-        console.error("[Social Comment Service] DB update exception:", dbUpdateErr);
-      }
-
-      // Lead & CRM conversation capture for potential buyers
-      const lowerComment = commentText.toLowerCase();
-      const hasInquiryKeywords =
-        lowerComment.includes("price") ||
-        lowerComment.includes("cost") ||
-        lowerComment.includes("how much") ||
-        lowerComment.includes("buy") ||
-        lowerComment.includes("quote") ||
-        lowerComment.includes("rate") ||
-        lowerComment.includes("hire") ||
-        lowerComment.includes("book") ||
-        lowerComment.includes("demo") ||
-        lowerComment.includes("interested") ||
-        lowerComment.includes("detail") ||
-        lowerComment.includes("info") ||
-        lowerComment.includes("dm") ||
-        lowerComment.includes("link");
-
-      if (aiResult.shouldSendDM || aiResult.sentiment === "INQUIRY" || hasInquiryKeywords) {
-        try {
-          const cleanHandle = commenterHandle.replace(/^@/, "");
-          let leadId: string | null = null;
-
-          const { data: existingLead } = await admin.database
-            .from("leads")
-            .select("id")
-            .eq("user_id", userId)
-            .ilike("name", `%${cleanHandle}%`)
-            .limit(1);
-
-          if (existingLead && existingLead.length > 0) {
-            leadId = existingLead[0].id;
-          } else {
-            const created = await createLead({
-              user_id: userId,
-              name: commenterHandle,
-              source: platform === "FACEBOOK" ? "facebook" : "instagram",
-              stage: "new",
-              score: 8,
-              deal_value: 3000,
-              notes: `Comment on ${platform} post ${mediaId || ""}: "${commentText}"`,
-              metadata: {
-                commentId,
-                commentText,
-                sentiment: aiResult.sentiment,
-                platform,
-              },
-            });
-            leadId = created.id;
-          }
-
-          const conv = await createConversation({
-            user_id: userId,
-            lead_id: leadId,
-            channel: platform === "FACEBOOK" ? "facebook" : "instagram",
-            is_ai_active: true,
-          });
-
-          if (conv?.id) {
-            await addMessage({
-              conversation_id: conv.id,
-              sender_type: "lead",
-              content: commentText,
-            });
-            if (aiResult.reply) {
-              await addMessage({
-                conversation_id: conv.id,
-                sender_type: "ai_assistant",
-                content: aiResult.reply,
-              });
-            }
-          }
-
-          // Record in activity feed
-          await recordActivity({
-            user_id: userId,
-            lead_id: leadId,
-            type: "lead_created",
-            title: `New lead from ${platform} comment: ${commenterHandle}`,
-            description: `Inquiry: "${commentText.slice(0, 100)}"`,
-            metadata: { commentId, mediaId },
-          });
-
-          console.log(`[Social Comment Service] ✓ CRM Lead & Conversation created for ${commenterHandle}`);
-        } catch (crmErr) {
-          console.warn("[Social Comment Service] Notice creating CRM lead/conversation:", crmErr);
-        }
-      }
-
-      return {
-        success: true,
-        skipped: false,
-        replyId,
+    let leadId: string | null = null;
+    if (hasIntent) {
+      leadId = await captureLeadFromComment({
+        userId,
+        commentId,
+        commentText,
+        commenterHandle,
+        commenterId,
+        mediaId,
+        platform,
+        sentiment: aiResult.sentiment,
         replyText: aiResult.reply,
-        dmSent: dmSuccess,
-      };
-    } else {
-      // Mark as failed so future runs know what happened, or remove so it can retry later
-      try {
-        await admin.database
-          .from("social_comments")
-          .update({ status: "failed" })
-          .eq("platform_comment_id", commentId);
-      } catch {}
-
-      return {
-        success: false,
-        skipped: false,
-        reason: "meta_api_reply_failed",
-      };
+      });
     }
+
+    // ─── 10. Update social_comments Database Record ───────────────────────────
+    const commentStatus = replySuccess ? "replied" : (hasIntent ? "lead_captured" : "failed");
+    try {
+      const { error: updateErr } = await admin.database
+        .from("social_comments")
+        .update({
+          sentiment: aiResult.sentiment,
+          reply_text: replySuccess ? aiResult.reply : null,
+          dm_sent: dmSuccess,
+          status: commentStatus,
+        })
+        .eq("platform_comment_id", commentId);
+
+      if (updateErr) {
+        console.error("[Social Comment Service] Failed to update social_comments status:", updateErr.message);
+      }
+    } catch (dbUpdateErr) {
+      console.error("[Social Comment Service] DB update exception:", dbUpdateErr);
+    }
+
+    return {
+      success: replySuccess || Boolean(leadId),
+      skipped: false,
+      replyId,
+      replyText: aiResult.reply,
+      dmSent: dmSuccess,
+      reason: replySuccess ? undefined : (leadId ? "lead_captured_reply_pending" : "reply_failed"),
+    };
   } finally {
     inFlightCommentIds.delete(commentId);
   }

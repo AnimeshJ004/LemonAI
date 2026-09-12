@@ -115,19 +115,39 @@ export default function PipelinePage() {
     },
   });
 
+  const [isSyncingLeads, setIsSyncingLeads] = useState(false);
+
+  const handleSyncSocialLeads = async () => {
+    setIsSyncingLeads(true);
+    try {
+      const res = await fetch("/api/social/sync-now", { method: "POST" });
+      const resData = await res.json();
+      if (res.ok && (resData.success || resData.repliedCount >= 0)) {
+        toast.success(
+          `Sync complete: Scanned ${resData.scannedPostsCount || 0} posts across Instagram & Facebook.`
+        );
+        refetch();
+        queryClient.invalidateQueries({ queryKey: ["crm-leads"] });
+      } else {
+        toast.error(resData.error || "Could not sync social comments");
+      }
+    } catch {
+      toast.error("Network error syncing social leads");
+    } finally {
+      setIsSyncingLeads(false);
+    }
+  };
+
   return (
-    <div className="flex-1 space-y-6 p-6 md:p-8 max-w-[1600px] mx-auto">
+    <div className="space-y-6 pb-12 animate-in fade-in duration-300">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2.5">
-            CRM Leads & Pipeline
-            <Badge variant="outline" className="text-xs font-semibold uppercase tracking-wider">
-              Autonomous BANT
-            </Badge>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            Pipeline & Omnichannel CRM
           </h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            Track deals across qualification stages with automated lead scoring and instant Cal.com booking.
+          <p className="text-sm text-muted-foreground">
+            Visual kanban tracking deals captured from Instagram, Facebook, Website, WhatsApp & Voice AI.
           </p>
         </div>
 
@@ -135,8 +155,20 @@ export default function PipelinePage() {
           <Button
             variant="outline"
             size="sm"
+            onClick={handleSyncSocialLeads}
+            disabled={isSyncingLeads || isRefetching}
+            className="h-9 gap-1.5 text-xs text-sky-600 dark:text-sky-400 border-sky-500/30 hover:bg-sky-500/10"
+            title="Scan connected Instagram & Facebook accounts for newly posted comments with buyer intent"
+          >
+            <RefreshCw className={`size-3.5 ${isSyncingLeads ? "animate-spin" : ""}`} />
+            {isSyncingLeads ? "Scanning..." : "Sync Social Leads"}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => refetch()}
-            disabled={isRefetching}
+            disabled={isRefetching || isSyncingLeads}
             className="h-9 gap-1.5 text-xs"
           >
             <RefreshCw className={`size-3.5 ${isRefetching ? "animate-spin" : ""}`} />

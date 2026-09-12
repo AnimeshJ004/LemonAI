@@ -106,9 +106,9 @@ async function processWebhookEntriesAsync(entries: any[]) {
     let userId: string | null = null;
     let accessToken: string | null = null;
     let channelHandle: string | null = null;
+    let channelRecord: any = null;
 
     try {
-      let channelRecord: any = null;
 
       if (targetAccountId) {
         const { data: matched } = await admin.database
@@ -167,6 +167,11 @@ async function processWebhookEntriesAsync(entries: any[]) {
       const val = change.value;
       if (!val) continue;
 
+      // Facebook feed changes can be 'post', 'comment', etc. Check if it's a comment or has message
+      if (change.field === "feed" && val.item && val.item !== "comment") {
+        continue;
+      }
+
       const commentId = String(val.id || val.comment_id || "").trim();
       const commentText = String(val.text || val.message || "").trim();
       const commenterHandle = val.from?.username || val.from?.name || "@user";
@@ -175,15 +180,35 @@ async function processWebhookEntriesAsync(entries: any[]) {
 
       if (!commentId || !commentText) continue;
 
-      // Process comment with unified, bulletproof deduplication engine
+      const detectedPlatform =
+        change.field === "feed" || (channelRecord?.channel_types as any)?.type === "FACEBOOK"
+          ? "FACEBOOK"
+          : "INSTAGRAM";
+
+      // If mediaId is known, try to match to the specific user's scheduled post author
+      let postAuthorUserId = userId;
+      if (mediaId) {
+        try {
+          const { data: matchedPost } = await admin.database
+            .from("scheduled_posts")
+            .select("user_id")
+            .ilike("published_url", `%${mediaId}%`)
+            .limit(1);
+          if (matchedPost && matchedPost.length > 0 && matchedPost[0]?.user_id) {
+            postAuthorUserId = matchedPost[0].user_id;
+          }
+        } catch {}
+      }
+
+      // Process comment with unified, bulletproof deduplication & CRM capture engine
       await processSingleComment({
-        userId,
+        userId: postAuthorUserId,
         commentId,
         commentText,
         commenterHandle,
         commenterId,
         mediaId,
-        platform: "INSTAGRAM",
+        platform: detectedPlatform,
         accessToken,
         igAccountId: targetAccountId,
         channelHandle,

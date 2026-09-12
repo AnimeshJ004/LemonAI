@@ -157,6 +157,28 @@ export async function GET(request: NextRequest) {
             return response;
         }
 
+        // Automatically subscribe Facebook Page / Instagram to Webhook events (feed, messages)
+        if (state.channelType === ChannelTypeEnum.FACEBOOK || (profile as any)?.pageId) {
+            const pageId = state.channelType === ChannelTypeEnum.FACEBOOK ? profile.providerAccountId : (profile as any)?.pageId;
+            const pageToken = (profile as any)?.pageAccessToken || token.accessToken;
+            if (pageId && pageToken) {
+                try {
+                    const subRes = await fetch(`https://graph.facebook.com/v22.0/${pageId}/subscribed_apps`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            subscribed_fields: ["feed", "messages", "messaging_postbacks"],
+                            access_token: pageToken,
+                        }),
+                    });
+                    const subData = await subRes.json().catch(() => ({}));
+                    console.log(`[OAuth Callback] Page ${pageId} webhook subscription result:`, JSON.stringify(subData));
+                } catch (subErr) {
+                    console.warn("[OAuth Callback] Notice subscribing page to webhooks:", subErr);
+                }
+            }
+        }
+
         const response = buildRedirectUrl(appUrl, redirectTo, {
             connected: "true",
             channelType: state.channelType,
