@@ -128,11 +128,12 @@ export function EditPostDialog({
         if (post) {
             setContent(post.content)
             setImages(post.images ?? [])
-            const date = new Date(post.scheduledDate)
-            setDate(date)
+            const rawDate = post.scheduledDate ? new Date(post.scheduledDate) : new Date()
+            const safeDate = !isNaN(rawDate.getTime()) ? rawDate : new Date()
+            setDate(safeDate)
             // Extract time from scheduledDate
-            const hours = date.getHours()
-            const minutes = date.getMinutes()
+            const hours = safeDate.getHours()
+            const minutes = safeDate.getMinutes()
             const ampm = hours >= 12 ? "PM" : "AM"
             const h = hours % 12 || 12
             const m = minutes.toString().padStart(2, "0")

@@ -74,6 +74,8 @@
   font-size: 11px;
   border-radius: 6px;
   box-shadow: none !important;
+  pointer-events: auto !important;
+  cursor: pointer !important;
 }
 
 .rbc-event:focus {

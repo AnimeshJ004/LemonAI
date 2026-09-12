@@ -52,12 +52,11 @@ const CalendarView = () => {
 
   const posts = data?.posts || [] as PostType[]
 
-  const handlePostClick = (_post: PostType) => {
-    const post = posts.find((post: PostType) => post.id === _post.id)
-    if (post) {
-      setSelectedPostForEdit(post)
-      setIsEditDialogOpen(true)
-    }
+  const handlePostClick = (_post: any) => {
+    if (!_post) return
+    const post = posts.find((p: PostType) => p.id === _post.id) || _post
+    setSelectedPostForEdit(post)
+    setIsEditDialogOpen(true)
   }
 
   const toggleChannel = (channelId: string) => {
@@ -109,16 +108,15 @@ const CalendarView = () => {
         onOpenChange={setIsEditDialogOpen}
         post={selectedPostForEdit ? {
           id: selectedPostForEdit.id,
-          content: selectedPostForEdit.content,
+          content: selectedPostForEdit.content || "",
           images: selectedPostForEdit.images || [],
-          scheduledDate: selectedPostForEdit.scheduled_at,
+          scheduledDate: selectedPostForEdit.scheduled_at || selectedPostForEdit.start || new Date().toISOString(),
           userChannelId: selectedPostForEdit.user_channel_id || "",
           channel: selectedPostForEdit.user_channels?.channel_types ? {
             ...selectedPostForEdit.user_channels.channel_types,
             profile_image: selectedPostForEdit.user_channels.profile_image,
             handle: selectedPostForEdit.user_channels.handle
-          } : null,
-          // status: selectedPostForEdit.status
+          } : (selectedPostForEdit.channel || null),
         } : null}
       />
 

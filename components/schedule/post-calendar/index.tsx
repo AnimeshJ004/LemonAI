@@ -183,7 +183,6 @@ export function PostCalendar({
               className: "rbc-time-slot-disabled",
               style: {
                 backgroundColor: "hsl(var(--muted) / 0.25)",
-                pointerEvents: "none",
               },
             }
             : {}
@@ -191,7 +190,7 @@ export function PostCalendar({
         dayPropGetter={(date: Date) => {
           const isPastDate = isBefore(date, startOfDay(new Date()))
           return {
-            className: isPastDate ? "bg-[#331f000f]! pointer-events-none" : "",
+            className: isPastDate ? "bg-[#331f000f]!" : "",
             style: isPastDate ? { backgroundColor: "hsl(var(--muted) / 0.35)" } : {}
           }
         }}
@@ -218,7 +217,10 @@ export function PostCalendar({
                   borderLeftWidth: "3.5px",
                   borderLeftColor: color,
                 } : undefined}
-                onClick={() => onPostClick(event.allPosts?.[0] || event)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPostClick(event.allPosts?.[0] || event);
+                }}
               >
                 {/* Top Header: Platform Icons + Time */}
                 <div className="flex items-center justify-between gap-1 w-full min-w-0">
