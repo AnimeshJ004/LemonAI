@@ -247,17 +247,20 @@ export default function PipelinePage() {
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <Filter className="size-3.5 text-muted-foreground hidden sm:inline-block" />
               <Select value={sourceFilter} onValueChange={setSourceFilter}>
-                <SelectTrigger className="h-9 text-xs w-[170px]">
+                <SelectTrigger className="h-9 text-xs w-[165px]">
                   <SelectValue placeholder="All Channels" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Channels</SelectItem>
-                  <SelectItem value="instagram">Instagram</SelectItem>
-                  <SelectItem value="facebook">Facebook</SelectItem>
-                  <SelectItem value="website">Website Chat</SelectItem>
-                  <SelectItem value="whatsapp">WhatsApp</SelectItem>
-                  <SelectItem value="meta_ads">Meta Ads</SelectItem>
-                  <SelectItem value="voice">Voice Call</SelectItem>
+                  <SelectItem value="instagram">📱 Instagram</SelectItem>
+                  <SelectItem value="instagram_dm">📱 Instagram DM</SelectItem>
+                  <SelectItem value="facebook">📘 Facebook</SelectItem>
+                  <SelectItem value="facebook_dm">📘 Facebook DM</SelectItem>
+                  <SelectItem value="lead_form">📋 Lead Form</SelectItem>
+                  <SelectItem value="website">💬 Website Bot</SelectItem>
+                  <SelectItem value="whatsapp">💚 WhatsApp</SelectItem>
+                  <SelectItem value="meta_ads">🎯 Meta Ads</SelectItem>
+                  <SelectItem value="voice">📞 Voice Call</SelectItem>
                   <SelectItem value="manual">Manual Entry</SelectItem>
                 </SelectContent>
               </Select>

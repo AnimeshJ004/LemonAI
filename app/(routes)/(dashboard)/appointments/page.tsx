@@ -89,6 +89,7 @@ export default function AppointmentsPage() {
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [bookingLinks, setBookingLinks] = useState<Record<string, string>>({
     "Cal.com": "",
     "Calendly": "",
@@ -122,16 +123,29 @@ export default function AppointmentsPage() {
   );
 
   const filteredAppointments = bookedAppointments.filter((l) => {
-    if (!searchTerm.trim()) return true;
-    const term = searchTerm.toLowerCase();
-    return (
-      (l.name && l.name.toLowerCase().includes(term)) ||
-      (l.email && l.email.toLowerCase().includes(term)) ||
-      (l.phone && l.phone.includes(term)) ||
-      (l.metadata?.bookingInfo?.dateText &&
-        l.metadata.bookingInfo.dateText.toLowerCase().includes(term))
-    );
+    const matchesSearch = (() => {
+      if (!searchTerm.trim()) return true;
+      const term = searchTerm.toLowerCase();
+      return (
+        (l.name && l.name.toLowerCase().includes(term)) ||
+        (l.email && l.email.toLowerCase().includes(term)) ||
+        (l.phone && l.phone.includes(term)) ||
+        (l.metadata?.bookingInfo?.dateText &&
+          l.metadata.bookingInfo.dateText.toLowerCase().includes(term))
+      );
+    })();
+    const matchesSource = sourceFilter === "all" ||
+      (sourceFilter === "social" && ["instagram", "facebook", "instagram_dm", "facebook_dm"].includes(l.source)) ||
+      (sourceFilter === "lead_form" && (l.source === "lead_form" || l.metadata?.formType)) ||
+      (sourceFilter === "chatbot" && l.source === "website") ||
+      l.source === sourceFilter;
+    return matchesSearch && matchesSource;
   });
+
+  const socialLeads = allLeads.filter((l) =>
+    ["instagram", "facebook", "instagram_dm", "facebook_dm", "lead_form"].includes(l.source) ||
+    Boolean(l.metadata?.leadFormSource || l.metadata?.formType)
+  );
 
   // 2. Fetch verified brand profile from database
   const { data: brandData } = useQuery({
@@ -245,7 +259,7 @@ export default function AppointmentsPage() {
       </div>
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <Card className="shadow-xs border-primary/20 bg-primary/5">
           <CardContent className="pt-4 pb-3 flex items-center justify-between">
             <div>
@@ -299,6 +313,18 @@ export default function AppointmentsPage() {
             </div>
           </CardContent>
         </Card>
+
+        <Card className="shadow-xs border-pink-500/20 bg-pink-50/20 dark:bg-pink-950/15">
+          <CardContent className="pt-4 pb-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Social Form Leads</p>
+              <p className="text-2xl font-bold text-pink-600 dark:text-pink-400 mt-0.5">{socialLeads.length}</p>
+            </div>
+            <div className="size-10 rounded-xl bg-pink-500/10 flex items-center justify-center text-pink-600">
+              <MessageSquare className="size-5" />
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Main Tabs */}
@@ -328,6 +354,19 @@ export default function AppointmentsPage() {
               />
             </div>
             <div className="flex items-center gap-2">
+              {/* Source Filter */}
+              <select
+                value={sourceFilter}
+                onChange={(e) => setSourceFilter(e.target.value)}
+                className="h-9 px-2 text-xs border rounded-md bg-background text-foreground border-border"
+              >
+                <option value="all">All Sources</option>
+                <option value="social">📱 Social (IG + FB)</option>
+                <option value="lead_form">📋 Lead Form</option>
+                <option value="chatbot">💬 Chatbot</option>
+                <option value="instagram">Instagram</option>
+                <option value="facebook">Facebook</option>
+              </select>
               <Link href="/website-bot">
                 <Button variant="outline" size="sm" className="text-xs gap-1.5">
                   <Bot className="size-3.5" /> Test Chatbot Booking
@@ -379,7 +418,7 @@ export default function AppointmentsPage() {
                             <User className="size-4 text-primary" />
                             {lead.name || "Valued Prospect"}
                           </CardTitle>
-                          <CardDescription className="text-xs mt-0.5 flex items-center gap-1.5 text-muted-foreground">
+                          <CardDescription className="text-xs mt-0.5 flex items-center gap-1.5 flex-wrap text-muted-foreground">
                             <span>Stage:</span>
                             <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-purple-500/10 text-purple-600 border-purple-200">
                               Appointment Booked
@@ -387,6 +426,27 @@ export default function AppointmentsPage() {
                             <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
                               Score: {lead.score}/10
                             </Badge>
+                            {/* Source Badge */}
+                            {(lead.source === "instagram" || lead.source === "instagram_dm") && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-pink-500/10 text-pink-600 border-pink-200">
+                                📱 Instagram
+                              </Badge>
+                            )}
+                            {(lead.source === "facebook" || lead.source === "facebook_dm") && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-blue-500/10 text-blue-600 border-blue-200">
+                                📘 Facebook
+                              </Badge>
+                            )}
+                            {(lead.source === "lead_form" || lead.metadata?.formType) && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-violet-500/10 text-violet-600 border-violet-200">
+                                📋 Lead Form
+                              </Badge>
+                            )}
+                            {lead.source === "website" && (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-emerald-500/10 text-emerald-600 border-emerald-200">
+                                💬 Chatbot
+                              </Badge>
+                            )}
                           </CardDescription>
                         </div>
                         <Badge className="bg-emerald-500 text-white text-[10px] gap-1 px-2 py-0.5">

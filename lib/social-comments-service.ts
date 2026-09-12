@@ -445,6 +445,7 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
       reply: `Thank you for connecting with ${brandName}! 🙏`,
       shouldSendDM: false,
       dmMessage: "",
+      intentType: "general" as "booking" | "pricing" | "general",
     };
 
     try {
@@ -463,25 +464,34 @@ Comment: "${commentText}"
 Commenter: @${commenterHandle}
 
 Rules:
-1. Public reply MUST be concise, under 140 characters.
-2. If the user asks about price, cost, booking, demo, or buying, set shouldSendDM to true and write a helpful private dmMessage.
-3. Return ONLY valid JSON:
+1. Public reply MUST be concise, under 140 characters. Do NOT say "Sent you a DM" or "check your DM" in the public reply — that will be added automatically if a DM is sent.
+2. If the user expresses interest in booking, meeting, appointment, or consultation → set shouldSendDM true, intentType "booking", write a warm DM inviting them to book.
+3. If the user asks about price, cost, rate, quote, package, or fees → set shouldSendDM true, intentType "pricing", write a DM acknowledging their interest.
+4. For general inquiries → set shouldSendDM true if warranted, intentType "general".
+5. Return ONLY valid JSON (no markdown). Use exactly this structure:
 {
-  "sentiment": "INQUIRY|PRAISE|COMPLAINT|SPAM|NEUTRAL",
-  "reply": "Your public response",
-  "shouldSendDM": true,
-  "dmMessage": "Private direct message text if purchase intent"
-}`,
+  "sentiment": "INQUIRY",
+  "reply": "Your concise public comment reply here",
+  "shouldSendDM": false,
+  "dmMessage": "",
+  "intentType": "general"
+}
+shouldSendDM must be a boolean. intentType must be one of: booking | pricing | general.`,
+
           },
         ],
       });
 
       if (completion.data && typeof completion.data === "object") {
+        const rawIntent = String(completion.data.intentType || "general").toLowerCase();
+        const parsedIntent: "booking" | "pricing" | "general" =
+          rawIntent === "booking" ? "booking" : rawIntent === "pricing" ? "pricing" : "general";
         aiResult = {
           sentiment: normalizeSentiment(completion.data.sentiment),
           reply: completion.data.reply || `Thanks for reaching out! 🙏`,
           shouldSendDM: Boolean(completion.data.shouldSendDM),
           dmMessage: completion.data.dmMessage || "",
+          intentType: parsedIntent,
         };
       } else {
         aiResult.sentiment = normalizeSentiment(aiResult.sentiment);
@@ -489,12 +499,28 @@ Rules:
     } catch (aiErr) {
       console.warn("[Social Comment Service] AI fallback triggered:", aiErr);
       const lower = commentText.toLowerCase();
-      if (lower.includes("price") || lower.includes("cost") || lower.includes("buy") || lower.includes("how much")) {
+      const isBookingIntent =
+        lower.includes("interested") || lower.includes("book") || lower.includes("appointment") ||
+        lower.includes("meet") || lower.includes("consult") || lower.includes("schedule");
+      const isPricingIntent =
+        lower.includes("price") || lower.includes("cost") || lower.includes("how much") ||
+        lower.includes("rate") || lower.includes("fees") || lower.includes("quote") || lower.includes("package");
+
+      if (isBookingIntent) {
         aiResult = {
           sentiment: "INQUIRY",
-          reply: "Sent you a DM with complete pricing details! 📩",
+          reply: `We'd love to connect! 📩 Sending you details now.`,
           shouldSendDM: true,
-          dmMessage: `Hey @${commenterHandle}! Thanks for your interest in ${brandName}. Here are the details...`,
+          dmMessage: `Hi @${commenterHandle}! We'd love to have a chat with you about ${brandName}. Let's get you booked in! 🙏`,
+          intentType: "booking",
+        };
+      } else if (isPricingIntent) {
+        aiResult = {
+          sentiment: "INQUIRY",
+          reply: `Great question! 📩 Sending you pricing details in DM.`,
+          shouldSendDM: true,
+          dmMessage: `Hi @${commenterHandle}! Thanks for your interest in ${brandName}. Here's a bit about what we offer — ${mainOffer}. Let's find the right plan for you!`,
+          intentType: "pricing",
         };
       } else if (lower.includes("love") || lower.includes("awesome") || lower.includes("great") || lower.includes("fire") || lower.includes("🔥")) {
         aiResult = {
@@ -502,7 +528,22 @@ Rules:
           reply: "Thank you so much! Really appreciate the love! ❤️✨",
           shouldSendDM: false,
           dmMessage: "",
+          intentType: "general",
         };
+      }
+    }
+
+    // ─── 6b. Append intent-aware form link to DM message ────────────────────────
+    // If AI wants to send a DM, embed the right lead capture form URL based on what the commenter said.
+    if (aiResult.shouldSendDM && aiResult.dmMessage && userId) {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+      const formType = aiResult.intentType === "booking" ? "booking" : aiResult.intentType === "pricing" ? "pricing" : null;
+      if (formType && baseUrl) {
+        const formUrl = `${baseUrl}/lead-form?type=${formType}&user=${encodeURIComponent(userId)}&source=${encodeURIComponent(platform.toLowerCase())}&name=${encodeURIComponent(commenterHandle)}`;
+        const formCta = formType === "booking"
+          ? `\n\n📅 Book your free consultation here:\n${formUrl}`
+          : `\n\n📋 Share your requirements & get a custom quote:\n${formUrl}`;
+        aiResult.dmMessage = aiResult.dmMessage.trim() + formCta;
       }
     }
 
@@ -547,27 +588,106 @@ Rules:
     }
 
     // ─── 8. Send Private Direct Message (if purchase intent detected) ───────────
+    // DIAGNOSTIC: Log every variable that controls whether a DM is sent
+    console.log("[Social Comment Service] DM diagnostic:", {
+      shouldSendDM: aiResult.shouldSendDM,
+      hasDmMessage: Boolean(aiResult.dmMessage),
+      commenterId: commenterId || "(empty — DM will be skipped!)",
+      igAccountId: igAccountId || "(empty — will fallback to 'me')",
+      intentType: aiResult.intentType,
+      platform,
+    });
+
     let dmSuccess = false;
-    if (aiResult.shouldSendDM && aiResult.dmMessage && commenterId) {
+    // Allow DM even if commenterId is empty — the private reply fallback uses commentId directly.
+    // Instagram often omits from.id on comments, so we must not block on it.
+    if (aiResult.shouldSendDM && aiResult.dmMessage && (commenterId || commentId)) {
       try {
-        const dmRes = await fetch(`https://graph.facebook.com/v22.0/me/messages`, {
+        const senderId = igAccountId || "me";
+
+        // Instagram requires messaging_type: "RESPONSE" for DMs sent in response to user actions.
+        // Without this, the API rejects the request with code 10 (Permission Denied).
+        const dmPayload: Record<string, any> = {
+          recipient: { id: commenterId },
+          message: { text: aiResult.dmMessage },
+          messaging_type: "RESPONSE",
+          access_token: accessToken,
+        };
+
+        const dmRes = await fetch(`https://graph.facebook.com/v22.0/${senderId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            recipient: { id: commenterId },
-            message: { text: aiResult.dmMessage },
-            access_token: accessToken,
-          }),
+          body: JSON.stringify(dmPayload),
         });
         const dmJson = await dmRes.json().catch(() => ({}));
-        if (dmRes.ok) {
+
+        if (dmRes.ok && (dmJson?.message_id || dmJson?.recipient_id)) {
           dmSuccess = true;
-          console.log(`[Social Comment Service] ✓ Private DM sent to commenter ${commenterId}`);
+          console.log(`[Social Comment Service] ✓ DM sent to ${commenterId} via ${senderId}`);
         } else {
-          console.warn(`[Social Comment Service] Notice sending DM to ${commenterId}:`, JSON.stringify(dmJson));
+          const errCode = dmJson?.error?.code;
+          const errMsg = dmJson?.error?.message || JSON.stringify(dmJson);
+          console.warn(
+            `[Social Comment Service] ✗ DM to ${commenterId} failed (sender: ${senderId}, code: ${errCode}):`,
+            errMsg
+          );
+
+          // Fallback: For Instagram, try sending DM using the comment_id as recipient
+          // (Private Reply API — works even if user hasn't messaged the page before)
+          if (!dmSuccess && !isFacebook && commentId) {
+            try {
+              console.log(`[Social Comment Service] Trying Instagram Private Reply to comment ${commentId}...`);
+              const prRes = await fetch(`https://graph.facebook.com/v22.0/${senderId}/messages`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  recipient: { comment_id: commentId },
+                  message: { text: aiResult.dmMessage },
+                  messaging_type: "RESPONSE",
+                  access_token: accessToken,
+                }),
+              });
+              const prJson = await prRes.json().catch(() => ({}));
+              if (prRes.ok && (prJson?.message_id || prJson?.recipient_id)) {
+                dmSuccess = true;
+                console.log(`[Social Comment Service] ✓ Instagram Private Reply sent to comment ${commentId}`);
+              } else {
+                console.warn(
+                  `[Social Comment Service] ✗ Private Reply also failed (comment: ${commentId}):`,
+                  JSON.stringify(prJson)
+                );
+              }
+            } catch (prErr) {
+              console.warn("[Social Comment Service] Private Reply network error:", prErr);
+            }
+          }
         }
       } catch (dmErr) {
-        console.warn("[Social Comment Service] Network notice sending private DM:", dmErr);
+        console.warn("[Social Comment Service] Network error sending private DM:", dmErr);
+      }
+    } else if (aiResult.shouldSendDM) {
+      // Log WHY the DM was skipped despite shouldSendDM = true
+      console.warn("[Social Comment Service] DM skipped despite shouldSendDM=true:", {
+        missingBothIds: !commenterId && !commentId,
+        missingDmMessage: !aiResult.dmMessage,
+      });
+    }
+
+    // ─── 8b. Patch public reply text to reflect actual DM outcome ────────────
+    // Only promise a DM in the public comment if the DM was actually delivered.
+    // If DM failed, strip any DM-promise language so we don't mislead the commenter.
+    if (aiResult.shouldSendDM) {
+      const replyLower = aiResult.reply.toLowerCase();
+      const mentionsDM = replyLower.includes("dm") || replyLower.includes("direct message") || replyLower.includes("inbox");
+      if (dmSuccess && !mentionsDM) {
+        // Safely append DM confirmation within 140 char limit
+        const suffix = " 📩 Check your DMs!";
+        if ((aiResult.reply + suffix).length <= 140) {
+          aiResult.reply = aiResult.reply + suffix;
+        }
+      } else if (!dmSuccess && mentionsDM) {
+        // DM failed — replace the reply with a neutral version that doesn't lie
+        aiResult.reply = `Thanks for your interest, @${commenterHandle}! 🙏 We'll get back to you shortly.`;
       }
     }
 

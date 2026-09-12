@@ -264,17 +264,21 @@ export async function stitchReelWithFFmpeg(params: {
   fs.mkdirSync(tmpDir, { recursive: true });
 
   try {
-    // Dynamically require to avoid static type resolution errors for optional packages
-    let ffmpegPath: string;
-    let ffmpeg: typeof import("fluent-ffmpeg");
+    // Dynamically resolve to avoid bundler static resolution errors for optional packages
+    let ffmpegPath: string | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let ffmpeg: any = null;
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
-      const req = require as NodeRequire;
-      ffmpegPath = req("ffmpeg-static") as string;
-      ffmpeg = req("fluent-ffmpeg") as typeof import("fluent-ffmpeg");
+      const dynamicRequire = eval("require");
+      ffmpegPath = dynamicRequire("ffmpeg-static");
+      ffmpeg = dynamicRequire("fluent-ffmpeg");
     } catch {
       console.warn("[Reel] ffmpeg-static or fluent-ffmpeg not installed — cannot stitch MP4");
+      return null;
+    }
+
+    if (!ffmpegPath || !ffmpeg) {
       return null;
     }
 

@@ -242,7 +242,9 @@ Customer message: "${msgText}"`,
 
         const replyText = aiResponse.content || `Hi there! Thanks for reaching out to ${brandName}. How can we best help you today?`;
 
-        const sendRes = await fetch(`https://graph.facebook.com/v22.0/me/messages`, {
+        // Use targetAccountId (the page/IG business account ID) — NOT 'me',
+        // which is invalid with page access tokens and silently drops DMs.
+        const sendRes = await fetch(`https://graph.facebook.com/v22.0/${targetAccountId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -251,6 +253,16 @@ Customer message: "${msgText}"`,
             access_token: accessToken,
           }),
         });
+
+        if (!sendRes.ok) {
+          const errBody = await sendRes.json().catch(() => ({}));
+          console.warn(
+            `[Meta Webhook] DM reply to ${senderId} failed (sender: ${targetAccountId}):`,
+            JSON.stringify(errBody)
+          );
+        } else {
+          console.log(`[Meta Webhook] ✓ DM auto-reply sent to ${senderId} via account ${targetAccountId}`);
+        }
 
         // Persist DM thread in social_dms table and local fallback
         try {
