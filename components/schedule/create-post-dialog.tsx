@@ -278,17 +278,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                 return update;
             })
 
-            setChannelTimings((prev) => {
-                const update = { ...prev };
-                connectedChannels.forEach((channel) => {
-                    if (!update[channel.id]) {
-                        const peak = getPlatformPeakTime(channel.type);
-                        update[channel.id] = peak.timeSlot;
-                    }
-                });
-                return update;
-            })
-
             return connectedChannels.map(channel => channel.id)
         })
     }
@@ -321,13 +310,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                 }
             }))
         }
-    }
-
-    const handleChannelTimeChange = (channelId: string, time: string) => {
-        setChannelTimings((prev) => ({
-            ...prev,
-            [channelId]: time
-        }));
     }
 
     const handleReAdaptChannel = (channel: ChannelType) => {
@@ -439,7 +421,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
         onOpenChange(open);
         setGlobalContent({ text: "", images: [] });
         setChannelContent({});
-        setChannelTimings({});
         setActiveAccordion("")
         setActivePreview("")
         setSelectedRightTab(null)
@@ -572,8 +553,6 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                             const content = channelContent[channel.id] || { text: "", images: [] };
                                             const isExpanded = activeAccordion === channel.id;
                                             const icon = getChannelIcon(channel.type);
-                                            const peak = getPlatformPeakTime(channel.type);
-                                            const scheduledTime = channelTimings[channel.id] || timeSlot || peak.timeSlot;
 
                                             return (
                                                 <AccordionItem

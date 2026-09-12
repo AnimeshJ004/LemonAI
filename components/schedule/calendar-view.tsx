@@ -110,13 +110,13 @@ const CalendarView = () => {
           id: selectedPostForEdit.id,
           content: selectedPostForEdit.content || "",
           images: selectedPostForEdit.images || [],
-          scheduledDate: selectedPostForEdit.scheduled_at || selectedPostForEdit.start || new Date().toISOString(),
+          scheduledDate: selectedPostForEdit.scheduled_at || (selectedPostForEdit as any).start || new Date().toISOString(),
           userChannelId: selectedPostForEdit.user_channel_id || "",
           channel: selectedPostForEdit.user_channels?.channel_types ? {
             ...selectedPostForEdit.user_channels.channel_types,
             profile_image: selectedPostForEdit.user_channels.profile_image,
             handle: selectedPostForEdit.user_channels.handle
-          } : (selectedPostForEdit.channel || null),
+          } : ((selectedPostForEdit as any).channel || null),
         } : null}
       />
 
