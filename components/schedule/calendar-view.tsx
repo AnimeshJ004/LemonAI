@@ -55,7 +55,12 @@ const CalendarView = () => {
   const handlePostClick = (_post: any) => {
     if (!_post) return
     const post = posts.find((p: PostType) => p.id === _post.id) || _post
-    setSelectedPostForEdit(post)
+    const mergedPost = { ...post }
+    if (_post.allPosts && _post.allPosts.length > 0) {
+      (mergedPost as any).allPosts = _post.allPosts
+      (mergedPost as any).channels = _post.channels
+    }
+    setSelectedPostForEdit(mergedPost)
     setIsEditDialogOpen(true)
   }
 
@@ -117,6 +122,7 @@ const CalendarView = () => {
             profile_image: selectedPostForEdit.user_channels.profile_image,
             handle: selectedPostForEdit.user_channels.handle
           } : ((selectedPostForEdit as any).channel || null),
+          allPosts: (selectedPostForEdit as any).allPosts || null,
         } : null}
       />
 

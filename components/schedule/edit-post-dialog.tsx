@@ -42,6 +42,7 @@ interface EditPostDialogProps {
         userChannelId: string
         scheduledDate: string
         channel?: ChannelType | null
+        allPosts?: any[] | null
     } | null
 }
 
@@ -117,17 +118,23 @@ export function EditPostDialog({
         }
     });
 
+    const [activePostId, setActivePostId] = React.useState<string>("")
     const [content, setContent] = React.useState("")
     const [images, setImages] = React.useState<ImageObject[]>([])
     const [date, setDate] = React.useState<Date | undefined>(new Date())
     const [time, setTime] = React.useState<string>("")
     const [selectedRightTab, setSeletedRightTab] = React.useState<ActionTabType | null>(null)
+    const [activeChannel, setActiveChannel] = React.useState<any>(null)
+    const [activeUserChannelId, setActiveUserChannelId] = React.useState<string>("")
 
     // Sync state when post changes
     React.useEffect(() => {
         if (post) {
+            setActivePostId(post.id)
             setContent(post.content)
             setImages(post.images ?? [])
+            setActiveChannel(post.channel)
+            setActiveUserChannelId(post.userChannelId)
             const rawDate = post.scheduledDate ? new Date(post.scheduledDate) : new Date()
             const safeDate = !isNaN(rawDate.getTime()) ? rawDate : new Date()
             setDate(safeDate)
@@ -141,11 +148,26 @@ export function EditPostDialog({
         }
     }, [post])
 
-    const channel = post?.channel
+    const handleSwitchChannel = (targetPost: any) => {
+        setActivePostId(targetPost.id)
+        setContent(targetPost.content || "")
+        setImages(targetPost.images ?? [])
+        const ch = targetPost.user_channels?.channel_types ? {
+            ...targetPost.user_channels.channel_types,
+            profile_image: targetPost.user_channels.profile_image,
+            handle: targetPost.user_channels.handle
+        } : (targetPost.channel || null)
+        setActiveChannel(ch)
+        setActiveUserChannelId(targetPost.user_channel_id || "")
+    }
+
+    const channel = activeChannel || post?.channel
     const icon = channel ? getChannelIcon(channel.type) : null
 
     const handleUpdate = (status?: PostStatus) => {
-        if (!post) return
+        const currentPostId = activePostId || post?.id
+        const currentUserChannelId = activeUserChannelId || post?.userChannelId
+        if (!currentPostId) return
         const parsedTime = parse(time, "h:mm a", new Date())
         const finalDate = set(date || new Date(), {
             hours: parsedTime.getHours(),
@@ -155,12 +177,12 @@ export function EditPostDialog({
         })
 
         updatePostMutation.mutate({
-            postId: post.id,
+            postId: currentPostId,
             content,
             images,
             scheduledAt: finalDate.toISOString(),
             status: status,
-            userChannelId: post.userChannelId
+            userChannelId: currentUserChannelId || ""
         });
     }
 
@@ -213,6 +235,40 @@ export function EditPostDialog({
                                             bg-muted/10
                                             ">
                                 <div className="space-y-4">
+                                    {post?.allPosts && post.allPosts.length > 1 && (
+                                        <div className="flex flex-wrap items-center gap-1.5 p-2 bg-muted/40 rounded-xl border border-border/60">
+                                            <span className="text-[11px] font-semibold text-muted-foreground mr-1">Channels ({post.allPosts.length}):</span>
+                                            {post.allPosts.map((p: any) => {
+                                                const ch = p.user_channels?.channel_types
+                                                const chIcon = ch ? getChannelIcon(ch.type) : null
+                                                const isSelected = (activePostId || post.id) === p.id
+                                                return (
+                                                    <button
+                                                        key={p.id}
+                                                        type="button"
+                                                        onClick={() => handleSwitchChannel(p)}
+                                                        className={cn(
+                                                            "flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+                                                            isSelected 
+                                                                ? "bg-background text-foreground shadow-xs border border-border ring-1 ring-primary/20" 
+                                                                : "text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                                                        )}
+                                                    >
+                                                        {chIcon && (
+                                                            <div 
+                                                                className="size-4 rounded flex items-center justify-center shrink-0 shadow-2xs" 
+                                                                style={{ background: ch?.color || "#3b82f6" }}
+                                                            >
+                                                                <HugeiconsIcon icon={chIcon} className="size-2.5 text-white" />
+                                                            </div>
+                                                        )}
+                                                        <span>{ch?.name || ch?.type || "Channel"}</span>
+                                                    </button>
+                                                )
+                                            })}
+                                        </div>
+                                    )}
+
                                     <div className="relative">
                                         {icon && (
                                             <div className="absolute top-0 left-0">
@@ -306,8 +362,9 @@ export function EditPostDialog({
                                 className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium shadow-xs"
                                 disabled={publishMutation.isPending || updatePostMutation.isPending}
                                 onClick={() => {
-                                    if (post?.id) {
-                                        publishMutation.mutate(post.id);
+                                    const targetId = activePostId || post?.id
+                                    if (targetId) {
+                                        publishMutation.mutate(targetId);
                                     }
                                 }}
                             >

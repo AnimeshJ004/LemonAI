@@ -174,8 +174,26 @@ export function PostCalendar({
         allDayAccessor={() => false}
         onNavigate={onDateChange}
         view={view === "month" ? Views.MONTH : Views.WEEK}
+        views={{ month: true, week: true }}
+        drilldownView="week"
+        onDrillDown={(date) => {
+          onDateChange(date)
+          onViewChange("week")
+        }}
+        onShowMore={(events, date) => {
+          onDateChange(date)
+          onViewChange("week")
+        }}
         onView={(v) => onViewChange(v === Views.MONTH ? "month" : "week")}
-        onSelectEvent={(event: any) => onPostClick(event.allPosts?.[0] || event)}
+        onSelectEvent={(event: any) => {
+          if (view === "month") {
+            const targetDate = event.scheduled_at ? new Date(event.scheduled_at) : (event.start ? new Date(event.start) : new Date())
+            onDateChange(targetDate)
+            onViewChange("week")
+          } else {
+            onPostClick(event.allPosts?.[0] || event)
+          }
+        }}
         slotPropGetter={(date) => {
           const isPastSlot = isBefore(date, new Date())
           return isPastSlot
@@ -217,9 +235,15 @@ export function PostCalendar({
                   borderLeftWidth: "3.5px",
                   borderLeftColor: color,
                 } : undefined}
+                title={view === "month" ? `Click to open ${isValidDate ? format(eventDate, "MMMM d") : "date"} in week calendar` : undefined}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onPostClick(event.allPosts?.[0] || event);
+                  if (view === "month") {
+                    onDateChange(eventDate);
+                    onViewChange("week");
+                  } else {
+                    onPostClick(event.allPosts?.[0] || event);
+                  }
                 }}
               >
                 {/* Top Header: Platform Icons + Time */}
@@ -292,20 +316,54 @@ export function PostCalendar({
             dateHeader: ({ label, date: cellDate }: any) => {
               const isCellToday = format(cellDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd')
               const isPastDate = isBefore(cellDate, startOfDay(new Date()))
+              const cellKey = format(cellDate, 'yyyy-MM-dd')
+              const dayEventsCount = events.filter((e) => {
+                const d = new Date(e.start)
+                return format(d, 'yyyy-MM-dd') === cellKey
+              }).length
+
               return (
                 <>
-                  <div className="group flex items-center justify-between w-full">
-                    <span className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full text-sm font-medium",
-                      isCellToday ? "bg-green-500 text-white" : isPastDate ? "text-muted-foreground" : "text-foreground"
-                    )}>
-                      {label}
-                    </span>
+                  <div className="group flex items-center justify-between w-full px-1 pt-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDateChange(cellDate)
+                          onViewChange("week")
+                        }}
+                        className={cn(
+                          "flex h-6 w-6 items-center justify-center rounded-full text-sm font-semibold transition-all hover:scale-110 cursor-pointer shadow-2xs shrink-0",
+                          isCellToday ? "bg-green-500 text-white hover:bg-green-600" : isPastDate ? "text-muted-foreground hover:bg-muted" : "text-foreground hover:bg-muted"
+                        )}
+                        title={`Open ${format(cellDate, "EEEE, MMMM d")} in full calendar`}
+                      >
+                        {label}
+                      </button>
+
+                      {dayEventsCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onDateChange(cellDate)
+                            onViewChange("week")
+                          }}
+                          className="text-[10px] font-semibold text-primary/90 bg-primary/10 hover:bg-primary/20 px-1.5 py-0.5 rounded-full transition-colors cursor-pointer whitespace-nowrap"
+                          title={`View all ${dayEventsCount} scheduled post${dayEventsCount > 1 ? "s" : ""} on ${format(cellDate, "MMM d")}`}
+                        >
+                          {dayEventsCount} {dayEventsCount === 1 ? "post" : "posts"}
+                        </button>
+                      )}
+                    </div>
+
                     {!isPastDate && !isPending && (
                       <Button
                         size="icon-sm"
                         variant="default"
-                        className="p-px! size-6! mt-1"
+                        className="p-px! size-6! hover:scale-105 transition-transform shrink-0"
+                        title={`Schedule post for ${format(cellDate, "MMM d")}`}
                         onClick={(e) => {
                           e.stopPropagation()
                           onCreatePost(cellDate)
@@ -314,7 +372,6 @@ export function PostCalendar({
                         <Plus className="size-3" />
                       </Button>
                     )}
-
                   </div>
                   {isPending && <Skeleton className="h-8 w-11/12 m-2 my-5" />}
                 </>
