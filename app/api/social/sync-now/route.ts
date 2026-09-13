@@ -148,15 +148,19 @@ export async function POST(req: NextRequest) {
       if (posts.length === 0 && channelType === "INSTAGRAM") {
         try {
           const pagesRes = await fetch(
-            `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,instagram_business_account{id}&access_token=${encodeURIComponent(accessToken)}`
+            `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id}&access_token=${encodeURIComponent(accessToken)}`
           );
           if (pagesRes.ok) {
             const pagesData = await pagesRes.json();
-            const pageWithIg = (pagesData?.data || []).find((p: any) => p.instagram_business_account?.id);
+            const pages = pagesData?.data || [];
+            const targetIgId = channel.provider_account_id;
+            const matchedPage = targetIgId ? pages.find((p: any) => p.instagram_business_account?.id === targetIgId) : null;
+            const pageWithIg = matchedPage || pages.find((p: any) => p.instagram_business_account?.id);
             if (pageWithIg?.instagram_business_account?.id) {
-              const igId = pageWithIg.instagram_business_account.id;
+              const igId = targetIgId || pageWithIg.instagram_business_account.id;
+              const igToken = pageWithIg.access_token || accessToken;
               const mediaRes = await fetch(
-                `https://graph.facebook.com/v22.0/${igId}/media?fields=id,caption,comments{id,text,from{id,username,name},timestamp,comments{id,from{id,username},text}}&limit=5&access_token=${encodeURIComponent(accessToken)}`
+                `https://graph.facebook.com/v22.0/${igId}/media?fields=id,caption,comments{id,text,from{id,username,name},timestamp,comments{id,from{id,username},text}}&limit=5&access_token=${encodeURIComponent(igToken)}`
               );
               if (mediaRes.ok) {
                 const mediaData = await mediaRes.json();

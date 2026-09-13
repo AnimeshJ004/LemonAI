@@ -453,7 +453,7 @@ export default function AICallingPage() {
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Lead / Prospect Name *</Label>
               <Input
-                placeholder="e.g. Aarav Sharma"
+                placeholder="e.g. Alex Morgan"
                 value={manualName}
                 onChange={(e) => setManualName(e.target.value)}
                 className="text-sm"
@@ -463,7 +463,7 @@ export default function AICallingPage() {
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Phone Number *</Label>
               <Input
-                placeholder="+91 98765 43210"
+                placeholder="+1 (555) 234-5678 or +91 98765 43210"
                 value={manualPhone}
                 onChange={(e) => setManualPhone(e.target.value)}
                 className="text-sm font-mono"
@@ -473,7 +473,7 @@ export default function AICallingPage() {
             <div className="space-y-1.5">
               <Label className="text-xs font-medium">Company (Optional)</Label>
               <Input
-                placeholder="e.g. Apex Global"
+                placeholder="e.g. Apex Global Solutions"
                 value={manualCompany}
                 onChange={(e) => setManualCompany(e.target.value)}
                 className="text-sm"

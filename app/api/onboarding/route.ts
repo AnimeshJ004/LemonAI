@@ -92,24 +92,33 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const {
       business_name,
+      profile_type,
       niche,
       target_audience,
       brand_tone,
       main_offer,
       competitors,
+      preferred_formats,
     } = body;
 
     if (!business_name?.trim()) {
-      return NextResponse.json({ error: "Business name is required" }, { status: 400 });
+      return NextResponse.json({ error: "Name or business name is required" }, { status: 400 });
     }
 
+    // Embed profile_type & formats cleanly into niche / offer context
+    const cleanProfileType = (profile_type || "Business").trim();
+    const cleanFormats = (preferred_formats || "Balanced Mix").trim();
+    const cleanNiche = (niche || "").trim();
+    const cleanOffer = (main_offer || "").trim();
+
+    // Store in existing schema columns safely
     const payload = {
       user_id: userId,
       business_name: business_name.trim(),
-      niche: (niche || "").trim(),
+      niche: cleanProfileType ? `${cleanNiche} • ${cleanProfileType}` : cleanNiche,
       target_audience: (target_audience || "").trim(),
-      brand_tone: brand_tone || "Professional",
-      main_offer: (main_offer || "").trim(),
+      brand_tone: brand_tone || "High-Energy & Engaging",
+      main_offer: cleanFormats ? `${cleanOffer} [Formats: ${cleanFormats}]` : cleanOffer,
       competitors: (competitors || "").trim() || null,
       onboarding_completed: true,
       updated_at: new Date().toISOString(),
@@ -143,14 +152,21 @@ export async function POST(req: NextRequest) {
       savedData = inserted;
     }
 
+    // Extended cache object including dedicated fields
+    const fullProfile = {
+      ...(savedData || payload),
+      profile_type: cleanProfileType,
+      preferred_formats: cleanFormats,
+      raw_niche: cleanNiche,
+      raw_offer: cleanOffer,
+    };
+
     // Update in-memory cache so other routes see the new profile immediately
-    if (savedData) {
-      userBrandCache.set(userId, savedData);
-    }
+    userBrandCache.set(userId, fullProfile);
 
     const res = NextResponse.json({
       success: true,
-      profile: savedData || payload,
+      profile: fullProfile,
       message: "Onboarding completed! Welcome to Lemon AI 🍋",
     });
 

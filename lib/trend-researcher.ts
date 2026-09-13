@@ -4,6 +4,9 @@ export interface TrendResearchParams {
   businessName: string;
   niche: string;
   targetAudience: string;
+  profileType?: string;
+  brandTone?: string;
+  mainOffer?: string;
   competitors?: string[];
   competitorSampleText?: string;
   targetRegion?: string;
@@ -13,6 +16,10 @@ export interface TrendResearchResult {
   niche: string;
   targetRegion: string;
   scrapedCompetitorContext?: string;
+  viralVsFlop?: {
+    whatGoesViral: string[];
+    whatFlops: string[];
+  };
   topTrendingHooks: {
     hook: string;
     hookType: "PATTERN_INTERRUPT" | "QUESTION" | "STATISTIC" | "STORY" | "PAIN_POINT";
@@ -135,15 +142,25 @@ export async function researchMarketTrends(params: TrendResearchParams) {
     task: "COMPETITOR_RESEARCH",
     preferredTier: "TIER_2_SMART",
     jsonMode: true,
-    systemPrompt: `You are an elite Performance Marketing & Social Trend Intelligence Strategist (${currentMonth} ${currentYear}).
-Ground your analysis in actual, active social media algorithms, current high-performing short-form video hooks (0-3s pattern interrupts), high-ROAS Meta Ads Library tactics, and buyer psychology.
-${liveScrapedText ? "Analyze the provided VERIFIED LIVE COMPETITOR COPY to find specific gaps, exaggerated claims, or missing proofs that this brand can exploit." : ""}
-Do not return generic advice. Return hyper-specific, actionable competitive intelligence.
+    systemPrompt: `You are an elite Performance Marketing, Viral Content & Algorithm Intelligence Strategist (${currentMonth} ${currentYear}).
+Ground your analysis in actual active social media algorithms (Instagram Reels, YouTube Shorts, TikTok, LinkedIn, X), current 0-3s pattern interrupts, competitor reverse-engineering, and audience psychology.
+Whether this entity is a local business, YouTuber, D2C brand, startup, or freelancer, discover EXACTLY what content goes viral vs what flops in their space.
 
 Return ONLY valid JSON matching this schema:
 {
   "niche": "${params.niche}",
   "targetRegion": "${region}",
+  "viralVsFlop": {
+    "whatGoesViral": [
+      "Exact storytelling or hook technique that explodes watch time and shares in this niche",
+      "Format or visual style favored by the algorithm right now for this topic",
+      "High-converting emotional trigger that drives comments/saves"
+    ],
+    "whatFlops": [
+      "Boring or generic mistake that causes viewers to swipe away in 2 seconds",
+      "Overused cliché that kills organic reach in this niche"
+    ]
+  },
   "topTrendingHooks": [
     {
       "hook": "Specific scroll-stopping first 3 seconds hook line",
@@ -156,12 +173,12 @@ Return ONLY valid JSON matching this schema:
     {
       "painPoint": "Specific frustrating bottleneck",
       "agitation": "Why current alternative solutions fail",
-      "proposedSolutionAngle": "How this business positions its unique mechanism"
+      "proposedSolutionAngle": "How this entity positions its unique solution"
     }
   ],
   "competitorWeaknessesToExploit": [
-    "Specific vulnerability identified in competitor copy or organic hooks",
-    "Missing proof element in competitor offers"
+    "Specific vulnerability or gap identified in competitor content/copy",
+    "Missing proof element or unaddressed audience question"
   ],
   "recommendedContentAngles": [
     {
@@ -172,9 +189,12 @@ Return ONLY valid JSON matching this schema:
   ],
   "recommendedHashtags": ["#TrendingTag1", "#NicheTag2", "#ViralTag3", "#TargetTag4", "#GrowthTag5"]
 }`,
-    userPrompt: `Business Name: ${params.businessName}
+    userPrompt: `Entity/Brand Name: ${params.businessName}
+Profile Type: ${params.profileType || "Creator / Brand / Business"}
 Industry / Niche: ${params.niche}
-Target Audience: ${params.targetAudience}
+Target Audience / Viewers: ${params.targetAudience}
+Tone of Voice: ${params.brandTone || "High-Energy & Engaging"}
+Primary Goal / Offer: ${params.mainOffer || "Audience engagement and conversions"}
 Target Geography / Region: ${region}
 Current Period: ${currentMonth} ${currentYear}
 

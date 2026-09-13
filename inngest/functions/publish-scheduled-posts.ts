@@ -685,16 +685,24 @@ async function publishToInstagram({
     let resolvedAccountId = instagramAccountId;
     let effectiveToken = accessToken;
 
-    // Auto-discover Instagram Account ID & Page Access Token
+    // Auto-discover / match Instagram Account ID & Page Access Token
     try {
         const accRes = await fetch(`https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${encodeURIComponent(accessToken)}`);
         if (accRes.ok) {
             const accData = await accRes.json();
-            const pageWithIg = accData?.data?.find((p: any) => p.instagram_business_account?.id);
-            if (pageWithIg?.instagram_business_account?.id) {
-                resolvedAccountId = pageWithIg.instagram_business_account.id;
-                if (pageWithIg.access_token) {
-                    effectiveToken = pageWithIg.access_token;
+            const pages = accData?.data || [];
+            if (instagramAccountId) {
+                const matchingPage = pages.find((p: any) => p.instagram_business_account?.id === instagramAccountId);
+                if (matchingPage?.access_token) {
+                    effectiveToken = matchingPage.access_token;
+                }
+            } else {
+                const pageWithIg = pages.find((p: any) => p.instagram_business_account?.id);
+                if (pageWithIg?.instagram_business_account?.id) {
+                    resolvedAccountId = pageWithIg.instagram_business_account.id;
+                    if (pageWithIg.access_token) {
+                        effectiveToken = pageWithIg.access_token;
+                    }
                 }
             }
         }

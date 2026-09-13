@@ -1,5 +1,5 @@
 import { ChannelTypeEnum } from "@/constants/channels";
-import { OAuthProvider, OAuthTokenResponse } from "./types";
+import { OAuthProvider, OAuthTokenResponse, OAuthConnectionProfile, DiscoveredInstagramAccount } from "./types";
 
 const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
   authUrl: string;
@@ -382,139 +382,201 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
     getProfile: async ({ accessToken }) => {
       const config = getConfig(type);
 
-      // Resolve linked Instagram Business Account from user's Facebook Pages
+      // Resolve linked Instagram Business Account from user's Facebook Pages / Meta Portfolios
       if (type === ChannelTypeEnum.INSTAGRAM) {
-        let igErrorDetails = "";
+        const discoveredAccounts: DiscoveredInstagramAccount[] = [];
+        const seenAccountIds = new Set<string>();
+        const allPagesFound: Array<{ id: string; name: string }> = [];
+
+        const registerAccount = (acc: DiscoveredInstagramAccount) => {
+          if (!acc.providerAccountId || seenAccountIds.has(acc.providerAccountId)) return;
+          seenAccountIds.add(acc.providerAccountId);
+          discoveredAccounts.push(acc);
+        };
+
+        // Method 1: Scan user's managed Facebook Pages via /me/accounts
         try {
-          // Method 1: Scan all Facebook Pages for connected Instagram Business/Creator Account
-          const igRes = await fetch(`https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`, {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              Accept: "application/json",
+          const igRes = await fetch(
+            `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,tasks,instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}&limit=100&access_token=${encodeURIComponent(accessToken)}`,
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: "application/json",
+              },
             }
-          });
+          );
           if (igRes.ok) {
             const igData = await igRes.json();
             const pages = igData?.data || [];
-            let pageWithIg = pages.find((p: any) => p.instagram_business_account?.id || p.connected_instagram_account?.id);
-            
-            // Method 1b: If not in bulk list, query each Page directly using its Page Access Token
-            if (!pageWithIg && pages.length > 0) {
-              for (const p of pages) {
-                if (p.id && p.access_token) {
-                  try {
-                    const pageDetailRes = await fetch(`https://graph.facebook.com/v22.0/${p.id}?fields=id,name,instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(p.access_token)}`);
-                    if (pageDetailRes.ok) {
-                      const pageDetail = await pageDetailRes.json();
-                      const resolvedIg = pageDetail?.instagram_business_account || pageDetail?.connected_instagram_account;
-                      if (resolvedIg?.id) {
-                        p.instagram_business_account = resolvedIg;
-                        pageWithIg = p;
-                        break;
-                      }
-                    }
-                  } catch (pageErr) {
-                    console.warn(`[Instagram OAuth] Notice checking page ${p.id}:`, pageErr);
-                  }
-                }
+            for (const p of pages) {
+              if (p.id) allPagesFound.push({ id: p.id, name: p.name || "Untitled Page" });
+              const ig = p.instagram_business_account || p.connected_instagram_account;
+              if (ig?.id) {
+                const igHandle = ig.username || ig.name;
+                registerAccount({
+                  providerAccountId: ig.id,
+                  handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : `@page_${p.id}`,
+                  profileImage: ig.profile_picture_url || null,
+                  pageAccessToken: p.access_token || accessToken,
+                  pageName: p.name || "Facebook Page",
+                  pageId: p.id,
+                });
               }
             }
 
-            if (pageWithIg) {
-              const ig = pageWithIg.instagram_business_account || pageWithIg.connected_instagram_account;
-              const igHandle = ig.username || ig.name;
-              return {
-                providerAccountId: ig.id,
-                handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : null,
-                profileImage: ig.profile_picture_url || null,
-                pageAccessToken: pageWithIg.access_token || accessToken,
-              };
-            } else if (pages.length > 0) {
-              igErrorDetails = `Found ${pages.length} Facebook Page(s) ("${pages.map((p: any) => p.name).join('", "')}"), but none have a connected Instagram Professional account.`;
-            } else {
-              igErrorDetails = "No Facebook Pages found on this Meta account.";
+            // Method 1b: If some pages did not expand nested IG in bulk query, query them with their Page Access Token
+            for (const p of pages) {
+              if (p.id && p.access_token && !p.instagram_business_account?.id && !p.connected_instagram_account?.id) {
+                try {
+                  const pageDetailRes = await fetch(
+                    `https://graph.facebook.com/v22.0/${p.id}?fields=id,name,instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(p.access_token)}`
+                  );
+                  if (pageDetailRes.ok) {
+                    const pageDetail = await pageDetailRes.json();
+                    const resolvedIg = pageDetail?.instagram_business_account || pageDetail?.connected_instagram_account;
+                    if (resolvedIg?.id) {
+                      const igHandle = resolvedIg.username || resolvedIg.name;
+                      registerAccount({
+                        providerAccountId: resolvedIg.id,
+                        handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : `@page_${p.id}`,
+                        profileImage: resolvedIg.profile_picture_url || null,
+                        pageAccessToken: p.access_token,
+                        pageName: p.name || pageDetail.name || "Facebook Page",
+                        pageId: p.id,
+                      });
+                    }
+                  }
+                } catch (pageErr) {
+                  console.warn(`[Instagram OAuth] Notice checking page ${p.id}:`, pageErr);
+                }
+              }
             }
           }
         } catch (igErr: any) {
           console.warn("[Instagram OAuth] Notice checking me/accounts:", igErr);
         }
 
-        // Method 2: Direct query on /me for instagram_business_account or nested accounts
+        // Method 2: Inspect Meta Business Portfolios (business.facebook.com) owned & client pages
         try {
-          const meRes = await fetch(`https://graph.facebook.com/v22.0/me?fields=id,name,username,profile_picture_url,instagram_business_account{id,username,name,profile_picture_url},accounts{id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}}&access_token=${encodeURIComponent(accessToken)}`, {
-            headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" }
-          });
+          const bizRes = await fetch(
+            `https://graph.facebook.com/v22.0/me/businesses?fields=id,name,owned_pages{id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}},client_pages{id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}}&limit=25&access_token=${encodeURIComponent(accessToken)}`,
+            {
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                Accept: "application/json",
+              },
+            }
+          );
+          if (bizRes.ok) {
+            const bizData = await bizRes.json();
+            const businesses = bizData?.data || [];
+            for (const b of businesses) {
+              const bPages = [...(b.owned_pages?.data || []), ...(b.client_pages?.data || [])];
+              for (const bp of bPages) {
+                if (bp.id) allPagesFound.push({ id: bp.id, name: bp.name || `Business Page (${b.name})` });
+                const ig = bp.instagram_business_account;
+                if (ig?.id) {
+                  const igHandle = ig.username || ig.name;
+                  registerAccount({
+                    providerAccountId: ig.id,
+                    handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : `@page_${bp.id}`,
+                    profileImage: ig.profile_picture_url || null,
+                    pageAccessToken: bp.access_token || accessToken,
+                    pageName: bp.name || `Business Page (${b.name})`,
+                    pageId: bp.id,
+                  });
+                }
+              }
+            }
+          }
+        } catch (bizErr) {
+          console.warn("[Instagram OAuth] Notice checking me/businesses:", bizErr);
+        }
+
+        // Method 3: Direct query on /me for instagram_business_account or nested accounts
+        try {
+          const meRes = await fetch(
+            `https://graph.facebook.com/v22.0/me?fields=id,name,username,profile_picture_url,instagram_business_account{id,username,name,profile_picture_url},accounts{id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}}&access_token=${encodeURIComponent(accessToken)}`,
+            {
+              headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" }
+            }
+          );
           if (meRes.ok) {
             const meData = await meRes.json();
             if (meData?.instagram_business_account?.id) {
               const ig = meData.instagram_business_account;
               const igHandle = ig.username || ig.name;
-              return {
+              registerAccount({
                 providerAccountId: ig.id,
-                handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : null,
+                handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : `@user_${ig.id}`,
                 profileImage: ig.profile_picture_url || null,
                 pageAccessToken: accessToken,
-              };
+                pageName: meData.name || "Personal Meta Profile",
+                pageId: meData.id,
+              });
             }
-            // Check nested accounts
             const nestedAccounts = meData?.accounts?.data || [];
-            const nestedWithIg = nestedAccounts.find((a: any) => a.instagram_business_account?.id);
-            if (nestedWithIg?.instagram_business_account) {
-              const ig = nestedWithIg.instagram_business_account;
-              const igHandle = ig.username || ig.name;
-              return {
-                providerAccountId: ig.id,
-                handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : null,
-                profileImage: ig.profile_picture_url || null,
-                pageAccessToken: nestedWithIg.access_token || accessToken,
-              };
-            }
-            // Check if /me is already an Instagram user or Page
-            if (meData?.username && (meData?.id?.length > 14 || meData?.profile_picture_url)) {
-              return {
-                providerAccountId: meData.id,
-                handle: `@${meData.username.replace(/^@/, '')}`,
-                profileImage: meData.profile_picture_url || null,
-                pageAccessToken: accessToken,
-              };
+            for (const na of nestedAccounts) {
+              if (na.id) allPagesFound.push({ id: na.id, name: na.name || "Nested Page" });
+              if (na.instagram_business_account?.id) {
+                const ig = na.instagram_business_account;
+                const igHandle = ig.username || ig.name;
+                registerAccount({
+                  providerAccountId: ig.id,
+                  handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : `@page_${na.id}`,
+                  profileImage: ig.profile_picture_url || null,
+                  pageAccessToken: na.access_token || accessToken,
+                  pageName: na.name || "Facebook Page",
+                  pageId: na.id,
+                });
+              }
             }
           }
         } catch {}
 
-        // Method 3: Instagram Graph / Basic Display API fallback
+        // Method 4: Direct Instagram Graph API query (for direct Instagram Login)
         try {
-          const igBasicRes = await fetch(`https://graph.instagram.com/me?fields=id,username,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`);
+          const igBasicRes = await fetch(
+            `https://graph.instagram.com/me?fields=id,username,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`
+          );
           if (igBasicRes.ok) {
             const igBasicData = await igBasicRes.json();
             if (igBasicData?.id) {
-              return {
+              registerAccount({
                 providerAccountId: igBasicData.id,
-                handle: igBasicData.username ? `@${igBasicData.username.replace(/^@/, '')}` : null,
+                handle: igBasicData.username ? `@${igBasicData.username.replace(/^@/, '')}` : `@user_${igBasicData.id}`,
                 profileImage: igBasicData.profile_picture_url || null,
                 pageAccessToken: accessToken,
-              };
+                pageName: "Instagram Direct Login",
+                pageId: igBasicData.id,
+              });
             }
           }
         } catch {}
 
-        // Method 4: Direct query for verified Instagram Business Account ID on Graph API
-        try {
-          const directIgRes = await fetch(`https://graph.facebook.com/v22.0/17841433178455433?fields=id,username,name,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`);
-          if (directIgRes.ok) {
-            const directData = await directIgRes.json();
-            if (directData?.id && directData?.username) {
-              return {
-                providerAccountId: directData.id,
-                handle: `@${directData.username.replace(/^@/, '')}`,
-                profileImage: directData.profile_picture_url || null,
-                pageAccessToken: accessToken,
-              };
-            }
-          }
-        } catch {}
+        // If at least one valid account was discovered
+        if (discoveredAccounts.length > 0) {
+          const primary = discoveredAccounts[0];
+          return {
+            providerAccountId: primary.providerAccountId,
+            handle: primary.handle,
+            profileImage: primary.profileImage,
+            pageAccessToken: primary.pageAccessToken,
+            availableAccounts: discoveredAccounts,
+          };
+        }
+
+        // Diagnostics for clear user troubleshooting
+        let igErrorDetails = "";
+        if (allPagesFound.length === 0) {
+          igErrorDetails = "No Facebook Pages were returned by Meta. Please ensure: 1) In the Meta authorization popup, you checked your Facebook Page under permissions, 2) Your personal Facebook account has Full Control / Admin access to the Page, and 3) If your app is in Development Mode in the Meta Developer portal, you are logged in as an App Admin or Tester.";
+        } else {
+          const uniqueNames = Array.from(new Set(allPagesFound.map(p => p.name)));
+          igErrorDetails = `Found ${uniqueNames.length} Facebook Page(s) ("${uniqueNames.join('", "')}"), but none have a connected Instagram Professional account. Please open Meta Business Suite (business.facebook.com) -> Page Settings -> Linked Accounts -> Instagram and link your Instagram Professional account to your Page.`;
+        }
 
         throw new Error(
-          `No Instagram Business/Creator account detected on this Meta login (${igErrorDetails}). Please ensure: 1) Your Instagram account is switched to a Professional (Creator or Business) Account, 2) It is linked to a Facebook Page in your Instagram account settings or Meta Business Suite, and 3) You grant access to that Page when logging in.`
+          `No Instagram Business/Creator account detected on this Meta login (${igErrorDetails})`
         );
       }
 

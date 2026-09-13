@@ -127,7 +127,37 @@ export async function GET(request: NextRequest) {
         console.log(`[OAuth Callback] Successfully connected ${state.channelType}:`, JSON.stringify({
           providerAccountId: profile.providerAccountId,
           handle: profile.handle,
+          availableCount: profile.availableAccounts?.length || 1,
         }));
+
+        // If multiple Instagram accounts were found, store pending selection and redirect to account selection modal
+        if (
+            state.channelType === ChannelTypeEnum.INSTAGRAM &&
+            profile.availableAccounts &&
+            profile.availableAccounts.length > 1
+        ) {
+            const pendingPayload = JSON.stringify({
+                userId: state.userId,
+                channelTypeId: state.channelTypeId,
+                refreshToken: token.refreshToken,
+                expiresAt: token.expiresAt,
+                accounts: profile.availableAccounts,
+            });
+            const encryptedPending = encrypt(pendingPayload);
+            const redirectUrl = buildRedirectUrl(appUrl, redirectTo, {
+                select_account: "instagram",
+                channelTypeId: state.channelTypeId,
+            });
+            redirectUrl.cookies.set("lemon_meta_pending_selection", encryptedPending || "", {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge: 900, // 15 minutes
+                path: "/",
+            });
+            redirectUrl.cookies.delete(pkceCookieName);
+            return redirectUrl;
+        }
 
         const payload = {
             user_id: state.userId,

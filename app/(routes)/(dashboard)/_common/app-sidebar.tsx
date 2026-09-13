@@ -4,7 +4,7 @@ import { usePathname } from 'next/navigation';
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarTrigger } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
-import { Calendar, CreditCard, Lightbulb, Plus, PlusCircleIcon, Settings, Building2, Megaphone, Search, Clapperboard, LayoutTemplate, BookOpen, TrendingUp, Bot, Globe, MessageCircle, CalendarClock, Kanban, Inbox, BarChart3, Phone } from 'lucide-react';
+import { Calendar, CreditCard, Lightbulb, Plus, PlusCircleIcon, Settings, Building2, Megaphone, Search, Clapperboard, LayoutTemplate, BookOpen, TrendingUp, Bot, Globe, MessageCircle, CalendarClock, Kanban, Inbox, BarChart3, Phone, Flame } from 'lucide-react';
 import { useSidebar } from '@/components/ui/sidebar';
 import Logo from '@/components/logo';
 import { Button } from '@/components/ui/button';
@@ -38,6 +38,7 @@ const mainNav = [
 
 // Member 1: Research nav
 const researchNav = [
+  { name: "Viral Launchpad", href: "/onboarding/review", icon: Flame },
   { name: "Competition Research", href: "/competition-researcher", icon: Search },
 ];
 

@@ -15,16 +15,26 @@ import {
   Briefcase,
   Users,
   Compass,
+  Film,
+  Globe,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-// ─── The 6 Essential Core Questions for AI Analysis ───────────────────────────
+// ─── 8 Universal Questions for Any Creator, Business, Agency, or Brand ──────────
 
 export interface OnboardingQuestion {
-  id: "business_name" | "niche" | "target_audience" | "brand_tone" | "main_offer" | "competitors";
+  id:
+    | "business_name"
+    | "profile_type"
+    | "niche"
+    | "target_audience"
+    | "brand_tone"
+    | "main_offer"
+    | "competitors"
+    | "preferred_formats";
   title: string;
   subtitle: string;
-  placeholder: string;
+  placeholder?: string;
   hint: string;
   type: "text" | "textarea" | "options";
   options?: string[];
@@ -35,71 +45,104 @@ export interface OnboardingQuestion {
 const QUESTIONS: OnboardingQuestion[] = [
   {
     id: "business_name",
-    title: "What is your business or brand name?",
-    subtitle: "The official name AI will use across all posts, hashtags, and social signatures.",
-    placeholder: "e.g. Seevora Technologies, Lemon AI, FitPulse Hub",
-    hint: "Used in signatures, brand hashtags, and post mentions",
+    title: "What is your Brand, Channel, Business, or Name?",
+    subtitle: "The public name or handle Lemon AI will represent across all posts, captions, and signatures.",
+    placeholder: "e.g. Aura Wellness, Apex Media, Lumina Labs, Nova Skincare, Peak Athletics...",
+    hint: "Used in signatures, brand hashtags, creator credits, and post mentions",
     type: "text",
     required: true,
     icon: Building2,
   },
   {
+    id: "profile_type",
+    title: "Who are you creating content for?",
+    subtitle: "Select your profile type so Lemon AI adapts the content strategy, voice, and conversion hooks.",
+    hint: "Tailors AI between creator storytelling, local foot-traffic, or business conversions",
+    type: "options",
+    options: [
+      "🏬 Local Business & Store / Clinic (Gym, Dental, Salon, Cafe)",
+      "🎥 Content Creator / YouTuber / Influencer",
+      "🛍️ E-commerce & D2C Brand / Product",
+      "🚀 Company / Startup / B2B Services",
+      "💼 Agency, Freelancer & Consultant",
+      "👤 Personal Brand, Coach & Educator",
+    ],
+    required: true,
+    icon: Users,
+  },
+  {
     id: "niche",
-    title: "What industry or niche do you operate in?",
-    subtitle: "Enables AI to extract trending viral hooks and hashtags in your specific sector.",
-    placeholder: "e.g. B2B SaaS, Health & Wellness, Luxury Real Estate, Digital Marketing",
-    hint: "AI identifies winning trends and high-engagement topics for this industry",
+    title: "What is your niche, industry, or main topic?",
+    subtitle: "What do you do or talk about? AI will discover viral trends and competitor secrets in this space.",
+    placeholder: "e.g. Cosmetic Dentistry, High-Ticket Fitness, AI Tools & Tech, Luxury Real Estate, Streetwear Fashion...",
+    hint: "AI identifies winning trends, viral hooks, and high-engagement topics for this industry",
     type: "text",
     required: true,
     icon: Compass,
   },
   {
     id: "target_audience",
-    title: "Who is your ideal target audience?",
-    subtitle: "Describe who you are selling to (demographics, job roles, daily struggles).",
-    placeholder: "e.g. Busy founders & growth marketers aged 25-45 looking to scale organic reach",
+    title: "Who is your ideal customer, viewer, or audience?",
+    subtitle: "Describe who you want to reach (demographics, daily struggles, desires).",
+    placeholder: "e.g. Local residents wanting teeth whitening, Gen-Z tech enthusiasts, busy corporate executives aged 30-50...",
     hint: "AI tunes copy to trigger pain points, curiosity, and high engagement for this audience",
     type: "textarea",
     required: true,
-    icon: Users,
+    icon: Target,
   },
   {
     id: "brand_tone",
-    title: "What is your brand's tone of voice?",
-    subtitle: "Select a personality style or type your own custom tone below.",
-    placeholder: "e.g. Professional yet bold and energetic",
-    hint: "Determines vocabulary, formatting, pacing, and emoji usage in generated posts",
+    title: "What is your content tone & voice style?",
+    subtitle: "How should your posts sound when people read, watch, or listen to them?",
+    hint: "Determines vocabulary, pacing, emoji usage, and presentation style in your scripts and captions",
     type: "options",
     options: [
-      "Professional & Authoritative",
-      "Bold & Contrarian",
-      "Friendly & Approachable",
-      "Inspirational & Visionary",
-      "Casual & High-Energy",
-      "Educational & Detailed",
+      "⚡ High-Energy & Engaging (Fast-paced, exciting, hook-driven)",
+      "💡 Educational & Actionable (Step-by-step, insightful)",
+      "🎯 Bold & Contrarian (Direct, thought-provoking, authority)",
+      "🤗 Friendly & Relatable (Conversational, storytelling)",
+      "👔 Professional & Polished (Corporate, credible, standard)",
+      "🎭 Humorous & Witty (Entertaining, memes, clever)",
+      "💎 Luxury & Sophisticated (Aspirational, minimal, premium)",
     ],
     required: true,
     icon: Megaphone,
   },
   {
     id: "main_offer",
-    title: "What is your primary product, service, or main offer?",
-    subtitle: "What are you selling, and what transformation or outcome does it provide?",
-    placeholder: "e.g. AI-powered social scheduling software with automated Meta ads at $49/mo",
-    hint: "AI creates high-converting promotional posts and natural call-to-actions (CTAs)",
+    title: "What is your primary goal or main offer?",
+    subtitle: "What action should people take after seeing your posts?",
+    placeholder: "e.g. Book an appointment/consultation, Subscribe to YouTube, Buy product on website, DM for pricing...",
+    hint: "AI creates high-converting call-to-actions (CTAs) and natural offers",
     type: "textarea",
     required: true,
     icon: Briefcase,
   },
   {
     id: "competitors",
-    title: "Who are your top competitors or inspiration accounts?",
-    subtitle: "Brands, handles, or websites you want AI to reverse-engineer and outperform.",
-    placeholder: "e.g. GoHighLevel, Buffer, Hootsuite, @competitor_handle",
-    hint: "AI analyzes their winning content angles and exploits gaps in their strategy",
+    title: "Benchmark accounts, creators, or competitors?",
+    subtitle: "Handles (@username), YouTube links, or websites. (Optional - if left blank, AI auto-discovers market leaders!)",
+    placeholder: "e.g. @competitor_brand, youtube.com/@creator, competitor.com (or leave blank for auto-discovery)",
+    hint: "AI reverse-engineers their winning hooks and exploits gaps in their strategy",
     type: "textarea",
     required: false,
-    icon: Target,
+    icon: Sparkles,
+  },
+  {
+    id: "preferred_formats",
+    title: "What formats & post types do you want to create?",
+    subtitle: "Choose the types of content Lemon AI should generate for your social channels.",
+    hint: "AI synthesizes multi-channel assets based on your format selection",
+    type: "options",
+    options: [
+      "🌟 All-in-One Balanced Mix (Reels, Carousels & Posts)",
+      "🎬 Vertical Video (Reels & YouTube Shorts with scripts)",
+      "📑 Educational Carousels (Multi-slide breakdowns)",
+      "📸 Single Image & Feed Posts (Graphic + Captions)",
+      "⚡ High-Reach Text & Threads (X / LinkedIn style)",
+    ],
+    required: true,
+    icon: Film,
   },
 ];
 
@@ -107,11 +150,13 @@ export default function OnboardingWizard() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({
     business_name: "",
+    profile_type: "🚀 Company / Startup / B2B Services",
     niche: "",
     target_audience: "",
-    brand_tone: "Professional & Authoritative",
+    brand_tone: "⚡ High-Energy & Engaging (Fast-paced, exciting, hook-driven)",
     main_offer: "",
     competitors: "",
+    preferred_formats: "🌟 All-in-One Balanced Mix (Reels, Carousels & Posts)",
   });
   const [inputValue, setInputValue] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -184,12 +229,14 @@ export default function OnboardingWizard() {
     setIsSubmitting(true);
     try {
       const payload = {
-        business_name: finalAnswers.business_name || "My Business",
+        business_name: finalAnswers.business_name || "My Brand",
+        profile_type: finalAnswers.profile_type || "Business",
         niche: finalAnswers.niche || "",
         target_audience: finalAnswers.target_audience || "",
-        brand_tone: finalAnswers.brand_tone || "Professional & Authoritative",
+        brand_tone: finalAnswers.brand_tone || "High-Energy & Engaging",
         main_offer: finalAnswers.main_offer || "",
         competitors: finalAnswers.competitors || "",
+        preferred_formats: finalAnswers.preferred_formats || "All-in-One Balanced Mix",
       };
 
       const res = await fetch("/api/onboarding", {
@@ -205,17 +252,17 @@ export default function OnboardingWizard() {
 
       setIsComplete(true);
 
-      // Smooth redirection into workspace after celebration
+      // Smooth redirection into dedicated Viral Review & Approval Studio
       setTimeout(() => {
-        window.location.href = "/schedule";
-      }, 2000);
+        window.location.href = "/onboarding/review";
+      }, 1500);
     } catch (err: any) {
       toast.error(err?.message || "Something went wrong. Please try again.");
       setIsSubmitting(false);
     }
   };
 
-  // ─── Celebration / All Set Screen (Light Theme) ───────────────────────────
+  // ─── Celebration Screen ───────────────────────────────────────────────────
   if (isComplete) {
     return (
       <div className="min-h-screen bg-[#FAF9F6] flex items-center justify-center p-4">
@@ -228,28 +275,28 @@ export default function OnboardingWizard() {
           </div>
 
           <div className="space-y-2">
-            <h2 className="text-3xl font-bold text-zinc-900">You&apos;re All Set!</h2>
+            <h2 className="text-3xl font-bold text-zinc-900">Setup Complete!</h2>
             <p className="text-zinc-600 text-sm leading-relaxed">
-              Your business profile is saved. Lemon AI is customizing your social calendar and strategy…
+              Lemon AI is now launching the autonomous market research agent and crafting your viral content preview…
             </p>
           </div>
 
           <div className="flex items-center justify-center gap-2 text-zinc-500 text-xs font-medium pt-2">
             <Loader2 className="size-4 animate-spin text-amber-500" />
-            <span>Redirecting to your workspace…</span>
+            <span>Loading Viral Content Review Studio…</span>
           </div>
         </div>
       </div>
     );
   }
 
-  // ─── Main Onboarding Interface (Light Theme) ──────────────────────────────
+  // ─── Main Onboarding Interface ────────────────────────────────────────────
   const CurrentIcon = currentQuestion.icon;
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] flex flex-col lg:flex-row text-zinc-900 font-sans">
       {/* ── Left Sidebar: Profile Summary & Progress ── */}
-      <aside className="hidden lg:flex flex-col w-80 xl:w-88 border-r border-zinc-200/80 bg-white p-8 shrink-0">
+      <aside className="hidden lg:flex flex-col w-80 xl:w-92 border-r border-zinc-200/80 bg-white p-8 shrink-0">
         {/* Lemon AI Logo */}
         <div className="flex items-center gap-2.5 mb-8">
           <div className="size-8 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center shadow-md shadow-amber-500/20">
@@ -259,9 +306,9 @@ export default function OnboardingWizard() {
         </div>
 
         {/* Progress Bar */}
-        <div className="space-y-2.5 mb-8">
+        <div className="space-y-2.5 mb-6">
           <div className="flex items-center justify-between text-xs font-semibold">
-            <span className="text-zinc-500">Business Setup</span>
+            <span className="text-zinc-500">Universal Strategy Setup</span>
             <span className="text-amber-600 font-bold">{progress}%</span>
           </div>
           <div className="h-2 bg-zinc-100 rounded-full overflow-hidden p-0.5 border border-zinc-200/60">
@@ -277,9 +324,9 @@ export default function OnboardingWizard() {
         </div>
 
         {/* Live Answers Summary */}
-        <div className="flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-none">
+        <div className="flex-1 space-y-2.5 overflow-y-auto pr-1 scrollbar-none">
           <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-            Your Brand Profile
+            Your Brand DNA
           </p>
           {QUESTIONS.map((q, idx) => {
             const val = answers[q.id];
@@ -291,7 +338,7 @@ export default function OnboardingWizard() {
                 key={q.id}
                 onClick={() => setCurrentIndex(idx)}
                 className={cn(
-                  "p-3 rounded-xl border text-xs transition-all cursor-pointer",
+                  "p-2.5 rounded-xl border text-xs transition-all cursor-pointer",
                   isCurrent
                     ? "border-amber-500/60 bg-amber-50/50 shadow-sm"
                     : isDone
@@ -299,9 +346,9 @@ export default function OnboardingWizard() {
                     : "border-dashed border-zinc-200 bg-transparent text-zinc-400"
                 )}
               >
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-semibold text-zinc-700">{q.title.split(" ")[0]} {q.title.split(" ")[1]}</span>
-                  {isDone && <Check className="size-3.5 text-emerald-600" />}
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="font-semibold text-zinc-700 truncate max-w-[170px]">{q.title}</span>
+                  {isDone && <Check className="size-3.5 text-emerald-600 shrink-0" />}
                 </div>
                 <p className="text-zinc-600 line-clamp-1">
                   {val && val.trim() ? val : "Pending..."}
@@ -312,13 +359,13 @@ export default function OnboardingWizard() {
         </div>
 
         {/* Footer Note */}
-        <div className="mt-8 pt-4 border-t border-zinc-100 flex items-center gap-2 text-zinc-500 text-xs">
-          <Sparkles className="size-3.5 text-amber-500" />
-          <span>Tuned for viral AI content generation</span>
+        <div className="mt-6 pt-4 border-t border-zinc-100 flex items-center gap-2 text-zinc-500 text-xs">
+          <Sparkles className="size-3.5 text-amber-500 shrink-0" />
+          <span>Autonomous viral trend extraction active</span>
         </div>
       </aside>
 
-      {/* ── Main Question Panel (Light Theme) ── */}
+      {/* ── Main Question Panel ── */}
       <main className="flex-1 flex flex-col justify-between p-6 sm:p-12 max-w-3xl mx-auto w-full">
         {/* Mobile Header */}
         <div className="lg:hidden flex items-center justify-between mb-8 pb-4 border-b border-zinc-200">
@@ -344,7 +391,7 @@ export default function OnboardingWizard() {
             {currentQuestion.required ? (
               <span className="text-xs text-rose-500 font-medium">* Required</span>
             ) : (
-              <span className="text-xs text-zinc-400 font-medium">Optional</span>
+              <span className="text-xs text-zinc-400 font-medium">Optional (AI auto-discovers if empty)</span>
             )}
           </div>
 
@@ -358,7 +405,7 @@ export default function OnboardingWizard() {
             </p>
           </div>
 
-          {/* Options (for Brand Tone) */}
+          {/* Options List (for Profile Type, Tone, Formats) */}
           {currentQuestion.type === "options" && currentQuestion.options && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
               {currentQuestion.options.map((option) => {
@@ -379,51 +426,57 @@ export default function OnboardingWizard() {
                     )}
                   >
                     <span>{option}</span>
-                    {isSelected && <Check className="size-4 text-white" />}
+                    {isSelected && <Check className="size-4 text-white shrink-0 ml-2" />}
                   </button>
                 );
               })}
             </div>
           )}
 
-          {/* Input Box */}
-          <div className="pt-2">
-            {currentQuestion.type === "textarea" ? (
-              <textarea
-                ref={inputRef as React.RefObject<HTMLTextAreaElement>}
-                rows={4}
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={currentQuestion.placeholder}
-                className={cn(
-                  "w-full rounded-2xl border-2 border-zinc-200 bg-white p-4 text-zinc-900 placeholder:text-zinc-400",
-                  "text-base outline-none transition-all resize-none shadow-sm",
-                  "focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10"
-                )}
-              />
-            ) : (
-              <input
-                ref={inputRef as React.RefObject<HTMLInputElement>}
-                type="text"
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={currentQuestion.placeholder}
-                className={cn(
-                  "w-full rounded-2xl border-2 border-zinc-200 bg-white p-4 text-zinc-900 placeholder:text-zinc-400",
-                  "text-base outline-none transition-all shadow-sm",
-                  "focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10"
-                )}
-              />
-            )}
-            <div className="flex items-center justify-between mt-2 text-xs text-zinc-400 px-1">
-              <span>Press <kbd className="font-semibold text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded border border-zinc-200">Enter ↵</kbd> to continue</span>
-              {currentQuestion.type === "textarea" && (
-                <span>Use <kbd className="font-semibold text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded border border-zinc-200">⌘+Enter</kbd> to submit</span>
+          {/* Input Box for text / textarea */}
+          {currentQuestion.type !== "options" && (
+            <div className="pt-2">
+              {currentQuestion.type === "textarea" ? (
+                <textarea
+                  ref={inputRef as React.RefObject<HTMLTextAreaElement>}
+                  rows={4}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={currentQuestion.placeholder}
+                  className={cn(
+                    "w-full rounded-2xl border-2 border-zinc-200 bg-white p-4 text-zinc-900 placeholder:text-zinc-400",
+                    "text-base outline-none transition-all resize-none shadow-sm",
+                    "focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10"
+                  )}
+                />
+              ) : (
+                <input
+                  ref={inputRef as React.RefObject<HTMLInputElement>}
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={currentQuestion.placeholder}
+                  className={cn(
+                    "w-full rounded-2xl border-2 border-zinc-200 bg-white p-4 text-zinc-900 placeholder:text-zinc-400",
+                    "text-base outline-none transition-all shadow-sm",
+                    "focus:border-amber-500 focus:ring-4 focus:ring-amber-500/10"
+                  )}
+                />
               )}
+              <div className="flex items-center justify-between mt-2 text-xs text-zinc-400 px-1">
+                <span>
+                  Press <kbd className="font-semibold text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded border border-zinc-200">Enter ↵</kbd> to continue
+                </span>
+                {currentQuestion.type === "textarea" && (
+                  <span>
+                    Use <kbd className="font-semibold text-zinc-600 bg-zinc-100 px-1.5 py-0.5 rounded border border-zinc-200">⌘+Enter</kbd> to submit
+                  </span>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Bottom Actions Toolbar */}
@@ -453,7 +506,7 @@ export default function OnboardingWizard() {
                 disabled={isSubmitting}
                 className="text-xs text-zinc-500 hover:text-zinc-800 font-medium px-2 py-1 transition-colors"
               >
-                Skip this question
+                Auto-Discover (Skip)
               </button>
             )}
 
@@ -471,12 +524,12 @@ export default function OnboardingWizard() {
               {isSubmitting ? (
                 <>
                   <Loader2 className="size-4 animate-spin" />
-                  Saving Profile…
+                  Saving & Launching AI…
                 </>
               ) : isLastQuestion ? (
                 <>
-                  Complete Setup
-                  <Check className="size-4 stroke-[2.5]" />
+                  Generate Viral Content Preview
+                  <Sparkles className="size-4 fill-current" />
                 </>
               ) : (
                 <>

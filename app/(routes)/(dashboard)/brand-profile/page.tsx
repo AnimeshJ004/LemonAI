@@ -28,9 +28,9 @@ export default function BrandProfilePage() {
             <Building2 className="size-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-foreground">Brand Profile</h1>
+            <h1 className="text-xl font-bold text-foreground">Brand & Creator Profile</h1>
             <p className="text-sm text-muted-foreground">
-              Your AI uses this to personalize all generated social posts, captions & visuals
+              Your AI uses this to personalize all generated social posts, reels, hooks & visuals
             </p>
           </div>
         </div>
