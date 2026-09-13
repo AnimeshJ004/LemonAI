@@ -65,8 +65,8 @@ export function ChatWindow({ messages, leadName }: ChatWindowProps) {
                   {isLead
                     ? leadName || "Visitor"
                     : isAI
-                    ? "AI Assistant"
-                    : "Human Agent"}
+                      ? "AI Assistant"
+                      : "Human Agent"}
                 </span>
                 <span>•</span>
                 <span>

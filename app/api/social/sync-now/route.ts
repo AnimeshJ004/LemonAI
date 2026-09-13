@@ -4,6 +4,7 @@ import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { decrypt } from "@/lib/encryption";
 import { processSingleComment } from "@/lib/social-comments-service";
 
+// Lead synchronization & comment processing
 export const maxDuration = 60;
 
 /**

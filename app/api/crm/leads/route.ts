@@ -4,6 +4,7 @@ import {
   getLeadsForUser,
   createLead,
   updateLead,
+  deleteLead,
   recordActivity,
   getAppointmentsForUser,
   LeadStage,
@@ -143,7 +144,21 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json().catch(() => ({}));
-    const { id, stage, score, deal_value, name, email, phone, metadata, triggerScoring, transcript } = body;
+    const {
+      id,
+      stage,
+      score,
+      deal_value,
+      name,
+      email,
+      phone,
+      source,
+      company,
+      notes,
+      metadata,
+      triggerScoring,
+      transcript,
+    } = body;
 
     if (!id) {
       return NextResponse.json({ error: "Lead ID is required" }, { status: 400 });
@@ -156,7 +171,15 @@ export async function PATCH(request: NextRequest) {
     if (name !== undefined) updates.name = name;
     if (email !== undefined) updates.email = email;
     if (phone !== undefined) updates.phone = phone;
-    if (metadata !== undefined) updates.metadata = metadata;
+    if (source !== undefined) updates.source = source;
+
+    // Merge company & notes into metadata
+    const metaUpdates: any = { ...(metadata || {}) };
+    if (company !== undefined) metaUpdates.company = company;
+    if (notes !== undefined) metaUpdates.notes = notes;
+    if (Object.keys(metaUpdates).length > 0 || metadata !== undefined) {
+      updates.metadata = metaUpdates;
+    }
 
     let updated = await updateLead(id, updates, targetUserId);
     if (!updated) {
@@ -190,5 +213,47 @@ export async function PATCH(request: NextRequest) {
   } catch (error: any) {
     console.error("Error updating lead:", error);
     return NextResponse.json({ error: error.message || "Failed to update lead" }, { status: 500 });
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { userId } = await auth();
+    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : "usr_lemon_demo");
+    if (!targetUserId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    let id = searchParams.get("id");
+    if (!id) {
+      const body = await request.json().catch(() => ({}));
+      id = body?.id;
+    }
+
+    if (!id) {
+      return NextResponse.json({ error: "Lead ID is required" }, { status: 400 });
+    }
+
+    const success = await deleteLead(id, targetUserId);
+    if (!success) {
+      return NextResponse.json({ error: "Failed to delete lead or lead not found" }, { status: 404 });
+    }
+
+    // Log lead deleted activity
+    try {
+      await recordActivity({
+        user_id: targetUserId,
+        type: "lead_deleted",
+        title: "Lead deleted",
+        description: `Lead with ID ${id} was removed from the CRM.`,
+        metadata: { leadId: id },
+      });
+    } catch {}
+
+    return NextResponse.json({ success: true, message: "Lead deleted successfully" });
+  } catch (error: any) {
+    console.error("Error deleting lead:", error);
+    return NextResponse.json({ error: error.message || "Failed to delete lead" }, { status: 500 });
   }
 }

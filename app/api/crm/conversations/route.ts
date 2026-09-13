@@ -8,6 +8,7 @@ import {
   createConversation,
 } from "@/lib/crm-service";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { dispatchCRMOutboundMessage } from "@/lib/crm-outbound-dispatcher";
 
 export async function GET(request: NextRequest) {
   try {
@@ -106,7 +107,14 @@ Keep the response to 2-3 sentences. Do not output markdown headers.`,
         content: aiReplyContent,
       });
 
-      return NextResponse.json({ message, success: true }, { status: 201 });
+      const dispatch = await dispatchCRMOutboundMessage({
+        conversationId: conversation_id,
+        senderType: "ai_assistant",
+        content: aiReplyContent,
+        userId: targetUserId,
+      });
+
+      return NextResponse.json({ message, dispatch, success: true }, { status: 201 });
     }
 
     // If starting a brand new conversation
@@ -124,7 +132,15 @@ Keep the response to 2-3 sentences. Do not output markdown headers.`,
           sender_type,
           content,
         });
-        return NextResponse.json({ conversation: newConv, message }, { status: 201 });
+
+        const dispatch = await dispatchCRMOutboundMessage({
+          conversationId: newConv.id,
+          senderType: (sender_type === "human_agent" ? "human_agent" : "ai_assistant"),
+          content,
+          userId: targetUserId,
+        });
+
+        return NextResponse.json({ conversation: newConv, message, dispatch }, { status: 201 });
       }
 
       return NextResponse.json({ conversation: newConv }, { status: 201 });
@@ -148,7 +164,79 @@ Keep the response to 2-3 sentences. Do not output markdown headers.`,
       content: content.trim(),
     });
 
-    return NextResponse.json({ message }, { status: 201 });
+    let dispatchResult: any = null;
+    if (sender_type === "human_agent" || sender_type === "ai_assistant") {
+      dispatchResult = await dispatchCRMOutboundMessage({
+        conversationId: conversation_id,
+        senderType: sender_type,
+        content: content.trim(),
+        userId: targetUserId,
+      });
+    }
+
+    // If an incoming lead message arrives and AI autopilot is active, automatically generate AI reply
+    if (sender_type === "lead") {
+      try {
+        const { conversation: currentConv, messages: history } = await getConversationWithMessages(
+          conversation_id,
+          targetUserId
+        );
+
+        if (currentConv?.is_ai_active !== false) {
+          const lead = currentConv?.lead;
+          const recentHistory = [...(history || [])]
+            .slice(-6)
+            .map((m) => `${m.sender_type === "lead" ? lead?.name || "Customer" : m.sender_type === "ai_assistant" ? "AI Agent" : "Human Agent"}: ${m.content}`)
+            .join("\n");
+
+          let aiText = "";
+          try {
+            const aiRes = await callResilientCompletion({
+              messages: [
+                {
+                  role: "system",
+                  content: `You are Lemon AI's autonomous omnichannel sales bot.
+You are chatting with ${lead?.name || "the prospect"}${lead?.metadata?.company ? ` from ${lead.metadata.company}` : ""}.
+Your tone is friendly, consultative, concise, and helpful.
+Answer their questions directly in 2-3 sentences. Suggest scheduling a quick 15-minute walkthrough if appropriate.`,
+                },
+                {
+                  role: "user",
+                  content: `Recent chat history:\n${recentHistory}\n\nDraft the next conversational response.`,
+                },
+              ],
+              temperature: 0.7,
+            });
+            if (aiRes.success && aiRes.content?.trim()) {
+              aiText = aiRes.content.trim();
+            }
+          } catch {}
+
+          if (!aiText) {
+            aiText = `Hi ${lead?.name ? lead.name.split(" ")[0] : "there"}! Thanks for your message. We can seamlessly assist you with this. Would you like to schedule a quick 15-minute demo to explore further?`;
+          }
+
+          const aiReply = await addMessage({
+            conversation_id,
+            sender_type: "ai_assistant",
+            content: aiText,
+          });
+
+          const aiDispatch = await dispatchCRMOutboundMessage({
+            conversationId: conversation_id,
+            senderType: "ai_assistant",
+            content: aiText,
+            userId: targetUserId,
+          });
+
+          return NextResponse.json({ message, aiReply, dispatch: aiDispatch }, { status: 201 });
+        }
+      } catch (autoErr) {
+        console.warn("Auto AI reply notice:", autoErr);
+      }
+    }
+
+    return NextResponse.json({ message, dispatch: dispatchResult }, { status: 201 });
   } catch (error: any) {
     console.error("Error sending message:", error);
     return NextResponse.json({ error: error.message || "Failed to send message" }, { status: 500 });

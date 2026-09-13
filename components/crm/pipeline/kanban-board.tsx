@@ -55,9 +55,10 @@ export const CRM_STAGES: StageConfig[] = [
 interface KanbanBoardProps {
   initialLeads: Lead[];
   onLeadsChange?: (leads: Lead[]) => void;
+  onAddLead?: (stage: LeadStage) => void;
 }
 
-export function KanbanBoard({ initialLeads, onLeadsChange }: KanbanBoardProps) {
+export function KanbanBoard({ initialLeads, onLeadsChange, onAddLead }: KanbanBoardProps) {
   const [leads, setLeads] = useState<Lead[]>(initialLeads);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -120,7 +121,7 @@ export function KanbanBoard({ initialLeads, onLeadsChange }: KanbanBoardProps) {
           description: `Drag-and-drop: ${source.droppableId.replace("_", " ")} → ${newStage.replace("_", " ")}`,
         }),
       }).catch(() => {});
-    } catch (err: any) {
+    } catch {
       toast.error("Could not persist stage change. Reverting.");
       // Rollback
       setLeads(initialLeads);
@@ -137,6 +138,27 @@ export function KanbanBoard({ initialLeads, onLeadsChange }: KanbanBoardProps) {
     setLeads(newList);
     setSelectedLead(updated);
     if (onLeadsChange) onLeadsChange(newList);
+  };
+
+  const handleLeadDeletedById = (leadId: string) => {
+    const newList = leads.filter((l) => l.id !== leadId);
+    setLeads(newList);
+    setSelectedLead(null);
+    setIsDetailOpen(false);
+    if (onLeadsChange) onLeadsChange(newList);
+  };
+
+  const handleLeadDeleteDirect = async (lead: Lead) => {
+    try {
+      const res = await fetch(`/api/crm/leads?id=${lead.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete lead");
+
+      handleLeadDeletedById(lead.id);
+      toast.success(`Deleted prospect "${lead.name || "Lead"}"`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to delete lead");
+    }
   };
 
   if (!isMounted) {
@@ -164,18 +186,21 @@ export function KanbanBoard({ initialLeads, onLeadsChange }: KanbanBoardProps) {
                 stage={stage}
                 leads={columnLeads}
                 onLeadClick={handleLeadClick}
+                onLeadDelete={handleLeadDeleteDirect}
+                onAddLead={onAddLead}
               />
             );
           })}
         </div>
       </DragDropContext>
 
-      {/* Lead Modal */}
+      {/* Lead Edit & Details Modal */}
       <LeadDetailDialog
         lead={selectedLead}
         isOpen={isDetailOpen}
         onClose={() => setIsDetailOpen(false)}
         onUpdate={handleLeadUpdated}
+        onDelete={handleLeadDeletedById}
       />
     </>
   );
