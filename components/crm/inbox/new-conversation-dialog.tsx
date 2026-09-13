@@ -22,7 +22,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import type { Lead, CRMConversation } from "@/lib/crm-service";
 import { toast } from "sonner";
-import { MessageSquarePlus, Loader2, Globe, MessageSquare, Phone } from "lucide-react";
+import { MessageSquarePlus, Loader2 } from "lucide-react";
 
 interface NewConversationDialogProps {
   isOpen: boolean;
@@ -64,7 +64,6 @@ export function NewConversationDialog({
 
     setIsSubmitting(true);
     try {
-      // If custom prospect name provided and no lead selected, optionally create lead or conversation
       let targetLeadId = leadIdToUse;
       if (!targetLeadId && customName.trim()) {
         try {
@@ -118,84 +117,92 @@ export function NewConversationDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-bold flex items-center gap-2">
-            <MessageSquarePlus className="size-5 text-primary" />
-            <span>Start New Omnichannel Thread</span>
+      <DialogContent className="w-[95vw] max-w-md p-4 sm:p-6 rounded-lg">
+        <DialogHeader className="space-y-1">
+          <DialogTitle className="text-base sm:text-lg font-bold flex items-center gap-2">
+            <MessageSquarePlus className="size-4 sm:size-5 text-primary shrink-0" />
+            <span className="truncate">Start New Omnichannel Thread</span>
           </DialogTitle>
         </DialogHeader>
 
-        <form onSubmit={handleStartChat} className="space-y-3.5 pt-2">
-          {/* Select Existing Lead */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Select Existing Lead or Enter Custom</Label>
-            <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
-              <SelectTrigger className="text-xs h-9">
-                <SelectValue placeholder="Choose a prospect..." />
-              </SelectTrigger>
-              <SelectContent className="max-h-56">
-                <SelectItem value="custom">✏️ Enter custom name / visitor</SelectItem>
-                {leads.map((l) => (
-                  <SelectItem key={l.id} value={l.id}>
-                    {l.name || "Anonymous"} {l.metadata?.company ? `(${l.metadata.company})` : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Custom Name Input if custom is chosen */}
-          {selectedLeadId === "custom" && (
+        <form onSubmit={handleStartChat} className="space-y-3.5 pt-1">
+          <div className="max-h-[70vh] overflow-y-auto space-y-3.5 pr-1 scrollbar-thin">
+            {/* Select Existing Lead */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Prospect / Visitor Name</Label>
-              <Input
-                value={customName}
-                onChange={(e) => setCustomName(e.target.value)}
-                placeholder="e.g. Alex Morgan"
-                className="text-xs h-9"
-                required
+              <Label className="text-xs font-semibold">Select Existing Lead or Enter Custom</Label>
+              <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
+                <SelectTrigger className="text-xs h-9">
+                  <SelectValue placeholder="Choose a prospect..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-56">
+                  <SelectItem value="custom">✏️ Enter custom name / visitor</SelectItem>
+                  {leads.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.name || "Anonymous"} {l.metadata?.company ? `(${l.metadata.company})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Custom Name Input if custom is chosen */}
+            {selectedLeadId === "custom" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold">Prospect / Visitor Name</Label>
+                <Input
+                  value={customName}
+                  onChange={(e) => setCustomName(e.target.value)}
+                  placeholder="e.g. Alex Morgan"
+                  className="text-xs h-9"
+                  required
+                />
+              </div>
+            )}
+
+            {/* Channel Selector */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Channel</Label>
+              <Select value={channel} onValueChange={setChannel}>
+                <SelectTrigger className="text-xs h-9">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="website">Website Live Chat</SelectItem>
+                  <SelectItem value="instagram">Instagram Direct</SelectItem>
+                  <SelectItem value="facebook">Facebook Messenger</SelectItem>
+                  <SelectItem value="whatsapp">WhatsApp Cloud API</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Initial Message */}
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Initial Message (Optional)</Label>
+              <Textarea
+                value={initialMessage}
+                onChange={(e) => setInitialMessage(e.target.value)}
+                placeholder="Type your opening message to start the conversation..."
+                rows={3}
+                className="text-xs resize-none"
               />
             </div>
-          )}
-
-          {/* Channel Selector */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Channel</Label>
-            <Select value={channel} onValueChange={setChannel}>
-              <SelectTrigger className="text-xs h-9">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="website">Website Live Chat</SelectItem>
-                <SelectItem value="instagram">Instagram Direct</SelectItem>
-                <SelectItem value="facebook">Facebook Messenger</SelectItem>
-                <SelectItem value="whatsapp">WhatsApp Cloud API</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
 
-          {/* Initial Message */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-semibold">Initial Message (Optional)</Label>
-            <Textarea
-              value={initialMessage}
-              onChange={(e) => setInitialMessage(e.target.value)}
-              placeholder="Type your opening message to start the conversation..."
-              rows={3}
-              className="text-xs"
-            />
-          </div>
-
-          <DialogFooter className="gap-2 pt-2">
-            <Button type="button" variant="outline" size="sm" onClick={onClose}>
+          <DialogFooter className="flex-col-reverse sm:flex-row gap-2 pt-2 border-t border-border/40">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onClose}
+              className="w-full sm:w-auto text-xs"
+            >
               Cancel
             </Button>
             <Button
               type="submit"
               size="sm"
               disabled={isSubmitting || (selectedLeadId === "custom" && !customName.trim())}
-              className="font-semibold gap-1.5"
+              className="w-full sm:w-auto font-semibold gap-1.5 text-xs"
             >
               {isSubmitting ? (
                 <>

@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Send, Calendar, Sparkles, Bot, MessageSquare } from "lucide-react";
+import { Send, Sparkles, Bot, MessageSquare } from "lucide-react";
 
 interface ChatInputProps {
   onSendMessage: (content: string) => void;
@@ -23,7 +23,6 @@ export function ChatInput({
   isSending,
   isAIGenerating,
   disabled,
-  calLink,
 }: ChatInputProps) {
   const [text, setText] = useState("");
 
@@ -59,27 +58,29 @@ export function ChatInput({
   };
 
   return (
-    <div className="p-3 border-t border-border/70 space-y-2 bg-card/60">
+    <div className="p-2.5 sm:p-3 border-t border-border/70 space-y-2 bg-card/60 w-full min-w-0 shrink-0">
       {/* Canned Quick Replies & AI Action Buttons */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1 text-[11px]">
-        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+      <div className="flex flex-col space-y-2 sm:space-y-0 sm:flex-row sm:items-center justify-between gap-2 pb-1 text-[11px]">
+        {/* Horizontal scroll for canned replies on mobile */}
+        <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5 -mx-1 px-1 min-w-0">
           <span className="text-muted-foreground text-[10px] font-semibold uppercase shrink-0 flex items-center gap-1">
-            <Sparkles className="size-3 text-primary" />
-            Quick Reply:
+            <Sparkles className="size-3 text-primary shrink-0" />
+            <span className="hidden sm:inline">Quick Reply:</span>
           </span>
           {cannedReplies.map((reply, idx) => (
             <Badge
               key={idx}
               variant="outline"
               onClick={() => setText(reply.template)}
-              className="cursor-pointer hover:bg-muted/80 hover:border-primary/50 text-[10px] whitespace-nowrap transition-colors bg-background/60"
+              className="cursor-pointer hover:bg-muted/80 hover:border-primary/50 text-[10px] whitespace-nowrap transition-colors bg-background/60 shrink-0 py-0.5 px-2"
             >
               {reply.label}
             </Badge>
           ))}
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
+        {/* Action buttons wrapper */}
+        <div className="flex items-center gap-1.5 shrink-0 justify-end w-full sm:w-auto">
           {onAIReply && (
             <Button
               type="button"
@@ -87,10 +88,10 @@ export function ChatInput({
               size="sm"
               onClick={onAIReply}
               disabled={isAIGenerating || disabled}
-              className="h-7 text-[11px] gap-1.5 font-medium border-primary/40 text-primary hover:bg-primary/10"
+              className="h-7 text-[11px] gap-1.5 font-medium border-primary/40 text-primary hover:bg-primary/10 px-2.5"
             >
               <Bot className="size-3.5" />
-              {isAIGenerating ? "Generating..." : "Let AI Reply"}
+              <span>{isAIGenerating ? "Generating..." : "Let AI Reply"}</span>
             </Button>
           )}
           {onSimulateInbound && (
@@ -100,32 +101,33 @@ export function ChatInput({
               size="sm"
               onClick={onSimulateInbound}
               disabled={disabled}
-              className="h-7 text-[10px] gap-1 text-muted-foreground hover:text-foreground"
+              className="h-7 text-[10px] gap-1 text-muted-foreground hover:text-foreground px-2"
             >
               <MessageSquare className="size-3" />
-              Simulate Inbound
+              <span className="hidden sm:inline">Simulate Inbound</span>
+              <span className="sm:hidden">Simulate</span>
             </Button>
           )}
         </div>
       </div>
 
       {/* Input Box */}
-      <div className="flex items-end gap-2">
+      <div className="flex items-end gap-2 min-w-0">
         <Textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Type your message as Human Agent (Enter to send, Shift+Enter for new line)..."
+          placeholder="Type your message as Human Agent..."
           rows={2}
           disabled={disabled}
-          className="resize-none text-xs bg-background min-h-[52px]"
+          className="resize-none text-xs sm:text-xs bg-background min-h-[50px] sm:min-h-[52px] flex-1 min-w-0"
         />
         <Button
           type="button"
           size="icon"
           onClick={handleSend}
           disabled={!text.trim() || isSending || disabled}
-          className="size-10 shrink-0"
+          className="size-9 sm:size-10 shrink-0"
         >
           <Send className="size-4" />
         </Button>
