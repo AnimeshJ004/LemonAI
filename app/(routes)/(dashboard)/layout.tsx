@@ -1,4 +1,4 @@
-import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
+import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/sidebar";
 import AppSidebar from "./_common/app-sidebar";
 import { ScheduledPostsPoller } from "@/components/schedule/scheduled-posts-poller";
 
@@ -8,14 +8,27 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <SidebarProvider>
+    <SidebarProvider defaultOpen={true}>
+      {/* 1. Background Poller for Scheduled Posts */}
       <ScheduledPostsPoller />
+
+      {/* 2. Mobile & Desktop App Sidebar */}
       <AppSidebar />
-      <SidebarInset className="bg-sidebar! border-none min-w-0 max-w-full overflow-hidden flex-1">
-        <div className="m-1 rounded-lg border border-border dark:border-[#e0e1e11a] shadow-xs bg-background h-[calc(100vh-0.5rem)] min-w-0 max-w-full overflow-hidden flex flex-col">
-          <div className="p-2 sm:p-4 flex-1 min-w-0 max-w-full overflow-y-auto">{children}</div>
+
+      <SidebarInset className="min-w-0 max-w-full flex-1 flex flex-col min-h-0 overflow-hidden">
+        {/* 3. Top Bar with Mobile Hamburger Trigger */}
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-4">
+          <SidebarTrigger className="-ml-1" />
+          <div className="flex items-center gap-2 text-sm font-semibold">
+            Lemon.ai
+          </div>
+        </header>
+
+        {/* 4. Main Page Content Container */}
+        <div className="flex-1 min-w-0 max-w-full overflow-y-auto overflow-x-hidden p-3 sm:p-6 flex flex-col">
+          {children}
         </div>
       </SidebarInset>
     </SidebarProvider>
-  )
+  );
 }

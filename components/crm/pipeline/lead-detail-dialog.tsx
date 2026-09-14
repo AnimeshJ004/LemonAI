@@ -29,7 +29,6 @@ import {
   Building2,
   Calendar,
   Sparkles,
-  ExternalLink,
   Bot,
   CheckCircle2,
   Loader2,
@@ -40,7 +39,6 @@ import {
   DollarSign,
   Flame,
 } from "lucide-react";
-import { generateCalcomBookingUrl } from "@/lib/calcom-url";
 
 interface LeadDetailDialogProps {
   lead: Lead | null;
@@ -75,21 +73,21 @@ export function LeadDetailDialog({
   const [isCalling, setIsCalling] = useState(false);
   const [isRescoring, setIsRescoring] = useState(false);
 
-  // Sync local state when lead changes
+  // Sync local state when lead or isOpen changes
   useEffect(() => {
-    if (lead) {
+    if (lead && isOpen) {
       setName(lead.name || "");
       setEmail(lead.email || "");
       setPhone(lead.phone || "");
       setCompany(lead.metadata?.company || "");
       setSource(lead.source || "website");
       setStage(lead.stage || "new");
-      setDealValue(String(lead.deal_value || 0));
+      setDealValue(String(lead.deal_value ?? 0));
       setScore(String(lead.score ?? 5));
       setNotes(lead.metadata?.notes || "");
       setShowDeleteConfirm(false);
     }
-  }, [lead]);
+  }, [lead, isOpen]);
 
   if (!lead) return null;
 
@@ -125,6 +123,11 @@ export function LeadDetailDialog({
   const handleSave = async () => {
     setIsSaving(true);
     try {
+      const parsedScore = Number(score);
+      const finalScore = isNaN(parsedScore)
+        ? 5
+        : Math.min(10, Math.max(1, parsedScore));
+
       const res = await fetch("/api/crm/leads", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -136,7 +139,7 @@ export function LeadDetailDialog({
           company: company.trim(),
           source,
           stage,
-          score: Math.min(10, Math.max(1, Number(score) || 5)),
+          score: finalScore,
           deal_value: Number(dealValue) || 0,
           notes: notes.trim(),
         }),
@@ -192,25 +195,34 @@ export function LeadDetailDialog({
   };
 
   const handleTriggerCall = async () => {
-    if (!phone && !lead.phone) {
+    const targetPhone = phone.trim() || lead.phone;
+    if (!targetPhone) {
       toast.error("Lead does not have a phone number on file");
       return;
     }
-    const targetPhone = phone || lead.phone;
+    
     setIsCalling(true);
     try {
       const res = await fetch("/api/voice/call-lead", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ leadId: lead.id, phone: targetPhone, name: name || lead.name }),
+        body: JSON.stringify({
+          leadId: lead.id,
+          phone: targetPhone,
+          name: name.trim() || lead.name,
+        }),
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || data.error || "Failed to initiate call");
+      if (!res.ok)
+        throw new Error(data.message || data.error || "Failed to initiate call");
 
       toast.success(data.message || "Voice qualification call dispatched!");
+
       // Re-fetch lead
-      const updatedRes = await fetch(`/api/crm/leads?search=${encodeURIComponent(lead.email || lead.name || "")}`);
+      const updatedRes = await fetch(
+        `/api/crm/leads?search=${encodeURIComponent(lead.email || lead.name || "")}`
+      );
       const leadData = await updatedRes.json();
       const refetched = leadData.leads?.find((l: Lead) => l.id === lead.id);
       if (refetched) onUpdate(refetched);
@@ -221,8 +233,9 @@ export function LeadDetailDialog({
     }
   };
 
-  const isScoreHigh = Number(score) >= 8;
-  const isScoreMedium = Number(score) >= 5 && Number(score) < 8;
+  const numScore = Number(score) || 0;
+  const isScoreHigh = numScore >= 8;
+  const isScoreMedium = numScore >= 5 && numScore < 8;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -252,7 +265,10 @@ export function LeadDetailDialog({
           </div>
           <p className="text-xs text-muted-foreground">
             Created on {new Date(lead.created_at).toLocaleDateString()} at{" "}
-            {new Date(lead.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            {new Date(lead.created_at).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
           </p>
         </DialogHeader>
 
@@ -327,7 +343,10 @@ export function LeadDetailDialog({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Pipeline Stage</Label>
-                <Select value={stage} onValueChange={(val) => setStage(val as LeadStage)}>
+                <Select
+                  value={stage}
+                  onValueChange={(val) => setStage(val as LeadStage)}
+                >
                   <SelectTrigger className="w-full text-xs h-9">
                     <SelectValue placeholder="Select stage" />
                   </SelectTrigger>
@@ -412,7 +431,9 @@ export function LeadDetailDialog({
               </h4>
               <div className="flex items-center gap-2">
                 <span className="text-[11px] text-muted-foreground">
-                  {bant?.evaluatedAt ? `Scored ${new Date(bant.evaluatedAt).toLocaleDateString()}` : "AI Baseline"}
+                  {bant?.evaluatedAt
+                    ? `Scored ${new Date(bant.evaluatedAt).toLocaleDateString()}`
+                    : "AI Baseline"}
                 </span>
                 <Button
                   type="button"
@@ -475,7 +496,7 @@ export function LeadDetailDialog({
             <Button
               type="button"
               size="sm"
-              disabled={isCalling || (!phone && !lead.phone)}
+              disabled={isCalling || (!phone.trim() && !lead.phone)}
               onClick={handleTriggerCall}
               className="gap-1.5 text-xs font-semibold"
             >

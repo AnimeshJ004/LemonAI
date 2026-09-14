@@ -40,17 +40,17 @@ export function KanbanColumn({
   }).format(columnTotal);
 
   return (
-    <div className="flex flex-col flex-1 min-w-[280px] max-w-[340px] bg-muted/30 rounded-xl p-2.5 border border-border/60">
+    <div className="flex flex-col w-full bg-muted/30 rounded-xl p-2 sm:p-2.5 border border-border/60">
       {/* Column Header */}
-      <div className="flex items-center justify-between px-1.5 pb-2.5 mb-1 border-b border-border/40">
-        <div className="flex items-center gap-1.5">
-          <span className={cn("size-2 rounded-full", stage.dotColor)} />
-          <h3 className="font-semibold text-xs tracking-tight text-foreground">
+      <div className="flex items-center justify-between px-1.5 pb-2 mb-1 border-b border-border/40">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className={cn("size-2 rounded-full shrink-0", stage.dotColor)} />
+          <h3 className="font-semibold text-xs tracking-tight text-foreground truncate">
             {stage.label}
           </h3>
           <Badge
             variant="secondary"
-            className="h-5 px-1.5 text-[11px] font-semibold bg-background/80"
+            className="h-5 px-1.5 text-[10px] sm:text-[11px] font-semibold bg-background/80 shrink-0"
           >
             {leads.length}
           </Badge>
@@ -60,15 +60,15 @@ export function KanbanColumn({
               variant="ghost"
               size="icon"
               onClick={() => onAddLead(stage.id)}
-              className="size-5 ml-0.5 text-muted-foreground hover:text-foreground hover:bg-background/80 rounded"
+              className="size-6 sm:size-5 ml-0.5 text-muted-foreground hover:text-foreground hover:bg-background/80 rounded shrink-0"
               title={`Add lead to ${stage.label}`}
             >
-              <Plus className="size-3" />
+              <Plus className="size-3.5 sm:size-3" />
             </Button>
           )}
         </div>
 
-        <span className="text-[11px] font-semibold text-muted-foreground">
+        <span className="text-[10px] sm:text-[11px] font-semibold text-muted-foreground shrink-0 ml-1">
           {formattedTotal}
         </span>
       </div>
@@ -80,7 +80,7 @@ export function KanbanColumn({
             ref={provided.innerRef}
             {...provided.droppableProps}
             className={cn(
-              "flex-1 min-h-[480px] rounded-lg transition-colors p-1",
+              "flex-1 min-h-[360px] sm:min-h-[480px] rounded-lg transition-colors p-1 space-y-2",
               snapshot.isDraggingOver && "bg-primary/5 ring-1 ring-primary/20"
             )}
           >
@@ -96,7 +96,7 @@ export function KanbanColumn({
             {provided.placeholder}
 
             {leads.length === 0 && !snapshot.isDraggingOver && (
-              <div className="flex flex-col items-center justify-center h-36 border border-dashed border-border/60 rounded-lg text-center p-3 text-muted-foreground/60 text-xs">
+              <div className="flex flex-col items-center justify-center h-32 sm:h-36 border border-dashed border-border/60 rounded-lg text-center p-3 text-muted-foreground/60 text-xs">
                 <span>No leads in {stage.label.toLowerCase()}</span>
                 {onAddLead && (
                   <button

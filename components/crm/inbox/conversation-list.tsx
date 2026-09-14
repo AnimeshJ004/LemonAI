@@ -10,6 +10,8 @@ import {
   Phone,
   Search,
   Bot,
+  Plus,
+  Inbox,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -31,14 +33,14 @@ export function ConversationList({
   const getChannelIcon = (channel: string) => {
     switch (channel) {
       case "whatsapp":
-        return <MessageSquare className="size-3.5 text-emerald-500" />;
+        return <MessageSquare className="size-3.5 text-emerald-500 shrink-0" />;
       case "website":
-        return <Globe className="size-3.5 text-sky-500" />;
+        return <Globe className="size-3.5 text-sky-500 shrink-0" />;
       case "voice":
-        return <Phone className="size-3.5 text-amber-500" />;
+        return <Phone className="size-3.5 text-amber-500 shrink-0" />;
       case "instagram":
         return (
-          <svg className="size-3.5 text-pink-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg className="size-3.5 text-pink-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
             <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
             <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
@@ -46,12 +48,12 @@ export function ConversationList({
         );
       case "facebook":
         return (
-          <svg className="size-3.5 text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg className="size-3.5 text-blue-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
           </svg>
         );
       default:
-        return <Globe className="size-3.5 text-muted-foreground" />;
+        return <Globe className="size-3.5 text-muted-foreground shrink-0" />;
     }
   };
 
@@ -64,16 +66,16 @@ export function ConversationList({
   });
 
   return (
-    <div className="flex flex-col h-full border-r border-border/70 bg-card/40">
+    <div className="flex flex-col h-full border-r border-border/70 bg-card/40 min-w-0 w-full">
       {/* Search & New Chat Header */}
-      <div className="p-2.5 border-b border-border/60 flex items-center gap-1.5">
-        <div className="relative flex-1">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+      <div className="p-3 border-b border-border/60 flex items-center gap-2 shrink-0">
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search threads..."
-            className="pl-8 h-8 text-xs bg-background/80"
+            className="pl-8 h-8 text-xs bg-background/80 w-full"
           />
         </div>
 
@@ -81,10 +83,11 @@ export function ConversationList({
           <button
             type="button"
             onClick={onNewConversation}
-            className="h-8 px-2 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold shrink-0 transition-colors cursor-pointer flex items-center gap-1"
+            className="h-8 px-2.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary text-xs font-semibold shrink-0 transition-colors cursor-pointer flex items-center gap-1 active:scale-95"
             title="Start new thread"
           >
-            + New
+            <Plus className="size-3.5" />
+            <span>New</span>
           </button>
         )}
       </div>
@@ -102,12 +105,12 @@ export function ConversationList({
               key={conv.id}
               onClick={() => onSelect(conv)}
               className={cn(
-                "p-3 cursor-pointer transition-colors hover:bg-muted/40 text-left relative",
+                "p-3 cursor-pointer transition-colors hover:bg-muted/40 text-left relative select-none",
                 isSelected && "bg-muted/70 border-l-2 border-primary"
               )}
             >
-              <div className="flex items-center justify-between gap-1 mb-1">
-                <div className="flex items-center gap-1.5 font-semibold text-xs text-foreground truncate">
+              <div className="flex items-center justify-between gap-1.5 mb-1">
+                <div className="flex items-center gap-1.5 font-semibold text-xs text-foreground truncate min-w-0">
                   {getChannelIcon(conv.channel)}
                   <span className="truncate">{leadName}</span>
                 </div>
@@ -124,11 +127,11 @@ export function ConversationList({
               </p>
 
               <div className="flex items-center justify-between gap-1 text-[10px]">
-                <span className="capitalize text-muted-foreground font-medium">
+                <span className="capitalize text-muted-foreground font-medium truncate">
                   {conv.channel}
                 </span>
 
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 shrink-0">
                   {conv.is_ai_active ? (
                     <Badge variant="outline" className="h-4 px-1 text-[9px] gap-0.5 text-primary border-primary/30">
                       <Bot className="size-2.5" />
@@ -154,8 +157,9 @@ export function ConversationList({
         })}
 
         {filtered.length === 0 && (
-          <div className="p-6 text-center text-xs text-muted-foreground">
-            No active conversations match your query.
+          <div className="p-8 text-center text-xs text-muted-foreground flex flex-col items-center justify-center space-y-2">
+            <Inbox className="size-7 text-muted-foreground/40" />
+            <p>No active conversations match your query.</p>
           </div>
         )}
       </div>

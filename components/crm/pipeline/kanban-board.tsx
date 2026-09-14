@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { DragDropContext, DropResult } from "@hello-pangea/dnd";
 import { KanbanColumn, StageConfig } from "./kanban-column";
 import type { Lead, LeadStage } from "@/lib/crm-service";
 import { LeadDetailDialog } from "./lead-detail-dialog";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 
 export const CRM_STAGES: StageConfig[] = [
   {
@@ -63,6 +64,9 @@ export function KanbanBoard({ initialLeads, onLeadsChange, onAddLead }: KanbanBo
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [activeStageTab, setActiveStageTab] = useState<LeadStage>("new");
+  
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -71,6 +75,15 @@ export function KanbanBoard({ initialLeads, onLeadsChange, onAddLead }: KanbanBo
   useEffect(() => {
     setLeads(initialLeads);
   }, [initialLeads]);
+
+  const scrollToStage = (stageId: LeadStage) => {
+    setActiveStageTab(stageId);
+    if (!scrollContainerRef.current) return;
+    const targetEl = document.getElementById(`kanban-col-${stageId}`);
+    if (targetEl) {
+      targetEl.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+    }
+  };
 
   const handleDragEnd = async (result: DropResult) => {
     const { destination, source, draggableId } = result;
@@ -110,7 +123,7 @@ export function KanbanBoard({ initialLeads, onLeadsChange, onAddLead }: KanbanBo
       }
       toast.success(`Moved ${targetLead.name || "lead"} to ${newStage.replace("_", " ")}`);
 
-      // Log stage-change activity (fire and forget)
+      // Log stage-change activity
       fetch("/api/crm/activities", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -163,11 +176,11 @@ export function KanbanBoard({ initialLeads, onLeadsChange, onAddLead }: KanbanBo
 
   if (!isMounted) {
     return (
-      <div className="flex gap-4 overflow-x-auto pb-4 pt-1">
+      <div className="flex gap-3 sm:gap-4 overflow-x-auto pb-4 pt-1">
         {CRM_STAGES.map((stage) => (
           <div
             key={stage.id}
-            className="flex-1 min-w-[280px] h-[520px] rounded-xl bg-muted/20 animate-pulse border border-border/40"
+            className="w-[85vw] max-w-[280px] sm:w-[280px] shrink-0 h-[520px] rounded-xl bg-muted/20 animate-pulse border border-border/40"
           />
         ))}
       </div>
@@ -175,20 +188,54 @@ export function KanbanBoard({ initialLeads, onLeadsChange, onAddLead }: KanbanBo
   }
 
   return (
-    <>
+    <div className="space-y-3">
+      {/* Mobile Stage Quick-Navigation Pills */}
+      <div className="flex md:hidden items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
+        {CRM_STAGES.map((stage) => {
+          const count = leads.filter((l) => l.stage === stage.id).length;
+          const isActive = activeStageTab === stage.id;
+          return (
+            <button
+              key={stage.id}
+              onClick={() => scrollToStage(stage.id as LeadStage)}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${
+                isActive
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-card hover:bg-muted border-border text-muted-foreground"
+              }`}
+            >
+              <span className={`size-2 rounded-full ${stage.dotColor}`} />
+              <span>{stage.label}</span>
+              <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4">
+                {count}
+              </Badge>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Main Kanban Board Scroll Area */}
       <DragDropContext onDragEnd={handleDragEnd}>
-        <div className="flex gap-4 overflow-x-auto pb-6 pt-1 select-none scrollbar-thin">
+        <div
+          ref={scrollContainerRef}
+          className="flex gap-3 sm:gap-4 overflow-x-auto pb-6 pt-1 select-none snap-x snap-mandatory sm:snap-none scrollbar-thin touch-pan-x"
+        >
           {CRM_STAGES.map((stage) => {
             const columnLeads = leads.filter((l) => l.stage === stage.id);
             return (
-              <KanbanColumn
+              <div
                 key={stage.id}
-                stage={stage}
-                leads={columnLeads}
-                onLeadClick={handleLeadClick}
-                onLeadDelete={handleLeadDeleteDirect}
-                onAddLead={onAddLead}
-              />
+                id={`kanban-col-${stage.id}`}
+                className="snap-start shrink-0 w-[85vw] max-w-[300px] sm:w-[300px]"
+              >
+                <KanbanColumn
+                  stage={stage}
+                  leads={columnLeads}
+                  onLeadClick={handleLeadClick}
+                  onLeadDelete={handleLeadDeleteDirect}
+                  onAddLead={onAddLead}
+                />
+              </div>
             );
           })}
         </div>
@@ -202,6 +249,6 @@ export function KanbanBoard({ initialLeads, onLeadsChange, onAddLead }: KanbanBo
         onUpdate={handleLeadUpdated}
         onDelete={handleLeadDeletedById}
       />
-    </>
+    </div>
   );
 }

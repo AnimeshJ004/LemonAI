@@ -131,11 +131,33 @@ button[data-slot="button"] {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
+  
   html {
     @apply font-sans;
+    /* Prevent unwanted horizontal side-scrolling/page bounce on mobile devices */
+    overflow-x: hidden;
+    /* Enable native smooth momentum scrolling for iOS WebKit */
+    -webkit-overflow-scrolling: touch;
+    /* Prevent tap highlights on iOS Safari */
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    /* Dynamic Viewport Height fix for mobile browsers with dynamic address bars */
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* iOS Auto-Zoom Prevention: Ensures form inputs retain at least 16px font-size on mobile */
+  @media (max-width: 639px) {
+    input:not([type="checkbox"]):not([type="radio"]),
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
   }
 }
 
@@ -164,4 +186,4 @@ button[data-slot="button"] {
 
 .glow-pulse {
   animation: glow-pulse 2s ease-in-out infinite;
-}
+}
