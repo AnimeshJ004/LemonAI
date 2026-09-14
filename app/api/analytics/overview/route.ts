@@ -55,41 +55,112 @@ export async function GET(req: NextRequest) {
     const wonDeals = leads.filter((l: any) => l.stage === "closed_won");
     const wonRevenue = wonDeals.reduce((sum: number, l: any) => sum + (Number(l.deal_value) || 0), 0);
 
-    // Platform Social Insights (live Meta Graph API with graceful fallback)
+    // ── Real Meta Graph API Social Insights ──────────────────────────────────
+    // Try to pull actual impressions/reach from connected Instagram & Facebook channels.
+    // Gracefully falls back to activity-based estimate if API permissions are unavailable.
     let totalImpressions = 0;
     let totalReach = 0;
     let profileViews = 0;
-    let igImpressions = 0;
-    let fbImpressions = 0;
+    let igImpressionsLive = 0;
+    let fbImpressionsLive = 0;
+    let isLiveReach = false;
 
-    // Estimate based on real comments & published content volume if Graph API permissions are pending
-    const estimatedBaseImpressions = (publishedPosts * 450) + (comments.length * 85);
-    const estimatedBaseReach = Math.round(estimatedBaseImpressions * 0.72);
+    // Fetch connected channel tokens from DB
+    const { data: channelTokens } = await admin.database
+      .from("user_channels")
+      .select("id, access_token, provider_account_id, channel_types!inner(type)")
+      .eq("user_id", targetUserId)
+      .eq("is_connected", true)
+      .in("channel_types.type", ["INSTAGRAM", "FACEBOOK"]);
 
-    totalImpressions = estimatedBaseImpressions;
-    totalReach = estimatedBaseReach;
-    profileViews = Math.round(totalReach * 0.08);
-    const isLiveReach = false; // Will be true when Meta Graph API permissions granted
+    const { decrypt } = await import("@/lib/encryption");
 
-    // Meta Ads calculations
+    if (channelTokens && channelTokens.length > 0) {
+      for (const ch of channelTokens) {
+        const chType = (ch.channel_types as any)?.type;
+        if (!ch.access_token) continue;
+        let token: string | null = null;
+        try { token = decrypt(ch.access_token); } catch { token = ch.access_token; }
+        if (!token) continue;
+
+        try {
+          if (chType === "INSTAGRAM" && ch.provider_account_id) {
+            // Instagram Business Insights — last 30 days
+            const since = Math.floor((Date.now() - 30 * 86400 * 1000) / 1000);
+            const until = Math.floor(Date.now() / 1000);
+            const igUrl = `https://graph.facebook.com/v22.0/${ch.provider_account_id}/insights?metric=impressions,reach,profile_views&period=day&since=${since}&until=${until}&access_token=${token}`;
+            const igRes = await fetch(igUrl, { signal: AbortSignal.timeout(6000) });
+            if (igRes.ok) {
+              const igJson = await igRes.json();
+              const igData: any[] = igJson.data || [];
+              for (const metric of igData) {
+                const total = (metric.values || []).reduce((s: number, v: any) => s + (Number(v.value) || 0), 0);
+                if (metric.name === "impressions") igImpressionsLive += total;
+                if (metric.name === "reach") totalReach += total;
+                if (metric.name === "profile_views") profileViews += total;
+              }
+              totalImpressions += igImpressionsLive;
+              if (igImpressionsLive > 0) isLiveReach = true;
+            }
+          } else if (chType === "FACEBOOK" && ch.provider_account_id) {
+            // Facebook Page Insights — last 30 days
+            const fbUrl = `https://graph.facebook.com/v22.0/${ch.provider_account_id}/insights?metric=page_impressions,page_reach&period=day&access_token=${token}`;
+            const fbRes = await fetch(fbUrl, { signal: AbortSignal.timeout(6000) });
+            if (fbRes.ok) {
+              const fbJson = await fbRes.json();
+              const fbData: any[] = fbJson.data || [];
+              for (const metric of fbData) {
+                const total = (metric.values || []).reduce((s: number, v: any) => s + (Number(v.value) || 0), 0);
+                if (metric.name === "page_impressions") { fbImpressionsLive += total; totalImpressions += total; }
+                if (metric.name === "page_reach") totalReach += total;
+              }
+              if (fbImpressionsLive > 0) isLiveReach = true;
+            }
+          }
+        } catch (insightErr) {
+          // Silently fall back — permissions may not be granted yet
+        }
+      }
+    }
+
+    // Fall back to activity-based estimate if no live data obtained
+    if (!isLiveReach) {
+      const estimatedBaseImpressions = (publishedPosts * 450) + (comments.length * 85);
+      const estimatedBaseReach = Math.round(estimatedBaseImpressions * 0.72);
+      totalImpressions = estimatedBaseImpressions;
+      totalReach = estimatedBaseReach;
+      profileViews = Math.round(totalReach * 0.08);
+    }
+
+    // ── Meta Ads Metrics ─────────────────────────────────────────────────────
     const activeCampaigns = metaCampaigns.filter((c: any) => c.status === "ACTIVE" || c.status === "active").length;
     const totalDailyBudget = metaCampaigns.reduce((sum: number, c: any) => sum + (Number(c.daily_budget) || 0), 0);
     const estMonthlySpend = totalDailyBudget * 30;
     const calculatedRoas = wonRevenue > 0 && estMonthlySpend > 0
       ? (wonRevenue / estMonthlySpend).toFixed(1) + "x"
-      : metaCampaigns.length > 0 ? "3.8x" : "—";
+      : "—";
+
+    const engagementRate = isLiveReach && totalReach > 0
+      ? `${((comments.length / Math.max(totalReach, 1)) * 100).toFixed(2)}%`
+      : totalReach > 0
+      ? `${((comments.length / Math.max(totalReach, 1)) * 100).toFixed(1)}%`
+      : "—";
 
     const socialReach = {
-      totalImpressions: Math.max(totalImpressions, 120),
-      totalReach: Math.max(totalReach, 85),
-      profileViews: Math.max(profileViews, 15),
-      engagementRate: totalReach > 0 ? `${((comments.length / Math.max(totalReach, 1)) * 100).toFixed(1)}%` : "4.2%",
-      isEstimated: true, // Set to false once real Meta Graph API permissions are granted
+      totalImpressions: Math.max(totalImpressions, 0),
+      totalReach: Math.max(totalReach, 0),
+      profileViews: Math.max(profileViews, 0),
+      engagementRate,
+      isEstimated: !isLiveReach,
+      isLiveData: isLiveReach,
       platforms: {
-        instagram: { impressions: Math.round(totalImpressions * 0.65), reach: Math.round(totalReach * 0.65) },
-        facebook: { impressions: Math.round(totalImpressions * 0.35), reach: Math.round(totalReach * 0.35) },
+        instagram: { impressions: igImpressionsLive || Math.round(totalImpressions * 0.65), reach: Math.round(totalReach * 0.65) },
+        facebook: { impressions: fbImpressionsLive || Math.round(totalImpressions * 0.35), reach: Math.round(totalReach * 0.35) },
       },
     };
+
+    // Sandbox detection for Meta Ads
+    const isAdSandbox = !process.env.META_AD_ACCOUNT_ID || process.env.META_AD_ACCOUNT_ID.trim() === "";
 
     const adMetrics = {
       totalCampaigns: metaCampaigns.length,
@@ -97,10 +168,11 @@ export async function GET(req: NextRequest) {
       dailyBudget: totalDailyBudget,
       estMonthlySpend,
       roas: calculatedRoas,
-      // These are industry benchmark estimates shown when real Meta Ads telemetry is not yet synced
-      avgCpc: totalDailyBudget > 0 ? "Live" : "₹14.20 (Industry Avg)",
-      avgCtr: totalDailyBudget > 0 ? "Syncing" : "2.8% (Industry Avg)",
-      isLiveData: totalDailyBudget > 0 && activeCampaigns > 0,
+      // Only show live CPC/CTR if we have real active campaigns hitting Meta Insights
+      avgCpc: null,
+      avgCtr: null,
+      isLiveData: !isAdSandbox && totalDailyBudget > 0 && activeCampaigns > 0,
+      isSandbox: isAdSandbox,
     };
 
     // Authentic Multi-Agent Conversion Funnel (Zero fake multipliers)
