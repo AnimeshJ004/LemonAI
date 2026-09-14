@@ -36,9 +36,9 @@ export async function POST(req: NextRequest) {
         const toCreate = channelTypes.map((ct) => ({
           user_id: targetUserId,
           channel_type_id: ct.id,
-          handle: "@user",
-          is_connected: true,
-          is_active: true,
+          handle: null,
+          is_connected: false,
+          is_active: false,
         }));
 
         const { data: created } = await admin.database
@@ -61,8 +61,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Default to the first channel if available
-    const targetChannels = userChannels && userChannels.length > 0 ? userChannels : [];
+    // Prioritize genuinely connected channels
+    const connectedChannels = (userChannels || []).filter(
+      (c: any) => c.is_connected && c.access_token
+    );
+    const targetChannels =
+      connectedChannels.length > 0
+        ? connectedChannels
+        : userChannels && userChannels.length > 0
+        ? userChannels
+        : [];
 
     let scheduledCount = 0;
     const insertedIds: string[] = [];

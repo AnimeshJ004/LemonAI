@@ -136,13 +136,12 @@ export async function POST(req: NextRequest) {
         .order("created_at", { ascending: true });
 
       if (channelTypes && channelTypes.length > 0) {
-        const cleanHandle = `@${businessName.toLowerCase().replace(/[^a-z0-9]/g, "") || "brand"}`;
         const toCreate = channelTypes.slice(0, 3).map((ct) => ({
           user_id: userId,
           channel_type_id: ct.id,
-          handle: cleanHandle,
-          is_connected: true,
-          is_active: true,
+          handle: null,
+          is_connected: false,
+          is_active: false,
         }));
         const { data: seededChannels } = await insforge.database
           .from("user_channels")
