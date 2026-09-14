@@ -3,9 +3,14 @@ import { auth } from "@clerk/nextjs/server";
 import { researchMarketTrends } from "@/lib/trend-researcher";
 import { routeAICall } from "@/lib/ai-router";
 import { getBrandProfileForUser, getBrandBrainSummary, cleanTag } from "@/lib/brand-helper";
-import { addDays } from "date-fns";
 
 export const maxDuration = 90;
+
+function addDays(date: Date, days: number): Date {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
 
 export async function POST(req: NextRequest) {
   try {

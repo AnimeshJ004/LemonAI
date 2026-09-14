@@ -29,6 +29,7 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
       "pages_read_engagement",
       "pages_manage_posts",
       "pages_read_user_content",      // Required: read Page published posts and user comments
+      "business_management",          // Required: access Pages & assets within Meta Business Suite / Portfolios
     ],
   },
   [ChannelTypeEnum.INSTAGRAM]: {
@@ -43,6 +44,7 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
       "pages_show_list",
       "pages_read_engagement",
       "pages_manage_posts",
+      "business_management",          // Required: access Pages & Instagram accounts within Meta Business Portfolios
     ],
   },
   [ChannelTypeEnum.YOUTUBE]: {
@@ -243,11 +245,10 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
         params.append('code_challenge_method', codeChallengeMethod);
       }
 
-      // Meta OAuth: force re-request and enable profile/page selector so user is prompted to select/grant their Facebook Pages
+      // Meta OAuth: force re-request so user is prompted to select/grant their Facebook Pages and Instagram accounts
       if (isMeta) {
         params.append('auth_type', 'rerequest');
         params.append('return_scopes', 'true');
-        params.append('enable_profile_selector', 'true');
       }
 
       // YouTube requires offline access to issue a refresh token
@@ -451,15 +452,49 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
                 }
               }
             }
+          } else {
+            // Basic accounts fallback if complex fields failed
+            const fallbackRes = await fetch(
+              `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token&limit=100&access_token=${encodeURIComponent(accessToken)}`
+            );
+            if (fallbackRes.ok) {
+              const fbData = await fallbackRes.json();
+              const fbPages = fbData?.data || [];
+              for (const p of fbPages) {
+                if (p.id) allPagesFound.push({ id: p.id, name: p.name || "Untitled Page" });
+                if (p.id && p.access_token) {
+                  try {
+                    const pDetail = await fetch(
+                      `https://graph.facebook.com/v22.0/${p.id}?fields=id,name,instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(p.access_token)}`
+                    );
+                    if (pDetail.ok) {
+                      const d = await pDetail.json();
+                      const resolvedIg = d?.instagram_business_account || d?.connected_instagram_account;
+                      if (resolvedIg?.id) {
+                        const igHandle = resolvedIg.username || resolvedIg.name;
+                        registerAccount({
+                          providerAccountId: resolvedIg.id,
+                          handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : `@page_${p.id}`,
+                          profileImage: resolvedIg.profile_picture_url || null,
+                          pageAccessToken: p.access_token,
+                          pageName: p.name || d.name || "Facebook Page",
+                          pageId: p.id,
+                        });
+                      }
+                    }
+                  } catch {}
+                }
+              }
+            }
           }
         } catch (igErr: any) {
           console.warn("[Instagram OAuth] Notice checking me/accounts:", igErr);
         }
 
-        // Method 2: Inspect Meta Business Portfolios (business.facebook.com) owned & client pages
+        // Method 2: Inspect Meta Business Portfolios (business.facebook.com) owned, client pages, and instagram_accounts
         try {
           const bizRes = await fetch(
-            `https://graph.facebook.com/v22.0/me/businesses?fields=id,name,owned_pages{id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}},client_pages{id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}}&limit=25&access_token=${encodeURIComponent(accessToken)}`,
+            `https://graph.facebook.com/v22.0/me/businesses?fields=id,name,owned_pages{id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}},client_pages{id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}},instagram_accounts{id,username,name,profile_picture_url}&limit=50&access_token=${encodeURIComponent(accessToken)}`,
             {
               headers: {
                 Authorization: `Bearer ${accessToken}`,
@@ -471,6 +506,23 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
             const bizData = await bizRes.json();
             const businesses = bizData?.data || [];
             for (const b of businesses) {
+              // Direct business-owned Instagram accounts
+              const bIgs = b.instagram_accounts?.data || [];
+              for (const ig of bIgs) {
+                if (ig?.id) {
+                  const igHandle = ig.username || ig.name;
+                  registerAccount({
+                    providerAccountId: ig.id,
+                    handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : `@user_${ig.id}`,
+                    profileImage: ig.profile_picture_url || null,
+                    pageAccessToken: accessToken,
+                    pageName: `Business Account (${b.name})`,
+                    pageId: b.id,
+                  });
+                }
+              }
+
+              // Pages within the business portfolio
               const bPages = [...(b.owned_pages?.data || []), ...(b.client_pages?.data || [])];
               for (const bp of bPages) {
                 if (bp.id) allPagesFound.push({ id: bp.id, name: bp.name || `Business Page (${b.name})` });
@@ -493,48 +545,73 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
           console.warn("[Instagram OAuth] Notice checking me/businesses:", bizErr);
         }
 
-        // Method 3: Direct query on /me for instagram_business_account or nested accounts
+        // Method 3: Direct query on /me (handles Page Token or User Token with connected IG)
         try {
           const meRes = await fetch(
-            `https://graph.facebook.com/v22.0/me?fields=id,name,username,profile_picture_url,instagram_business_account{id,username,name,profile_picture_url},accounts{id,name,access_token,instagram_business_account{id,username,name,profile_picture_url}}&access_token=${encodeURIComponent(accessToken)}`,
+            `https://graph.facebook.com/v22.0/me?fields=id,name,picture{url},instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`,
             {
               headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" }
             }
           );
           if (meRes.ok) {
             const meData = await meRes.json();
-            if (meData?.instagram_business_account?.id) {
-              const ig = meData.instagram_business_account;
-              const igHandle = ig.username || ig.name;
+            const resolvedIg = meData?.instagram_business_account || meData?.connected_instagram_account;
+            if (resolvedIg?.id) {
+              const igHandle = resolvedIg.username || resolvedIg.name;
               registerAccount({
-                providerAccountId: ig.id,
-                handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : `@user_${ig.id}`,
-                profileImage: ig.profile_picture_url || null,
+                providerAccountId: resolvedIg.id,
+                handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : `@user_${resolvedIg.id}`,
+                profileImage: resolvedIg.profile_picture_url || null,
                 pageAccessToken: accessToken,
-                pageName: meData.name || "Personal Meta Profile",
+                pageName: meData.name || "Meta Profile / Page",
                 pageId: meData.id,
               });
-            }
-            const nestedAccounts = meData?.accounts?.data || [];
-            for (const na of nestedAccounts) {
-              if (na.id) allPagesFound.push({ id: na.id, name: na.name || "Nested Page" });
-              if (na.instagram_business_account?.id) {
-                const ig = na.instagram_business_account;
-                const igHandle = ig.username || ig.name;
-                registerAccount({
-                  providerAccountId: ig.id,
-                  handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : `@page_${na.id}`,
-                  profileImage: ig.profile_picture_url || null,
-                  pageAccessToken: na.access_token || accessToken,
-                  pageName: na.name || "Facebook Page",
-                  pageId: na.id,
-                });
-              }
             }
           }
         } catch {}
 
-        // Method 4: Direct Instagram Graph API query (for direct Instagram Login)
+        // Method 4: Inspect debug_token for System Users or granular granted targets
+        try {
+          const debugUrl = config.clientId && config.clientSecret
+            ? `https://graph.facebook.com/v22.0/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(config.clientId)}|${encodeURIComponent(config.clientSecret)}`
+            : `https://graph.facebook.com/v22.0/debug_token?input_token=${encodeURIComponent(accessToken)}&access_token=${encodeURIComponent(accessToken)}`;
+          const debugRes = await fetch(debugUrl);
+          if (debugRes.ok) {
+            const debugData = await debugRes.json();
+            const granular = debugData?.data?.granular_scopes || [];
+            const targetIds = new Set<string>();
+            for (const g of granular) {
+              if (Array.isArray(g.target_ids)) {
+                for (const tid of g.target_ids) if (tid) targetIds.add(String(tid));
+              }
+            }
+
+            for (const tid of targetIds) {
+              try {
+                const targetRes = await fetch(
+                  `https://graph.facebook.com/v22.0/${tid}?fields=id,username,name,profile_picture_url,instagram_business_account{id,username,name,profile_picture_url},connected_instagram_account{id,username,name,profile_picture_url}&access_token=${encodeURIComponent(accessToken)}`
+                );
+                if (targetRes.ok) {
+                  const tData = await targetRes.json();
+                  const targetIg = tData?.instagram_business_account || tData?.connected_instagram_account || (tData?.username ? tData : null);
+                  if (targetIg?.id) {
+                    const igHandle = targetIg.username || targetIg.name;
+                    registerAccount({
+                      providerAccountId: targetIg.id,
+                      handle: igHandle ? `@${igHandle.replace(/^@/, '')}` : `@user_${targetIg.id}`,
+                      profileImage: targetIg.profile_picture_url || null,
+                      pageAccessToken: accessToken,
+                      pageName: tData.name || "Meta Business Asset",
+                      pageId: tid,
+                    });
+                  }
+                }
+              } catch {}
+            }
+          }
+        } catch {}
+
+        // Method 5: Direct Instagram Graph API query (for direct Instagram Login)
         try {
           const igBasicRes = await fetch(
             `https://graph.instagram.com/me?fields=id,username,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`
@@ -554,6 +631,29 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
           }
         } catch {}
 
+        // Method 6: Try querying known IG account ID if configured in environment
+        const envIgId = getEnvClean("INSTAGRAM_ACCOUNT_ID") || getEnvClean("META_INSTAGRAM_ACCOUNT_ID");
+        if (discoveredAccounts.length === 0 && envIgId) {
+          try {
+            const envIgRes = await fetch(
+              `https://graph.facebook.com/v22.0/${envIgId}?fields=id,username,name,profile_picture_url&access_token=${encodeURIComponent(accessToken)}`
+            );
+            if (envIgRes.ok) {
+              const envIgData = await envIgRes.json();
+              if (envIgData?.id) {
+                registerAccount({
+                  providerAccountId: envIgData.id,
+                  handle: envIgData.username ? `@${envIgData.username.replace(/^@/, '')}` : `@user_${envIgData.id}`,
+                  profileImage: envIgData.profile_picture_url || null,
+                  pageAccessToken: accessToken,
+                  pageName: "Configured Instagram Account",
+                  pageId: envIgData.id,
+                });
+              }
+            }
+          } catch {}
+        }
+
         // If at least one valid account was discovered
         if (discoveredAccounts.length > 0) {
           const primary = discoveredAccounts[0];
@@ -569,10 +669,10 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
         // Diagnostics for clear user troubleshooting
         let igErrorDetails = "";
         if (allPagesFound.length === 0) {
-          igErrorDetails = "No Facebook Pages were returned by Meta. Please ensure: 1) In the Meta authorization popup, you checked your Facebook Page under permissions, 2) Your personal Facebook account has Full Control / Admin access to the Page, and 3) If your app is in Development Mode in the Meta Developer portal, you are logged in as an App Admin or Tester.";
+          igErrorDetails = "No Facebook Pages were returned by Meta. Please ensure: 1) In the Meta authorization popup, click 'Edit Settings' / 'Review permissions' and ensure your Facebook Page and Instagram Account are both checked, 2) In Meta Business Suite (business.facebook.com) -> Settings -> Linked Accounts, your Instagram Professional account is connected to your Page, or 3) You can connect immediately using the 'Manual Token' tab in Settings by entering your Access Token and Instagram Account ID.";
         } else {
           const uniqueNames = Array.from(new Set(allPagesFound.map(p => p.name)));
-          igErrorDetails = `Found ${uniqueNames.length} Facebook Page(s) ("${uniqueNames.join('", "')}"), but none have a connected Instagram Professional account. Please open Meta Business Suite (business.facebook.com) -> Page Settings -> Linked Accounts -> Instagram and link your Instagram Professional account to your Page.`;
+          igErrorDetails = `Found ${uniqueNames.length} Facebook Page(s) ("${uniqueNames.join('", "')}"), but none have a connected Instagram Professional account. Please open Meta Business Suite (business.facebook.com) -> Settings -> Linked Accounts -> Instagram and link your Instagram Professional account to your Page. Or connect via the 'Manual Token' tab with your token & Instagram Account ID.`;
         }
 
         throw new Error(

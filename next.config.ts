@@ -2,15 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  experimental: {
-    optimizePackageImports: [
-      "lucide-react",
-      "@hugeicons/react",
-      "@hugeicons/core-free-icons",
-      "date-fns",
-      "@tanstack/react-query",
-    ],
-  },
+  // experimental: {
+  //   optimizePackageImports: [
+  //     "lucide-react",
+  //     "@hugeicons/react",
+  //     "@hugeicons/core-free-icons",
+  //   ],
+  // },
   images: {
     remotePatterns: [
       {
