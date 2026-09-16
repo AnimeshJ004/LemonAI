@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { getInsforgeServerClient, getInsforgeAdminClient } from "@/lib/insforge-server";
 import { getBrandProfileForUser } from "@/lib/brand-helper";
 import { generateAdCreativeImage } from "@/lib/ai-image-generator";
+import { callResilientCompletion } from "@/lib/ai-gateway";
 
 export interface AutoGenerateCampaignsRequest {
   campaignsCount?: number; // default: 3
@@ -92,25 +93,21 @@ Return ONLY a valid JSON array matching this schema without markdown or extra ex
 
     let generatedList: any[] = [];
     try {
-      const completion = await insforge.ai.chat.completions.create({
-        model: "google/gemini-3.8-flash",
+      const completion = await callResilientCompletion<any[]>({
+        jsonMode: true,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Generate the ${campaignsCount} Meta Ad campaigns for ${businessName}.` },
         ],
-      }).catch(() => {
-        return insforge.ai.chat.completions.create({
-          model: "google/gemini-3.7-flash",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: `Generate the ${campaignsCount} Meta Ad campaigns for ${businessName}.` },
-          ],
-        });
       });
 
-      const raw = completion.choices[0]?.message?.content ?? "";
-      const clean = raw.replace(/```(?:json)?\s*|\s*```/g, "").trim();
-      generatedList = JSON.parse(clean);
+      if (Array.isArray(completion.data)) {
+        generatedList = completion.data;
+      } else {
+        const raw = completion.content || "";
+        const clean = raw.replace(/```(?:json)?\s*|\s*```/g, "").trim();
+        generatedList = JSON.parse(clean);
+      }
     } catch (aiErr) {
       console.warn("[Meta Ads Auto-Gen] AI parse fallback:", aiErr);
       // Fallback sensible default templates

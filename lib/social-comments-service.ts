@@ -295,12 +295,10 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
 
   // ─── 2. In-Memory Idempotency Lock ──────────────────────────────────────────
   if (inFlightCommentIds.has(commentId)) {
-    console.log(`[Social Comment Service] Comment ${commentId} is already in-flight. Skipping duplicate.`);
     return { success: true, skipped: true, reason: "already_in_flight" };
   }
 
   if (recentRepliedCommentIds.has(commentId)) {
-    console.log(`[Social Comment Service] Comment ${commentId} was recently replied (memory cache). Skipping duplicate.`);
     return { success: true, skipped: true, reason: "recently_replied_cache" };
   }
 
@@ -319,7 +317,6 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
     });
 
     if (alreadyRepliedOnInstagram) {
-      console.log(`[Social Comment Service] Comment ${commentId} already answered on Instagram/Facebook. Recording to DB.`);
       recentRepliedCommentIds.set(commentId, Date.now());
 
       // If inquiry or buyer intent detected, ensure the CRM lead is recorded
@@ -385,7 +382,6 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
           sentiment: "INQUIRY",
         });
       }
-      console.log(`[Social Comment Service] Comment ${commentId} already in DB with status '${existing[0].status}'. Skipping duplicate reply.`);
       return { success: true, skipped: true, reason: "already_in_db" };
     }
   } catch (checkErr) {
@@ -430,7 +426,6 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
 
     if (claimError) {
       // If UNIQUE constraint violated, another thread or worker already claimed this comment
-      console.log(`[Social Comment Service] Comment ${commentId} pre-claim conflict (already claimed):`, claimError.message);
       inFlightCommentIds.delete(commentId);
       recentRepliedCommentIds.set(commentId, Date.now());
       return { success: true, skipped: true, reason: "concurrency_preclaim_conflict" };
@@ -615,15 +610,6 @@ shouldSendDM must be a boolean. intentType must be one of: booking | pricing | g
     //   - Returns a structured result with the Meta error code so we can
     //     distinguish permission failures (code 200 — Dev Mode / non-tester)
     //     from bugs.
-    console.log("[Social Comment Service] DM dispatch diagnostic:", {
-      shouldSendDM: aiResult.shouldSendDM,
-      hasDmMessage: Boolean(aiResult.dmMessage),
-      commentId,
-      commenterId: commenterId || "(missing — Private Reply will be used)",
-      igAccountId: igAccountId || "(empty)",
-      intentType: aiResult.intentType,
-      platform,
-    });
 
     let dmSuccess = false;
     let dmResult: Awaited<ReturnType<typeof sendPrivateDM>> | null = null;

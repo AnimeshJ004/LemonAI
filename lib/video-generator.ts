@@ -14,6 +14,7 @@ import fs from "fs";
 import os from "os";
 // NOTE: getInsforgeAdminClient imported dynamically in functions to avoid Next.js edge runtime issues
 import type { InsForgeClient } from "@insforge/sdk";
+import { callResilientCompletion } from "@/lib/ai-gateway";
 
 export type ReelStyle = "product_promo" | "awareness" | "testimonial" | "story";
 export type ReelAspect = "9:16" | "1:1" | "16:9";
@@ -81,29 +82,16 @@ Write a high-converting viral reel script.`;
 
   let rawText = "";
   try {
-    const result = await insforgeClient.ai.chat.completions.create({
-      model: "google/gemini-3.8-flash",
+    const completion = await callResilientCompletion({
+      temperature: 0.8,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0.8,
     });
-    rawText = result.choices[0]?.message?.content ?? "";
+    rawText = completion.content || "";
   } catch {
-    try {
-      const result2 = await insforgeClient.ai.chat.completions.create({
-        model: "google/gemini-3.7-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.8,
-      });
-      rawText = result2.choices[0]?.message?.content ?? "";
-    } catch {
-      rawText = "";
-    }
+    rawText = "";
   }
 
   // Clean markdown fences and parse JSON

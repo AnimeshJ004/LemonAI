@@ -1,17 +1,39 @@
 /**
- * Groq AI Client & Fallback Engine
- * Provides ultra-fast inference using Llama 3.3 70B & Llama 3.1 8B via Groq Cloud API.
- * Acts as primary or resilient fallback when InsForge AI limits/quotas are exceeded.
+ * Groq AI Client — Primary content-generation engine.
+ *
+ * Uses ONLY Groq's Meta Llama PRODUCTION (GA) models. OpenAI GPT-OSS,
+ * Qwen, DeepSeek and preview/experimental models are intentionally omitted
+ * so we stay on the most permanent, well-supported Groq offerings.
+ *
+ * Ordered from highest capability → fastest/cheapest so the default caller
+ * (no explicit `model`) picks the strongest available option first, with
+ * automatic cascade if that specific model rate-limits or errors.
  */
 
 export const GROQ_MODELS = [
-  "openai/gpt-oss-120b",
-  "openai/gpt-oss-20b",
-  "qwen/qwen3.8-27b",
-  "groq/compound-mini",
-  "qwen/qwen3.6-27b",
-  "groq/compound",
+  // High-capability / reasoning tier (permanent Llama GA)
+  "llama-3.3-70b-versatile",   // Meta Llama 3.3 70B — Groq Production
+
+  // Fast / low-cost tier (permanent Llama GA)
+  "llama-3.1-8b-instant",      // Meta Llama 3.1 8B — Groq Production
 ];
+
+/**
+ * Named model constants — use these in tier-aware routing instead of raw strings
+ * so the whole codebase updates from one place if Groq changes their IDs.
+ *
+ * NOTE: In-tier fallback is limited because Groq currently ships only one
+ * production Llama at each size. If the primary model 429s, we cross-tier
+ * cascade (large → small) rather than fail the whole request.
+ */
+export const GROQ_FAST_MODELS = [
+  "llama-3.1-8b-instant",
+] as const;
+
+export const GROQ_THINKING_MODELS = [
+  "llama-3.3-70b-versatile",
+  "llama-3.1-8b-instant", // cross-tier last-resort so thinking calls always get an answer
+] as const;
 
 export interface GroqMessage {
   role: "system" | "user" | "assistant";
