@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
       .from("user_channels")
       .select("id, provider_account_id, handle, access_token, channel_types!inner(type)")
       .eq("user_id", userId)
-      .in("channel_types.type", ["INSTAGRAM", "FACEBOOK"])
+      .in("channel_types.type", ["INSTAGRAM", "FACEBOOK", "THREADS"])
       .eq("is_connected", true)
       .order("updated_at", { ascending: false })
       .limit(3);
@@ -171,6 +171,45 @@ export async function POST(req: NextRequest) {
           }
         } catch (e: any) {
           console.warn("[Sync Now] Strategy 4 network error:", e?.message);
+        }
+      }
+
+      // Strategy 5: Threads posts + replies (graph.threads.net)
+      if (posts.length === 0 && channelType === "THREADS" && accountId) {
+        try {
+          const threadsRes = await fetch(
+            `https://graph.threads.net/v1.0/${accountId}/threads?fields=id,text,timestamp&limit=5&access_token=${encodeURIComponent(accessToken)}`
+          );
+          if (threadsRes.ok) {
+            const threadsData = await threadsRes.json();
+            for (const post of threadsData?.data || []) {
+              const repliesRes = await fetch(
+                `https://graph.threads.net/v1.0/${post.id}/replies?fields=id,text,username,timestamp&access_token=${encodeURIComponent(accessToken)}`
+              );
+              if (repliesRes.ok) {
+                const repliesData = await repliesRes.json();
+                posts.push({
+                  id: post.id,
+                  caption: post.text,
+                  comments: {
+                    data: (repliesData?.data || []).map((r: any) => ({
+                      id: r.id,
+                      text: r.text,
+                      from: { username: r.username, id: r.id },
+                      timestamp: r.timestamp,
+                      comments: { data: [] },
+                    })),
+                  },
+                });
+              }
+            }
+          } else {
+            const errData = await threadsRes.json().catch(() => ({}));
+            console.warn("[Sync Now] Strategy 5 Threads failed:", errData?.error?.message || threadsRes.status);
+            errors.push(`Threads: ${errData?.error?.message || `HTTP ${threadsRes.status}`}`);
+          }
+        } catch (e: any) {
+          console.warn("[Sync Now] Strategy 5 Threads network error:", e?.message);
         }
       }
 

@@ -142,6 +142,9 @@ export async function GET(request: NextRequest) {
                 refreshToken: token.refreshToken,
                 expiresAt: token.expiresAt,
                 accounts: profile.availableAccounts,
+                // Store user token so select-account can save the correct token type
+                // (Instagram comment replies require user token, not page token)
+                userAccessToken: token.accessToken,
             });
             const encryptedPending = encrypt(pendingPayload);
             const redirectUrl = buildRedirectUrl(appUrl, redirectTo, {
@@ -165,7 +168,14 @@ export async function GET(request: NextRequest) {
             provider_account_id: profile.providerAccountId ?? null,
             handle: profile.handle ?? null,
             profile_image: profile.profileImage ?? null,
-            access_token: encrypt((profile as any).pageAccessToken || token.accessToken),
+            // Instagram comment replies require the Instagram User Token (instagram_manage_comments scope).
+            // Facebook page posting + messaging requires the Page Access Token.
+            // Store the appropriate token per channel type.
+            access_token: encrypt(
+                state.channelType === ChannelTypeEnum.INSTAGRAM
+                    ? token.accessToken              // ← Instagram user token
+                    : ((profile as any).pageAccessToken || token.accessToken) // ← FB Page token
+            ),
             refresh_token: encrypt(token.refreshToken ?? null),
             token_expires_at: token.expiresAt ?? null,
             is_connected: true,

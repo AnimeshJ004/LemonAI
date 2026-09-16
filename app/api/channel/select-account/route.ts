@@ -53,7 +53,10 @@ export async function POST(request: NextRequest) {
       provider_account_id: targetAccount.providerAccountId,
       handle: targetAccount.handle ?? null,
       profile_image: targetAccount.profileImage ?? null,
-      access_token: encrypt(targetAccount.pageAccessToken),
+      // Instagram comment replies need the user token (instagram_manage_comments scope).
+      // pageAccessToken is the Facebook Page token (needed for DM sending, stored on the FB channel row).
+      // We use userAccessToken stored in the pending cookie from the OAuth flow.
+      access_token: encrypt(parsed.userAccessToken || targetAccount.pageAccessToken),
       refresh_token: encrypt(parsed.refreshToken ?? null),
       token_expires_at: parsed.expiresAt ?? null,
       is_connected: true,

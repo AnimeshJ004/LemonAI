@@ -149,7 +149,8 @@ export async function captureLeadFromComment(params: CaptureLeadParams): Promise
   if (!userId || !commenterHandle) return null;
   const admin = getInsforgeAdminClient();
   const cleanHandle = commenterHandle.replace(/^@/, "").trim();
-  const normalizedPlatform = String(platform || "").toUpperCase() === "FACEBOOK" ? "facebook" : "instagram";
+  const upper = String(platform || "").toUpperCase();
+  const normalizedPlatform = upper === "FACEBOOK" ? "facebook" : upper === "THREADS" ? "threads" : "instagram";
 
   try {
     let leadId: string | null = null;
@@ -547,24 +548,36 @@ shouldSendDM must be a boolean. intentType must be one of: booking | pricing | g
       }
     }
 
-    // ─── 7. Post Public Reply via Meta Graph API ──────────────────────────────
+    // ─── 7. Post Public Reply via Platform API ────────────────────────────────
+    const isThreads = String(platform || "").toUpperCase() === "THREADS";
     const isFacebook = String(platform || "").toUpperCase() === "FACEBOOK";
-    // Facebook Page comments use /{comment_id}/comments, Instagram uses /{comment_id}/replies
-    const replyEndpoint = isFacebook
-      ? `https://graph.facebook.com/v22.0/${commentId}/comments`
-      : `https://graph.facebook.com/v22.0/${commentId}/replies`;
+
+    // Each platform uses a different Graph API host + endpoint:
+    //   Threads  → https://graph.threads.net/v1.0/{comment-id}/replies  (POST with text + access_token)
+    //   Facebook → https://graph.facebook.com/v22.0/{comment-id}/comments (Page token)
+    //   Instagram → https://graph.facebook.com/v22.0/{comment-id}/replies (User token)
+    let replyEndpoint: string;
+    if (isThreads) {
+      replyEndpoint = `https://graph.threads.net/v1.0/${commentId}/replies`;
+    } else if (isFacebook) {
+      replyEndpoint = `https://graph.facebook.com/v22.0/${commentId}/comments`;
+    } else {
+      replyEndpoint = `https://graph.facebook.com/v22.0/${commentId}/replies`;
+    }
 
     let replySuccess = false;
     let replyId: string | undefined = undefined;
 
     try {
+      // Threads uses "text" field; Meta (Instagram/Facebook) uses "message" field
+      const replyBody = isThreads
+        ? { text: aiResult.reply, access_token: accessToken }
+        : { message: aiResult.reply, access_token: accessToken };
+
       const replyRes = await fetch(replyEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: aiResult.reply,
-          access_token: accessToken,
-        }),
+        body: JSON.stringify(replyBody),
       });
 
       const replyJson = await replyRes.json().catch(() => ({}));
@@ -573,7 +586,8 @@ shouldSendDM must be a boolean. intentType must be one of: booking | pricing | g
         replyId = replyJson.id;
         ourPostedReplyIds.add(replyJson.id);
         recentRepliedCommentIds.set(commentId, Date.now());
-        console.log(`[Social Comment Service] ✓ Auto-reply posted to comment ${commentId} (${isFacebook ? "Facebook" : "Instagram"}), reply ID: ${replyJson.id}`);
+        const platformLabel = isThreads ? "Threads" : isFacebook ? "Facebook" : "Instagram";
+        console.log(`[Social Comment Service] ✓ Auto-reply posted to comment ${commentId} (${platformLabel}), reply ID: ${replyJson.id}`);
       } else {
         const errMsg = replyJson?.error?.message || JSON.stringify(replyJson);
         console.error(`[Social Comment Service] Meta Graph API returned error for comment ${commentId}:`, errMsg);
@@ -712,9 +726,10 @@ shouldSendDM must be a boolean. intentType must be one of: booking | pricing | g
     }
 
     // ─── 8b. Patch public reply text to reflect actual DM outcome ────────────
+    // Only relevant for Instagram/Facebook — Threads has no DM API.
     // Only promise a DM in the public comment if the DM was actually delivered.
     // If DM failed, strip any DM-promise language so we don't mislead the commenter.
-    if (aiResult.shouldSendDM) {
+    if (!isThreads && aiResult.shouldSendDM) {
       const replyLower = aiResult.reply.toLowerCase();
       const mentionsDM = replyLower.includes("dm") || replyLower.includes("direct message") || replyLower.includes("inbox");
       if (dmSuccess && !mentionsDM) {
@@ -798,11 +813,11 @@ export async function pollConnectedChannelsComments(maxChannels = 10): Promise<{
   let totalPosts = 0;
 
   try {
-    // 1. Fetch connected Instagram and Facebook channels
+    // 1. Fetch connected Instagram, Facebook, and Threads channels
     const { data: channels, error: chanErr } = await admin.database
       .from("user_channels")
       .select("id, user_id, provider_account_id, handle, access_token, channel_types!inner(type)")
-      .in("channel_types.type", ["INSTAGRAM", "FACEBOOK"])
+      .in("channel_types.type", ["INSTAGRAM", "FACEBOOK", "THREADS"])
       .eq("is_connected", true)
       .not("access_token", "is", null)
       .limit(maxChannels);
@@ -836,7 +851,35 @@ export async function pollConnectedChannelsComments(maxChannels = 10): Promise<{
       // Query recent media/posts (latest 5 posts for rapid scanning)
       try {
         let posts: any[] = [];
-        if (channelType === "FACEBOOK") {
+
+        if (channelType === "THREADS") {
+          // Threads Graph API: fetch recent posts then their replies
+          const threadsUrl = `https://graph.threads.net/v1.0/${accountId}/threads?fields=id,text,timestamp&limit=5&access_token=${encodeURIComponent(accessToken)}`;
+          const threadsRes = await fetch(threadsUrl);
+          if (threadsRes.ok) {
+            const threadsData = await threadsRes.json();
+            for (const post of threadsData?.data || []) {
+              const repliesUrl = `https://graph.threads.net/v1.0/${post.id}/replies?fields=id,text,username,timestamp&access_token=${encodeURIComponent(accessToken)}`;
+              const repliesRes = await fetch(repliesUrl);
+              if (repliesRes.ok) {
+                const repliesData = await repliesRes.json();
+                posts.push({
+                  id: post.id,
+                  caption: post.text,
+                  comments: {
+                    data: (repliesData?.data || []).map((r: any) => ({
+                      id: r.id,
+                      text: r.text,
+                      from: { username: r.username, id: r.id },
+                      timestamp: r.timestamp,
+                      comments: { data: [] },
+                    })),
+                  },
+                });
+              }
+            }
+          }
+        } else if (channelType === "FACEBOOK") {
           const fbUrl = `https://graph.facebook.com/v22.0/${accountId}/published_posts?fields=id,message,comments{id,message,from,created_time}&limit=5&access_token=${encodeURIComponent(accessToken)}`;
           const fbRes = await fetch(fbUrl);
           if (fbRes.ok) {
