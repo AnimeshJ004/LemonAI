@@ -29,7 +29,6 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
       "pages_read_engagement",
       "pages_manage_posts",
       "pages_read_user_content",      // Required: read Page published posts and user comments
-      "pages_manage_metadata",        // Required: subscribe Page to the messages webhook (enables Page DMs)
       "business_management",          // Required: access Pages & assets within Meta Business Suite / Portfolios
     ],
   },
@@ -41,12 +40,11 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
       "public_profile",
       "instagram_basic",
       "instagram_manage_comments",    // Required: read & reply to Instagram post comments
-      "instagram_manage_messages",    // Required: send/receive Instagram DMs
+      "instagram_manage_messages",    // Required: send/receive Instagram DMs (needs App Review for public delivery)
       "instagram_content_publish",
       "pages_show_list",
       "pages_read_engagement",
       "pages_manage_posts",
-      "pages_manage_metadata",        // Required: subscribe Page to the messages webhook that IG DMs route through
       "business_management",          // Required: access Pages & Instagram accounts within Meta Business Portfolios
     ],
   },
