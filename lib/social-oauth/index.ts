@@ -29,7 +29,7 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
       "pages_read_engagement",
       "pages_manage_posts",
       "pages_read_user_content",      // Required: read Page published posts and user comments
-      "pages_messaging",              // Required: send/receive Facebook Page DMs
+      "pages_manage_metadata",        // Required: subscribe Page to the messages webhook (enables Page DMs)
       "business_management",          // Required: access Pages & assets within Meta Business Suite / Portfolios
     ],
   },
@@ -46,7 +46,7 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
       "pages_show_list",
       "pages_read_engagement",
       "pages_manage_posts",
-      "pages_messaging",              // Required: Page-token messaging that IG DMs are routed through
+      "pages_manage_metadata",        // Required: subscribe Page to the messages webhook that IG DMs route through
       "business_management",          // Required: access Pages & Instagram accounts within Meta Business Portfolios
     ],
   },
