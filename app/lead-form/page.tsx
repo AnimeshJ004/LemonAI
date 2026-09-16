@@ -2,7 +2,20 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { CheckCircle, Calendar, Clock, Phone, Mail, User, MessageSquare, ArrowRight, Loader2, Sparkles, ChevronDown, IndianRupee, TrendingUp } from "lucide-react";
+import { CheckCircle, Calendar, Clock, Phone, Mail, User, MessageSquare, ArrowRight, Loader2, Sparkles, ChevronDown, IndianRupee, TrendingUp, Star, Package as PackageIcon } from "lucide-react";
+
+interface PricingPackage {
+  id: string;
+  name: string;
+  price_display: string;
+  price_amount: number | null;
+  currency: string;
+  billing_period: string | null;
+  features: string[];
+  cta_label: string | null;
+  is_featured: boolean;
+  display_order: number;
+}
 
 const TIME_SLOTS = [
   "10:00 AM – 10:30 AM",
@@ -34,32 +47,50 @@ function LeadFormContent() {
   const userId = params.get("user") || "";
   const source = params.get("source") || "instagram";
   const prefilledName = params.get("name") || "";
+  const prefilledService = params.get("service") || "";
 
   const [brand, setBrand] = useState<{ business_name?: string; niche?: string; main_offer?: string } | null>(null);
   const [step, setStep] = useState<"form" | "success" | "booking_after_pricing">("form");
   const [loading, setLoading] = useState(false);
-  const [brandLoading, setBrandLoading] = useState(true);
+  // Initialize brand-loading as true only when we actually intend to fetch (userId present).
+  // This avoids an in-effect `setBrandLoading(false)` shortcut that ESLint flags.
+  const [brandLoading, setBrandLoading] = useState<boolean>(Boolean(userId));
+
+  const [packages, setPackages] = useState<PricingPackage[]>([]);
 
   const [form, setForm] = useState({
     name: prefilledName.replace(/^@/, ""),
     email: "",
     phone: "",
-    service: "",
+    service: prefilledService,
     message: "",
     budgetRange: "",
     timeline: "",
     preferredDate: "",
     preferredTimeSlot: "",
+    selectedPackageId: "",
   });
 
   useEffect(() => {
-    if (!userId) { setBrandLoading(false); return; }
+    if (!userId) return;
     fetch(`/api/lead-form/brand?user=${encodeURIComponent(userId)}`)
       .then((r) => r.json())
       .then((d) => { if (d?.business_name) setBrand(d); })
       .catch(() => {})
       .finally(() => setBrandLoading(false));
   }, [userId]);
+
+  // Load pricing packages when the form is in pricing mode. Loaded once so the
+  // post-submit view can render them without an extra fetch.
+  useEffect(() => {
+    if (!userId || type !== "pricing") return;
+    fetch(`/api/lead-form/pricing?user=${encodeURIComponent(userId)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (Array.isArray(d?.packages)) setPackages(d.packages);
+      })
+      .catch(() => {});
+  }, [userId, type]);
 
   const update = (field: string, value: string) => setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -127,21 +158,106 @@ function LeadFormContent() {
           </div>
         )}
 
-        {/* PRICING → BOOK CTA */}
+        {/* PRICING → PACKAGES + BOOK CTA */}
         {step === "booking_after_pricing" && (
-          <div className="bg-white/[0.05] backdrop-blur-2xl border border-white/10 rounded-2xl sm:rounded-3xl p-6 sm:p-9 text-center shadow-2xl">
-            <div className="w-16 h-16 sm:w-20 sm:h-20 bg-purple-500/10 border border-purple-500/30 rounded-full flex items-center justify-center mx-auto mb-5">
-              <CheckCircle className="w-8 h-8 sm:w-10 sm:h-10 text-purple-400" />
+          <div className="bg-white/[0.05] backdrop-blur-2xl border border-white/10 rounded-2xl sm:rounded-3xl p-6 sm:p-8 shadow-2xl">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-purple-500/10 border border-purple-500/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <CheckCircle className="w-8 h-8 sm:w-10 sm:h-10 text-purple-400" />
+              </div>
+              <h2 className="text-xl sm:text-2xl font-extrabold text-white mb-2">Enquiry received! ✅</h2>
+              <p className="text-white/60 text-xs sm:text-sm leading-relaxed">
+                Thanks <strong className="text-white">{form.name || "there"}</strong>! Here&apos;s how{" "}
+                <strong style={{ color: accentLight }}>{brandName}</strong> can help.
+              </p>
             </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-white mb-2.5">Enquiry received! ✅</h2>
-            <p className="text-white/60 text-xs sm:text-sm leading-relaxed mb-6">
-              Our team at <strong style={{ color: accentLight }}>{brandName}</strong> will review your requirements and get back to you with a custom quote. Want to fast-track it?
-            </p>
-            <a href={`/lead-form?type=booking&user=${encodeURIComponent(userId)}&source=${encodeURIComponent(source)}&name=${encodeURIComponent(params.get("name") || "")}`}
-              className="flex items-center justify-center gap-2 w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white font-semibold text-sm shadow-lg shadow-purple-600/30 active:scale-[0.98] transition-transform">
-              <Calendar className="w-4 h-4" /> Book a Free Consultation <ArrowRight className="w-4 h-4" />
-            </a>
-            <p className="text-white/30 text-[11px] mt-3">Takes 30 seconds · No obligation</p>
+
+            {packages.length > 0 ? (
+              <>
+                <div className="mb-3 flex items-center gap-1.5">
+                  <PackageIcon className="w-3.5 h-3.5" style={{ color: accentLight }} />
+                  <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider" style={{ color: accentLight }}>
+                    Our Packages
+                  </span>
+                </div>
+                <div className="space-y-3">
+                  {packages.map((pkg) => (
+                    <div
+                      key={pkg.id}
+                      className={`relative rounded-2xl border p-4 sm:p-5 transition-colors ${
+                        pkg.is_featured
+                          ? "border-purple-400/50 bg-gradient-to-br from-purple-600/15 to-cyan-500/10"
+                          : "border-white/10 bg-white/[0.03]"
+                      }`}
+                    >
+                      {pkg.is_featured && (
+                        <div className="absolute -top-2.5 right-4 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-gradient-to-r from-purple-500 to-cyan-500 text-white shadow-lg">
+                          <Star className="w-2.5 h-2.5" fill="currentColor" /> Recommended
+                        </div>
+                      )}
+                      <div className="flex items-baseline justify-between gap-3 mb-2">
+                        <h3 className="text-base sm:text-lg font-extrabold text-white">{pkg.name}</h3>
+                        <div className="text-right">
+                          <div className="text-lg sm:text-xl font-black text-white leading-none">
+                            {pkg.price_display}
+                          </div>
+                          {pkg.billing_period && !pkg.price_display.toLowerCase().includes(pkg.billing_period.toLowerCase()) && (
+                            <div className="text-[10px] text-white/40 mt-0.5">per {pkg.billing_period}</div>
+                          )}
+                        </div>
+                      </div>
+                      {pkg.features.length > 0 && (
+                        <ul className="space-y-1.5 mb-3">
+                          {pkg.features.map((f, i) => (
+                            <li key={i} className="flex items-start gap-2 text-xs sm:text-[13px] text-white/70">
+                              <CheckCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: accentLight }} />
+                              <span>{f}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <a
+                        href={`/lead-form?type=booking&user=${encodeURIComponent(userId)}&source=${encodeURIComponent(source)}&name=${encodeURIComponent(params.get("name") || "")}&service=${encodeURIComponent(pkg.name)}`}
+                        className={`w-full inline-flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg text-white font-semibold text-xs sm:text-sm transition-transform active:scale-[0.98] ${
+                          pkg.is_featured
+                            ? "bg-gradient-to-r from-purple-600 to-cyan-500 shadow-md shadow-purple-600/30"
+                            : "bg-white/10 border border-white/15 hover:bg-white/15"
+                        }`}
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        {pkg.cta_label || "Book this package"}
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-6 pt-5 border-t border-white/10 text-center">
+                  <p className="text-white/50 text-[11px] sm:text-xs mb-3">
+                    Not sure which one fits? Talk to us — it&apos;s free.
+                  </p>
+                  <a
+                    href={`/lead-form?type=booking&user=${encodeURIComponent(userId)}&source=${encodeURIComponent(source)}&name=${encodeURIComponent(params.get("name") || "")}`}
+                    className="inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg bg-white/5 border border-white/15 text-white font-medium text-xs hover:bg-white/10 transition-colors"
+                  >
+                    <Calendar className="w-3.5 h-3.5" /> Book a free consultation
+                  </a>
+                </div>
+              </>
+            ) : (
+              // Fallback for brands that haven't configured pricing packages yet.
+              <div className="text-center">
+                <p className="text-white/60 text-xs sm:text-sm leading-relaxed mb-6">
+                  Our team at <strong style={{ color: accentLight }}>{brandName}</strong> will review your requirements
+                  and get back to you with a custom quote. Want to fast-track it?
+                </p>
+                <a href={`/lead-form?type=booking&user=${encodeURIComponent(userId)}&source=${encodeURIComponent(source)}&name=${encodeURIComponent(params.get("name") || "")}`}
+                  className="flex items-center justify-center gap-2 w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-500 text-white font-semibold text-sm shadow-lg shadow-purple-600/30 active:scale-[0.98] transition-transform">
+                  <Calendar className="w-4 h-4" /> Book a Free Consultation <ArrowRight className="w-4 h-4" />
+                </a>
+                <p className="text-white/30 text-[11px] mt-3">Takes 30 seconds · No obligation</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -222,6 +338,29 @@ function LeadFormContent() {
 
               {/* PRICING-SPECIFIC */}
               {!isBookingMode && <>
+                {packages.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
+                      <PackageIcon className="w-3.5 h-3.5 text-white/40" />
+                      Interested in a package? <span className="text-white/30 font-normal">(optional)</span>
+                    </label>
+                    <div className="relative">
+                      <select
+                        value={form.selectedPackageId}
+                        onChange={(e) => update("selectedPackageId", e.target.value)}
+                        className={`${inputClasses} appearance-none pr-10 cursor-pointer`}
+                      >
+                        <option value="" className="bg-[#12121a]">Not sure yet — send me a custom quote</option>
+                        {packages.map((p) => (
+                          <option key={p.id} value={p.id} className="bg-[#12121a]">
+                            {p.name} — {p.price_display}{p.is_featured ? " ⭐" : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 pointer-events-none" />
+                    </div>
+                  </div>
+                )}
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium text-white/60 flex items-center gap-1.5">
                     <IndianRupee className="w-3.5 h-3.5 text-white/40" /> Budget Range <span style={{ color: accentLight }}>*</span>

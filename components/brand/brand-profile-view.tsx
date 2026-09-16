@@ -1,6 +1,7 @@
 "use client";
 
 import { BrandProfileForm } from "@/components/brand/brand-profile-form";
+import { BrandPricingPackages } from "@/components/brand/brand-pricing-packages";
 import { Building2, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
@@ -45,6 +46,12 @@ export function BrandProfileView() {
       {/* Main Card */}
       <div className="rounded-2xl border bg-card shadow-sm p-6">
         <BrandProfileForm />
+      </div>
+
+      {/* Pricing Packages — shown to prospects on the public lead-form page
+          after they submit a pricing enquiry (Comment → DM → Form → Packages). */}
+      <div className="mt-4">
+        <BrandPricingPackages />
       </div>
 
       {/* Guidance Cards */}
