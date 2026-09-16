@@ -15,7 +15,29 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
+function InstagramIcon({ className = "size-4" }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
+      <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+      <line x1="17.5" x2="17.51" y1="6.5" y2="6.5" />
+    </svg>
+  );
+}
+
 const STUDIO_TOOLS = [
+  {
+    title: "Branded Instagram Graphics",
+    href: "/studio/branded-posts",
+    icon: InstagramIcon,
+    color: "text-amber-500",
+    bg: "bg-amber-500/10",
+    border: "border-amber-500/20",
+    badge: "Feed & Stories (4:5)",
+    badgeColor: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400",
+    description: "Combine AI commercial photography backgrounds with profile-grounded text overlays, handles, and color themes.",
+    features: ["FLUX.1 Copy-Space Photos", "Brand Handle & Theme Scrim", "1-Click Instagram Scheduling"],
+  },
   {
     title: "Reels & Video Studio",
     href: "/studio/reels",
@@ -95,11 +117,16 @@ export function StudioView() {
           </p>
           <div className="flex flex-wrap gap-3 pt-2">
             <Button asChild size="sm" className="gap-2 font-semibold">
+              <Link href="/studio/branded-posts">
+                <InstagramIcon className="size-4" /> Branded Instagram Posts
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm" className="gap-2">
               <Link href="/studio/reels">
                 <Clapperboard className="size-4" /> Create Reel Video
               </Link>
             </Button>
-            <Button asChild variant="outline" size="sm" className="gap-2">
+            <Button asChild variant="ghost" size="sm" className="gap-2">
               <Link href="/studio/strategy">
                 <TrendingUp className="size-4" /> Plan 30-Day Strategy
               </Link>
