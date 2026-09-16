@@ -24,6 +24,8 @@ export async function POST(request: NextRequest) {
                 profile_image: null,
                 profile_url: null,
                 provider_account_id: null,
+                page_id: null,
+                page_access_token: null,
                 is_connected: false,
                 is_active: false
             })

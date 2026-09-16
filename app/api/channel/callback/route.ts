@@ -176,6 +176,14 @@ export async function GET(request: NextRequest) {
                     ? token.accessToken              // ← Instagram user token
                     : ((profile as any).pageAccessToken || token.accessToken) // ← FB Page token
             ),
+            // Persist Facebook Page credentials for the Meta Messaging API (DM sending).
+            // For Facebook the Page ID is the providerAccountId itself; for Instagram it is
+            // the Page backing the IG Business Account (resolved during getProfile).
+            page_id:
+                (profile as any).pageId ??
+                (state.channelType === ChannelTypeEnum.FACEBOOK ? profile.providerAccountId : null) ??
+                null,
+            page_access_token: encrypt((profile as any).pageAccessToken || token.accessToken),
             refresh_token: encrypt(token.refreshToken ?? null),
             token_expires_at: token.expiresAt ?? null,
             is_connected: true,

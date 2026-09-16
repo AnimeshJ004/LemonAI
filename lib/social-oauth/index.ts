@@ -29,6 +29,7 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
       "pages_read_engagement",
       "pages_manage_posts",
       "pages_read_user_content",      // Required: read Page published posts and user comments
+      "pages_messaging",              // Required: send/receive Facebook Page DMs
       "business_management",          // Required: access Pages & assets within Meta Business Suite / Portfolios
     ],
   },
@@ -40,10 +41,12 @@ const DEFAULT_PROVIDER_CONFIGS: Record<ChannelTypeEnum, {
       "public_profile",
       "instagram_basic",
       "instagram_manage_comments",    // Required: read & reply to Instagram post comments
+      "instagram_manage_messages",    // Required: send/receive Instagram DMs
       "instagram_content_publish",
       "pages_show_list",
       "pages_read_engagement",
       "pages_manage_posts",
+      "pages_messaging",              // Required: Page-token messaging that IG DMs are routed through
       "business_management",          // Required: access Pages & Instagram accounts within Meta Business Portfolios
     ],
   },
@@ -662,6 +665,7 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
             handle: primary.handle,
             profileImage: primary.profileImage,
             pageAccessToken: primary.pageAccessToken,
+            pageId: primary.pageId,
             availableAccounts: discoveredAccounts,
           };
         }
@@ -701,6 +705,7 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
                 handle: primaryPage.name || null,
                 profileImage: primaryPage.picture?.data?.url || null,
                 pageAccessToken: primaryPage.access_token || accessToken,
+                pageId: primaryPage.id,
               };
             }
           } else {
@@ -727,6 +732,7 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
                 handle: primaryPage.name || null,
                 profileImage: primaryPage.picture?.data?.url || null,
                 pageAccessToken: primaryPage.access_token || accessToken,
+                pageId: primaryPage.id,
               };
             }
             // If the token is already a Page Access Token (where /me returns the page itself)
@@ -736,6 +742,7 @@ function createProvider(type: ChannelTypeEnum, opts: { pkce?: boolean } = {}): O
                 handle: meData.name,
                 profileImage: meData.picture?.data?.url || null,
                 pageAccessToken: accessToken,
+                pageId: meData.id,
               };
             }
           }

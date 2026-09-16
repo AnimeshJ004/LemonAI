@@ -57,6 +57,11 @@ export async function POST(request: NextRequest) {
       // pageAccessToken is the Facebook Page token (needed for DM sending, stored on the FB channel row).
       // We use userAccessToken stored in the pending cookie from the OAuth flow.
       access_token: encrypt(parsed.userAccessToken || targetAccount.pageAccessToken),
+      // Persist the Facebook Page ID + Page token this Instagram account lives under.
+      // Required for DM sending (POST /{page_id}/messages) — the IG user token / IG
+      // account ID cannot send DMs on their own.
+      page_id: targetAccount.pageId ?? null,
+      page_access_token: encrypt(targetAccount.pageAccessToken),
       refresh_token: encrypt(parsed.refreshToken ?? null),
       token_expires_at: parsed.expiresAt ?? null,
       is_connected: true,

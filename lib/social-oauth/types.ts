@@ -14,6 +14,8 @@ export type OAuthConnectionProfile = {
     handle?: string | null;
     profileImage?: string | null
     pageAccessToken?: string | null
+    /** Facebook Page ID backing this account — required for the Meta Messaging API. */
+    pageId?: string | null
     availableAccounts?: DiscoveredInstagramAccount[];
 }
 

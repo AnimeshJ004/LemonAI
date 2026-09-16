@@ -5,6 +5,7 @@ import { decrypt } from "./encryption";
 import { getBrandBrainSummary, getBrandProfileForUser } from "./brand-helper";
 import { callResilientCompletion } from "./ai-gateway";
 import { createLead } from "./crm-service";
+import { sendPrivateDM } from "./meta-messaging";
 
 export interface DMMessage {
   id?: string;
@@ -395,34 +396,26 @@ export const socialDMService = {
       }
     }
 
-    // Send to Meta API if live token exists
-    const admin = getInsforgeAdminClient();
+    // Send to Meta API via the unified sender (resolves the correct Page ID +
+    // Page token; works for separate and shared IG/FB account setups).
     let sentLive = false;
 
     try {
-      const { data: channels } = await admin.database
-        .from("user_channels")
-        .select("*, channel_types(*)");
-
-      const ch = (channels || []).find((c: any) => c.channel_types?.type === platform.toUpperCase() && c.access_token);
-
-      if (ch?.access_token && ch?.provider_account_id) {
-        const token = decrypt(ch.access_token);
-        const res = await fetch(`https://graph.facebook.com/v22.0/${ch.provider_account_id}/messages`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            recipient: { id: recipientId },
-            message: { text: replyText },
-            messaging_type: "RESPONSE",
-            access_token: token,
-          }),
-          signal: AbortSignal.timeout(5000),
-        });
-        if (res.ok) sentLive = true;
+      const dmResult = await sendPrivateDM({
+        userId,
+        platform,
+        commenterId: recipientId,
+        accessToken: null,
+        dmMessage: replyText!,
+      });
+      sentLive = dmResult.ok;
+      if (!dmResult.ok) {
+        console.warn(
+          `[DM Service] replyDM send failed (strategy=${dmResult.strategy}, code=${dmResult.errorCode}): ${dmResult.errorMessage}`
+        );
       }
-    } catch {
-      // Fallback
+    } catch (dmErr) {
+      console.warn("[DM Service] replyDM send exception:", dmErr);
     }
 
     const now = new Date().toISOString();

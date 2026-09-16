@@ -209,8 +209,15 @@ export async function resolveMetaSendCredentials(
   params: ResolveMetaSendCredentialsParams
 ): Promise<MetaSendCredentials> {
   const { userId, igAccountId, accessToken } = params;
+  const platformUpper = String(params.platform || "").toUpperCase();
 
-  // ── Branch 1: Look up connected Facebook channel ──────────────────────────
+  // ── Branch 0: Use the channel's OWN stored Page credentials (most reliable) ──
+  // Populated at connect time for both Instagram and Facebook channels. This is
+  // deterministic for BOTH setups:
+  //   • Separate accounts (IG and FB on different Pages) → each channel resolves
+  //     its own Page, so we never grab the wrong Page.
+  //   • Shared account (IG + FB on the same Page)       → the IG channel stores
+  //     that same Page's ID/token, so messaging works without a FB channel too.
   try {
     const admin = getInsforgeAdminClient();
     const { data: channels } = await admin.database
@@ -218,26 +225,69 @@ export async function resolveMetaSendCredentials(
       .select("*, channel_types(*)")
       .eq("user_id", userId);
 
-    const fbCh = (channels || []).find(
-      (c: any) =>
-        c?.channel_types?.type === "FACEBOOK" &&
-        c?.access_token &&
-        c?.provider_account_id
-    );
+    const list = channels || [];
 
-    if (fbCh?.provider_account_id && fbCh?.access_token) {
-      const token = decrypt(fbCh.access_token) || fbCh.access_token;
+    // Prefer the channel that matches the requested platform and has Page creds.
+    const ownCh =
+      list.find(
+        (c: any) =>
+          c?.channel_types?.type === platformUpper &&
+          c?.page_id &&
+          c?.page_access_token
+      ) ||
+      // Fallback: any channel for this user that DOES carry Page creds. When IG &
+      // FB share the same Page this still yields the correct Page token even if
+      // the platform-specific row is missing it.
+      list.find((c: any) => c?.page_id && c?.page_access_token);
+
+    if (ownCh?.page_id && ownCh?.page_access_token) {
+      const token = decrypt(ownCh.page_access_token) || ownCh.page_access_token;
       return {
-        pageId: String(fbCh.provider_account_id),
+        pageId: String(ownCh.page_id),
         pageToken: token,
         source: "fb_channel",
       };
     }
   } catch (dbErr) {
-    console.warn("[Meta Messaging] resolve: user_channels lookup notice:", dbErr);
+    console.warn("[Meta Messaging] resolve: own-channel page creds notice:", dbErr);
+  }
+
+  // ── Branch 1: Direct Facebook channel lookup (only when sending AS Facebook) ──
+  // For a Facebook DM the FACEBOOK channel's provider_account_id IS the Page ID.
+  // We intentionally SKIP this for Instagram sends: when IG & FB are SEPARATE
+  // accounts on DIFFERENT Pages, blindly using the FB Page here would deliver to
+  // the wrong Page. Instagram sends resolve their Page via Branch 2 instead.
+  if (platformUpper !== "INSTAGRAM") {
+    try {
+      const admin = getInsforgeAdminClient();
+      const { data: channels } = await admin.database
+        .from("user_channels")
+        .select("*, channel_types(*)")
+        .eq("user_id", userId);
+
+      const fbCh = (channels || []).find(
+        (c: any) =>
+          c?.channel_types?.type === "FACEBOOK" &&
+          c?.access_token &&
+          c?.provider_account_id
+      );
+
+      if (fbCh?.provider_account_id && fbCh?.access_token) {
+        const token = decrypt(fbCh.access_token) || fbCh.access_token;
+        return {
+          pageId: String(fbCh.provider_account_id),
+          pageToken: token,
+          source: "fb_channel",
+        };
+      }
+    } catch (dbErr) {
+      console.warn("[Meta Messaging] resolve: user_channels lookup notice:", dbErr);
+    }
   }
 
   // ── Branch 2: Look up Page via /me/accounts using IG token ────────────────
+  // Matches the exact Page whose instagram_business_account.id == igAccountId, so
+  // this is correct for BOTH separate and shared IG/FB accounts.
   if (igAccountId && accessToken) {
     try {
       const url = `https://graph.facebook.com/v22.0/me/accounts?fields=id,access_token,instagram_business_account{id}&access_token=${encodeURIComponent(
@@ -264,8 +314,47 @@ export async function resolveMetaSendCredentials(
     }
   }
 
+  // ── Branch 2b: Loose fallback to ANY connected Facebook Page channel ──────
+  // Reached only for Instagram sends where Branch 0 (own creds) and Branch 2
+  // (/me/accounts match) both failed — e.g. a legacy IG connection made before
+  // Page creds were persisted. Using the user's FB Page is the best remaining
+  // guess and is correct when IG & FB share the same Page.
+  try {
+    const admin = getInsforgeAdminClient();
+    const { data: channels } = await admin.database
+      .from("user_channels")
+      .select("*, channel_types(*)")
+      .eq("user_id", userId);
+
+    const fbCh = (channels || []).find(
+      (c: any) =>
+        c?.channel_types?.type === "FACEBOOK" &&
+        (c?.page_access_token || c?.access_token) &&
+        (c?.page_id || c?.provider_account_id)
+    );
+
+    if (fbCh && (fbCh.page_id || fbCh.provider_account_id)) {
+      const rawToken = fbCh.page_access_token || fbCh.access_token;
+      const token = decrypt(rawToken) || rawToken;
+      return {
+        pageId: String(fbCh.page_id || fbCh.provider_account_id),
+        pageToken: token,
+        source: "fb_channel",
+      };
+    }
+  } catch (dbErr) {
+    console.warn("[Meta Messaging] resolve: FB fallback lookup notice:", dbErr);
+  }
+
   // ── Branch 3: Last-resort fallback ────────────────────────────────────────
+  // NOTE: igAccountId is the Instagram Business Account ID, NOT a Facebook Page
+  // ID. Meta's Messaging API will reject it with error #200 ("must be an admin/
+  // editor/moderator of the page to impersonate it"). We only return it so the
+  // caller surfaces a structured, explainable error instead of silently no-oping.
   if (igAccountId && accessToken) {
+    console.warn(
+      "[Meta Messaging] resolve: falling back to IG account ID as pageId — messaging will likely fail with Meta error #200. Reconnect the channel so Page credentials (page_id/page_access_token) are stored."
+    );
     return {
       pageId: String(igAccountId),
       pageToken: accessToken,

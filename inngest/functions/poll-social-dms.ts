@@ -2,6 +2,7 @@ import { inngest } from "../client";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { decrypt } from "@/lib/encryption";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { sendPrivateDM } from "@/lib/meta-messaging";
 
 /**
  * Polls Instagram and Facebook direct messages every 5 minutes.
@@ -139,17 +140,16 @@ Write a warm, helpful reply under 80 words. If they ask about price, availabilit
 
                   const replyText = aiCompletion.content;
                   if (replyText) {
-                    const sendRes = await fetch(`https://graph.facebook.com/v22.0/me/messages`, {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        recipient: { id: senderId },
-                        message: { text: replyText },
-                        access_token: accessToken,
-                      }),
+                    const dmResult = await sendPrivateDM({
+                      userId,
+                      platform,
+                      commenterId: senderId,
+                      igAccountId: accountId,
+                      accessToken,
+                      dmMessage: replyText,
                     });
 
-                    if (sendRes.ok) {
+                    if (dmResult.ok) {
                       channelReplies++;
                       await admin.database
                         .from("social_dms")
@@ -180,6 +180,10 @@ Write a warm, helpful reply under 80 words. If they ask about price, availabilit
                           console.warn("[Poll DMs] Lead capture notice:", crmLeadErr);
                         }
                       }
+                    } else {
+                      console.warn(
+                        `[Poll DMs] DM send failed for conv ${conv.id} (strategy=${dmResult.strategy}, code=${dmResult.errorCode}): ${dmResult.errorMessage}`
+                      );
                     }
                   }
                 } catch (replyErr) {
