@@ -1,15 +1,15 @@
 import { callGroqChatCompletion, isGroqConfigured, GROQ_THINKING_MODELS } from "@/lib/groq-client";
 
 /**
- * Resilient AI completion — Groq (Llama) direct.
+ * Resilient AI completion — Groq (GPT-OSS) direct.
  *
  * InsForge Gemini has been removed from the codepath. All content generation
- * routes through Groq's Meta Llama production models (llama-3.3-70b-versatile
- * for reasoning, llama-3.1-8b-instant as an in-tier last resort). The public
+ * routes through Groq's OpenAI GPT-OSS production models (openai/gpt-oss-120b
+ * for reasoning, openai/gpt-oss-20b as an in-tier last resort). The public
  * signature of `callResilientCompletion` is intentionally unchanged so every
  * existing caller keeps working without edits.
  *
- * MODEL_WATERFALL is retained (as Groq Llama IDs) so callers that read it for
+ * MODEL_WATERFALL is retained (as Groq GPT-OSS IDs) so callers that read it for
  * diagnostics still compile — but the internal loop now targets Groq only.
  */
 
@@ -53,8 +53,8 @@ export function extractJsonFromText<T = any>(raw: string): T | null {
 }
 
 /**
- * Executes a resilient AI chat completion using Groq Llama models exclusively.
- * Waterfall order: llama-3.3-70b-versatile → llama-3.1-8b-instant.
+ * Executes a resilient AI chat completion using Groq GPT-OSS models exclusively.
+ * Waterfall order: openai/gpt-oss-120b → openai/gpt-oss-20b.
  */
 export async function callResilientCompletion<T = any>(
   options: ResilientCompletionOptions

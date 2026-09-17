@@ -445,90 +445,138 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
       intentType: "general" as "booking" | "pricing" | "general",
     };
 
+    // ─── Deterministic intent detection (source of truth, not the LLM) ────────
+    // The LLM's role is to write nice copy; the DECISION to send a DM is made
+    // here from the raw comment text so the auto-DM cannot be silently dropped
+    // by a model that parrots default JSON values back to us.
+    const lowerComment = commentText.toLowerCase();
+    const bookingKeywords = [
+      "interested", "intrested", "intrest",
+      "book", "booking", "appointment", "appt",
+      "meet", "meeting", "call", "consult", "consultation",
+      "schedule", "demo", "walkthrough", "connect",
+    ];
+    const pricingKeywords = [
+      "price", "pricing", "cost", "costing", "how much",
+      "rate", "rates", "quote", "quotation",
+      "package", "packages", "plan", "plans",
+      "fees", "fee", "charges", "charge",
+      // Hinglish
+      "kya price", "kitna", "kitne",
+    ];
+    const isBookingIntent = bookingKeywords.some((k) => lowerComment.includes(k));
+    const isPricingIntent = pricingKeywords.some((k) => lowerComment.includes(k));
+    const detectedIntent: "booking" | "pricing" | "general" =
+      isBookingIntent ? "booking" : isPricingIntent ? "pricing" : "general";
+    // Only fire an auto-DM on unambiguous buyer intent (booking / pricing /
+    // "interested"). Broad inquiry keywords like "info" or "details" alone are
+    // captured as CRM leads (below) but do NOT trigger an unsolicited DM.
+    const hasBuyerIntent = isBookingIntent || isPricingIntent;
+
     try {
       const completion = await callResilientCompletion({
         jsonMode: true,
         messages: [
           {
-            role: "user",
+            role: "system",
             content: `You are the autonomous social media AI manager for ${brandName}.
 Brand Tone: ${brandTone}
 Niche: ${brandNiche}
 Main Offer: ${mainOffer}
 
-Analyze this incoming comment and provide an immediate, engaging reply.
+Your job: for each incoming public comment, write (a) a short public reply and (b) a warm private DM message. You DO NOT decide whether the DM is sent — that decision is made deterministically by our system based on the comment text. You just always author both pieces of copy.
+
+Copy rules:
+- Public reply: under 140 characters, engaging, in the brand tone. NEVER write "check your DM", "sent you a DM", or similar — our system appends that automatically when a DM is delivered.
+- DM message: 2–4 friendly sentences, warm and helpful, addressed to @${commenterHandle}. If the intent is "booking", invite them to book a consultation. If "pricing", acknowledge their interest and offer to share details. If "general", thank them and offer to help further. Do NOT include a URL — our system appends the correct lead-capture link automatically.
+
+Output format: ONLY a JSON object with these keys. Do not wrap in markdown.
+- sentiment: one of "INQUIRY" | "PRAISE" | "COMPLAINT" | "SPAM" | "NEUTRAL"
+- reply: string (the public reply text)
+- dmMessage: string (the private DM body — ALWAYS write one, even for praise, so the system can use it if needed)
+- intentType: one of "booking" | "pricing" | "general"
+
+Examples:
+Comment "Interested, DM me pricing please" → {"sentiment":"INQUIRY","reply":"Amazing! We'd love to help you out 💛","dmMessage":"Hi @user! Thanks so much for reaching out about ${brandName}. We'd love to share our pricing options that match your needs — a couple of quick questions will let us tailor the right plan for you.","intentType":"pricing"}
+Comment "Can I book an appointment?" → {"sentiment":"INQUIRY","reply":"Absolutely — we'd love to have you! 📅","dmMessage":"Hi @user! Thrilled you want to connect with ${brandName}. Let's get a quick consultation on the calendar so we can understand your goals and how we can help.","intentType":"booking"}
+Comment "Love this content 🔥" → {"sentiment":"PRAISE","reply":"Thank you so much! 💛 So glad it landed!","dmMessage":"Hey @user! Thanks a ton for the love — means the world. If there's ever anything we can help you with, just say the word.","intentType":"general"}
+
+Now analyze this comment.
 Comment: "${commentText}"
 Commenter: @${commenterHandle}
+Detected intent (hint, may be general): "${detectedIntent}"
 
-Rules:
-1. Public reply MUST be concise, under 140 characters. Do NOT say "Sent you a DM" or "check your DM" in the public reply — that will be added automatically if a DM is sent.
-2. If the user expresses interest in booking, meeting, appointment, or consultation → set shouldSendDM true, intentType "booking", write a warm DM inviting them to book.
-3. If the user asks about price, cost, rate, quote, package, or fees → set shouldSendDM true, intentType "pricing", write a DM acknowledging their interest.
-4. For general inquiries → set shouldSendDM true if warranted, intentType "general".
-5. Return ONLY valid JSON (no markdown). Use exactly this structure:
-{
-  "sentiment": "INQUIRY",
-  "reply": "Your concise public comment reply here",
-  "shouldSendDM": false,
-  "dmMessage": "",
-  "intentType": "general"
-}
-shouldSendDM must be a boolean. intentType must be one of: booking | pricing | general.`,
-
+Return ONLY the JSON object.`,
           },
         ],
       });
 
       if (completion.data && typeof completion.data === "object") {
-        const rawIntent = String(completion.data.intentType || "general").toLowerCase();
+        const rawIntent = String(completion.data.intentType || detectedIntent).toLowerCase();
         const parsedIntent: "booking" | "pricing" | "general" =
           rawIntent === "booking" ? "booking" : rawIntent === "pricing" ? "pricing" : "general";
         aiResult = {
           sentiment: normalizeSentiment(completion.data.sentiment),
           reply: completion.data.reply || `Thanks for reaching out! 🙏`,
-          shouldSendDM: Boolean(completion.data.shouldSendDM),
-          dmMessage: completion.data.dmMessage || "",
+          // NOTE: we deliberately IGNORE the AI's shouldSendDM — that decision
+          // is made deterministically below from the actual comment text.
+          shouldSendDM: false,
+          dmMessage: String(completion.data.dmMessage || "").trim(),
           intentType: parsedIntent,
         };
       } else {
+        console.warn("[Social Comment Service] AI returned no parseable data — falling back to templated copy.");
         aiResult.sentiment = normalizeSentiment(aiResult.sentiment);
       }
     } catch (aiErr) {
-      console.warn("[Social Comment Service] AI fallback triggered:", aiErr);
-      const lower = commentText.toLowerCase();
-      const isBookingIntent =
-        lower.includes("interested") || lower.includes("book") || lower.includes("appointment") ||
-        lower.includes("meet") || lower.includes("consult") || lower.includes("schedule");
-      const isPricingIntent =
-        lower.includes("price") || lower.includes("cost") || lower.includes("how much") ||
-        lower.includes("rate") || lower.includes("fees") || lower.includes("quote") || lower.includes("package");
-
-      if (isBookingIntent) {
-        aiResult = {
-          sentiment: "INQUIRY",
-          reply: `We'd love to connect! 📩 Sending you details now.`,
-          shouldSendDM: true,
-          dmMessage: `Hi @${commenterHandle}! We'd love to have a chat with you about ${brandName}. Let's get you booked in! 🙏`,
-          intentType: "booking",
-        };
-      } else if (isPricingIntent) {
-        aiResult = {
-          sentiment: "INQUIRY",
-          reply: `Great question! 📩 Sending you pricing details in DM.`,
-          shouldSendDM: true,
-          dmMessage: `Hi @${commenterHandle}! Thanks for your interest in ${brandName}. Here's a bit about what we offer — ${mainOffer}. Let's find the right plan for you!`,
-          intentType: "pricing",
-        };
-      } else if (lower.includes("love") || lower.includes("awesome") || lower.includes("great") || lower.includes("fire") || lower.includes("🔥")) {
-        aiResult = {
-          sentiment: "PRAISE",
-          reply: "Thank you so much! Really appreciate the love! ❤️✨",
-          shouldSendDM: false,
-          dmMessage: "",
-          intentType: "general",
-        };
-      }
+      console.warn("[Social Comment Service] AI generation threw, using templated copy:", aiErr);
     }
+
+    // ─── 6a. Deterministic DM decision + default copy safety net ──────────────
+    // Regardless of what the AI returned, decide whether to send the DM based
+    // on the actual comment text. This is the single fix that makes auto-DM
+    // reliable for "book appointment / pricing / interested" comments.
+    if (hasBuyerIntent) {
+      aiResult.shouldSendDM = true;
+      aiResult.intentType = detectedIntent === "general" ? aiResult.intentType : detectedIntent;
+      if (aiResult.sentiment === "NEUTRAL") aiResult.sentiment = "INQUIRY";
+
+      // If the AI didn't produce a usable DM body, synthesize a warm default
+      // so we never drop a lead just because the model returned an empty string.
+      if (!aiResult.dmMessage || aiResult.dmMessage.length < 10) {
+        if (aiResult.intentType === "booking") {
+          aiResult.dmMessage = `Hi @${commenterHandle}! Thanks so much for reaching out to ${brandName} 🙌 We'd love to hop on a quick call to understand your goals and see how ${mainOffer} can help. A few quick details from you and we'll get you booked in.`;
+        } else if (aiResult.intentType === "pricing") {
+          aiResult.dmMessage = `Hi @${commenterHandle}! Thanks for your interest in ${brandName} 💛 We tailor pricing to what you actually need — a couple of quick questions and we'll send over the right package + a custom quote.`;
+        } else {
+          aiResult.dmMessage = `Hi @${commenterHandle}! Thanks for reaching out to ${brandName} 🙏 Happy to answer any questions — just share a few details and we'll take it from there.`;
+        }
+      }
+
+      // If the AI produced a reply that didn't hint at follow-up, keep it — the
+      // "📩 Check your DMs!" suffix is appended later once the DM is confirmed.
+      if (!aiResult.reply || aiResult.reply.length < 4) {
+        aiResult.reply =
+          aiResult.intentType === "booking"
+            ? `We'd love to connect! 💛`
+            : aiResult.intentType === "pricing"
+            ? `Great question — sending details your way! 💛`
+            : `Thanks for reaching out! 🙏`;
+      }
+    } else if (
+      lowerComment.includes("love") ||
+      lowerComment.includes("awesome") ||
+      lowerComment.includes("great") ||
+      lowerComment.includes("fire") ||
+      lowerComment.includes("🔥")
+    ) {
+      // Praise path — no DM, keep whatever AI reply came back or use a warm default.
+      if (aiResult.sentiment === "NEUTRAL") aiResult.sentiment = "PRAISE";
+    }
+
+    console.log(
+      `[Social Comment Service] intent=${aiResult.intentType} sentiment=${aiResult.sentiment} shouldSendDM=${aiResult.shouldSendDM} dmMessageLen=${aiResult.dmMessage.length} commenter=@${commenterHandle}`
+    );
 
     // ─── 6b. Append intent-aware form link to DM message ────────────────────────
     // If AI wants to send a DM, embed the right lead capture form URL based on what the commenter said.
@@ -632,6 +680,16 @@ shouldSendDM must be a boolean. intentType must be one of: booking | pricing | g
           console.warn(
             `[Social Comment Service] ✗ DM dispatch failed (strategy=${dmResult.strategy}, code=${dmResult.errorCode}, subcode=${dmResult.errorSubcode}): ${dmResult.errorMessage}`
           );
+          // Code 190 == access token invalid/expired (e.g. subcode 460 = session
+          // invalidated after a password change or Meta security reset). This is
+          // NOT a code bug — the stored Page token is dead and must be refreshed
+          // by reconnecting the channel. Surface it loudly so operators act.
+          if (dmResult.errorCode === 190) {
+            console.error(
+              `[Social Comment Service] 🔑 ACTION REQUIRED: The Meta access token for this ${platform} account is invalid/expired (code=190, subcode=${dmResult.errorSubcode}). ` +
+                "No DM can be sent until the channel is reconnected. Go to Settings → Channels, disconnect the account, and reconnect it to store a fresh Page access token."
+            );
+          }
           // Code 200 == Meta Dev Mode restriction / user not a tester. Not a code bug.
           if (dmResult.errorCode === 200) {
             console.warn(

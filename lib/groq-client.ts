@@ -1,9 +1,14 @@
 /**
  * Groq AI Client — Primary content-generation engine.
  *
- * Uses ONLY Groq's Meta Llama PRODUCTION (GA) models. OpenAI GPT-OSS,
- * Qwen, DeepSeek and preview/experimental models are intentionally omitted
- * so we stay on the most permanent, well-supported Groq offerings.
+ * Uses Groq's OpenAI GPT-OSS PRODUCTION (General Access) models.
+ *
+ * NOTE (2026): Groq deprecated `llama-3.3-70b-versatile` and
+ * `llama-3.1-8b-instant` for Free/Developer-tier keys on 2026-08-16 — those
+ * IDs now return HTTP 404 `model_not_found` on non-Enterprise accounts. Groq's
+ * official migration points production traffic to `openai/gpt-oss-120b`
+ * (flagship, replaces the 70B tier) and `openai/gpt-oss-20b` (fast/cheap,
+ * replaces the 8B tier). See https://console.groq.com/docs/models.
  *
  * Ordered from highest capability → fastest/cheapest so the default caller
  * (no explicit `model`) picks the strongest available option first, with
@@ -11,28 +16,28 @@
  */
 
 export const GROQ_MODELS = [
-  // High-capability / reasoning tier (permanent Llama GA)
-  "llama-3.3-70b-versatile",   // Meta Llama 3.3 70B — Groq Production
+  // High-capability / reasoning tier (GPT-OSS 120B — Groq Production GA)
+  "openai/gpt-oss-120b",   // OpenAI GPT-OSS 120B — Groq Production
 
-  // Fast / low-cost tier (permanent Llama GA)
-  "llama-3.1-8b-instant",      // Meta Llama 3.1 8B — Groq Production
+  // Fast / low-cost tier (GPT-OSS 20B — Groq Production GA)
+  "openai/gpt-oss-20b",    // OpenAI GPT-OSS 20B — Groq Production
 ];
 
 /**
  * Named model constants — use these in tier-aware routing instead of raw strings
  * so the whole codebase updates from one place if Groq changes their IDs.
  *
- * NOTE: In-tier fallback is limited because Groq currently ships only one
- * production Llama at each size. If the primary model 429s, we cross-tier
- * cascade (large → small) rather than fail the whole request.
+ * NOTE: In-tier fallback is limited because Groq currently ships two
+ * production GPT-OSS sizes. If the primary model 429s, we cross-tier
+ * cascade (120b → 20b) rather than fail the whole request.
  */
 export const GROQ_FAST_MODELS = [
-  "llama-3.1-8b-instant",
+  "openai/gpt-oss-20b",
 ] as const;
 
 export const GROQ_THINKING_MODELS = [
-  "llama-3.3-70b-versatile",
-  "llama-3.1-8b-instant", // cross-tier last-resort so thinking calls always get an answer
+  "openai/gpt-oss-120b",
+  "openai/gpt-oss-20b", // cross-tier last-resort so thinking calls always get an answer
 ] as const;
 
 export interface GroqMessage {

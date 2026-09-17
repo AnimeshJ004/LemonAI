@@ -6,12 +6,12 @@ import {
 } from "@/lib/groq-client";
 
 /**
- * Multi-Tier Budget-Friendly LLM Cost Router — Groq (Llama) direct.
+ * Multi-Tier Budget-Friendly LLM Cost Router — Groq (GPT-OSS) direct.
  *
  * InsForge Gemini has been removed from the routing path. Every task lands on
- * one of Groq's Meta Llama production models:
- *   TIER_1_FAST   → llama-3.1-8b-instant   (ultra low latency, ~$0.05/1M in)
- *   TIER_2_SMART  → llama-3.3-70b-versatile (deep reasoning, ~$0.59/1M in)
+ * one of Groq's OpenAI GPT-OSS production models:
+ *   TIER_1_FAST   → openai/gpt-oss-20b   (ultra low latency, ~$0.075/1M in)
+ *   TIER_2_SMART  → openai/gpt-oss-120b  (deep reasoning, ~$0.15/1M in)
  *
  * The public API (routeAICall, MODEL_REGISTRY, TASK_TIER_MAPPING, helpers,
  * domain helpers) is intentionally unchanged so all 20+ callers keep working.
@@ -39,20 +39,20 @@ export interface AIModelConfig {
   maxTokens: number;
 }
 
-// Groq-only model registry. Prices reflect published Groq rates for Meta Llama.
+// Groq-only model registry. Prices reflect published Groq rates for GPT-OSS.
 export const MODEL_REGISTRY: Record<string, AIModelConfig> = {
-  "llama-3.1-8b-instant": {
-    name: "llama-3.1-8b-instant",
+  "openai/gpt-oss-20b": {
+    name: "openai/gpt-oss-20b",
     tier: "TIER_1_FAST",
-    inputCostPer1M: 0.05,
-    outputCostPer1M: 0.08,
+    inputCostPer1M: 0.075,
+    outputCostPer1M: 0.30,
     maxTokens: 8192,
   },
-  "llama-3.3-70b-versatile": {
-    name: "llama-3.3-70b-versatile",
+  "openai/gpt-oss-120b": {
+    name: "openai/gpt-oss-120b",
     tier: "TIER_2_SMART",
-    inputCostPer1M: 0.59,
-    outputCostPer1M: 0.79,
+    inputCostPer1M: 0.15,
+    outputCostPer1M: 0.60,
     maxTokens: 8192,
   },
 };
@@ -130,9 +130,9 @@ export function cleanAndParseJSON<T = any>(text: string): T | null {
 }
 
 /**
- * Routes AI request to the most cost-effective Llama model based on tier.
- * TIER_1_FAST  → llama-3.1-8b-instant
- * TIER_2_SMART → llama-3.3-70b-versatile (cross-tier fallback to 8b-instant)
+ * Routes AI request to the most cost-effective GPT-OSS model based on tier.
+ * TIER_1_FAST  → openai/gpt-oss-20b
+ * TIER_2_SMART → openai/gpt-oss-120b (cross-tier fallback to gpt-oss-20b)
  */
 export async function routeAICall<T = any>(req: AICallRequest): Promise<AICallResponse<T>> {
   const startTime = Date.now();
@@ -188,7 +188,7 @@ export async function routeAICall<T = any>(req: AICallRequest): Promise<AICallRe
 
       const modelConfig =
         MODEL_REGISTRY[modelToTry] ||
-        MODEL_REGISTRY["llama-3.1-8b-instant"];
+        MODEL_REGISTRY["openai/gpt-oss-20b"];
       const costUSD =
         (estInputTokens * modelConfig.inputCostPer1M +
           estOutputTokens * modelConfig.outputCostPer1M) /

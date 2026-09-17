@@ -150,6 +150,16 @@ export async function sendMetaGraphMessage(
       `[Meta Messaging] send failed (strategy=${strategy}, pageId=${pageId}, code=${errCode}, subcode=${errSubcode}): ${errMsg}`
     );
 
+    // Code 190 = the access token is invalid/expired (subcode 460 = session
+    // invalidated by a password change or Meta security reset). The token is
+    // dead and cannot be recovered programmatically — the channel must be
+    // reconnected. Flag it distinctly so it isn't mistaken for a transient error.
+    if (errCode === 190) {
+      console.error(
+        `[Meta Messaging] 🔑 Access token INVALID for pageId=${pageId} (code=190, subcode=${errSubcode}). Reconnect this channel to obtain a fresh Page access token.`
+      );
+    }
+
     return {
       ok: false,
       strategy,
