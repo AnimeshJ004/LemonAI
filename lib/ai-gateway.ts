@@ -1,4 +1,9 @@
 import { getInsforgeServerClient, getInsforgeAdminClient } from "@/lib/insforge-server";
+import {
+  buildCacheKey,
+  getCachedAIResponse,
+  setCachedAIResponse,
+} from "@/lib/ai-cache";
 
 /**
  * Priority waterfall of AI models supported by InsForge / Gemini Gateway.
@@ -24,6 +29,7 @@ export interface ResilientCompletionResult<T = any> {
   content: string;
   data: T | null;
   modelUsed: string;
+  cacheHit: boolean; // true when served from in-memory cache
 }
 
 /**
@@ -51,10 +57,35 @@ export function extractJsonFromText<T = any>(raw: string): T | null {
 /**
  * Executes a resilient AI chat completion with automatic model waterfall fallbacks.
  * Prevents 500 errors when a single model endpoint is unavailable, rate-limited, or deprecated.
+ * Results are cached in-memory to avoid redundant API calls for identical prompts.
  */
 export async function callResilientCompletion<T = any>(
   options: ResilientCompletionOptions
 ): Promise<ResilientCompletionResult<T>> {
+  // ── Cache lookup ──────────────────────────────────────────────────────────
+  const systemMsg = options.messages.find((m) => m.role === "system")?.content ?? "";
+  const userMsg = options.messages.find((m) => m.role === "user")?.content ?? "";
+  const cacheKey = buildCacheKey({
+    systemPrompt: systemMsg,
+    userPrompt: userMsg,
+    temperature: options.temperature,
+    jsonMode: options.jsonMode,
+    maxTokens: options.maxTokens,
+  });
+
+  const cached = getCachedAIResponse<T>(cacheKey);
+  if (cached) {
+    console.log(`[AI Gateway] Cache HIT (model: ${cached.model})`);
+    return {
+      success: true,
+      content: cached.rawText,
+      data: cached.data,
+      modelUsed: cached.model,
+      cacheHit: true,
+    };
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   const { insforge } = await getInsforgeServerClient().catch(() => ({
     insforge: getInsforgeAdminClient(),
   }));
@@ -84,11 +115,14 @@ export async function callResilientCompletion<T = any>(
       const content = completion.choices[0]?.message?.content ?? "";
       if (content) {
         const data = options.jsonMode ? extractJsonFromText<T>(content) : (content as unknown as T);
+        // Store in cache before returning (data is non-null here: content is truthy)
+        setCachedAIResponse<T>(cacheKey, data!, content, modelName, "GENERIC");
         return {
           success: true,
           content,
           data,
           modelUsed: modelName,
+          cacheHit: false,
         };
       }
     } catch (err: any) {
@@ -103,5 +137,6 @@ export async function callResilientCompletion<T = any>(
     content: "",
     data: null,
     modelUsed: "none",
+    cacheHit: false,
   };
 }

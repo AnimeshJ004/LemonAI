@@ -1,4 +1,9 @@
 import { getInsforgeServerClient, getInsforgeAdminClient } from "@/lib/insforge-server";
+import {
+  buildCacheKey,
+  getCachedAIResponse,
+  setCachedAIResponse,
+} from "@/lib/ai-cache";
 
 /**
  * Multi-Tier Budget-Friendly LLM Cost Router
@@ -13,6 +18,7 @@ export type AITaskType =
   | "JSON_CLEANUP"
   | "QUICK_IDEA"
   | "SHORTEN_REPHRASE"
+  | "CHATBOT_REPLY"
   | "DEEP_SCRIPTWRITING"
   | "AD_COPY_HOOKS"
   | "COMPETITOR_RESEARCH"
@@ -27,7 +33,7 @@ export interface AIModelConfig {
   maxTokens: number;
 }
 
-// Model registry optimized for low-cost SaaS operation with InsForge Latest Gemini 3+ models
+// Model registry optimized for low-cost SaaS operation with InsForge Latest Gemini 3+ models & Groq Cloud
 export const MODEL_REGISTRY: Record<string, AIModelConfig> = {
   // Tier 1: Ultra Budget-Friendly / Fast Gemini 3.8 & 3.7 (~$0.38/1M tokens -> ~₹0.01 - ₹0.02 per request)
   "google/gemini-3.8-flash": {
@@ -44,7 +50,7 @@ export const MODEL_REGISTRY: Record<string, AIModelConfig> = {
     outputCostPer1M: 0.76,
     maxTokens: 8192,
   },
-  // Tier 2: High Intelligence / Gemini 3.7 Flash & 3.6 Flash (~₹0.03 - ₹0.05 per request)
+  // Tier 2: High Intelligence / Gemini 3.7 Flash & GPT-OSS 120B (~₹0.03 - ₹0.05 per request)
   "google/gemini-3.7-flash": {
     name: "google/gemini-3.7-flash",
     tier: "TIER_2_SMART",
@@ -75,6 +81,7 @@ export const TASK_TIER_MAPPING: Record<AITaskType, AITier> = {
   JSON_CLEANUP: "TIER_1_FAST",
   QUICK_IDEA: "TIER_1_FAST",
   SHORTEN_REPHRASE: "TIER_1_FAST",
+  CHATBOT_REPLY: "TIER_2_SMART",   // Chatbot needs smarter model for coherent conversation
   DEEP_SCRIPTWRITING: "TIER_2_SMART",
   AD_COPY_HOOKS: "TIER_2_SMART",
   COMPETITOR_RESEARCH: "TIER_2_SMART",
@@ -104,6 +111,7 @@ export interface AICallResponse<T = any> {
     costINR: number;
     savingsVsClaudeINR: number; // Demonstrates cost-efficiency to clients
     latencyMs: number;
+    cacheHit: boolean; // true when response was served from in-memory cache
   };
 }
 
@@ -144,14 +152,47 @@ export function cleanAndParseJSON<T = any>(text: string): T | null {
 
 /**
  * Routes AI request to the most cost-effective LLM based on task complexity.
+ * Results are cached in-memory to avoid redundant API calls for identical prompts.
  */
 export async function routeAICall<T = any>(req: AICallRequest): Promise<AICallResponse<T>> {
   const startTime = Date.now();
   const tier = req.preferredTier || TASK_TIER_MAPPING[req.task] || "TIER_1_FAST";
-  
+
+  // ── Cache lookup ──────────────────────────────────────────────────────────
+  const cacheKey = buildCacheKey({
+    task: req.task,
+    systemPrompt: req.systemPrompt,
+    userPrompt: req.userPrompt,
+    temperature: req.temperature,
+    jsonMode: req.jsonMode,
+    maxTokens: req.maxTokens,
+  });
+
+  const cached = getCachedAIResponse<T>(cacheKey);
+  if (cached) {
+    const latencyMs = Date.now() - startTime;
+    console.log(`[AI Router] Cache HIT for task ${req.task} (model: ${cached.model}, latency: ${latencyMs}ms)`);
+    return {
+      success: true,
+      data: cached.data,
+      rawText: cached.rawText,
+      metrics: {
+        model: cached.model,
+        tier,
+        estimatedTokens: 0,
+        costUSD: 0,
+        costINR: 0,
+        savingsVsClaudeINR: 0,
+        latencyMs,
+        cacheHit: true,
+      },
+    };
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Select optimal model: Gemini 3.8 / 3.7 Flash for Fast & Smart Tiers from InsForge
-  const candidateModels = tier === "TIER_1_FAST" 
-    ? ["google/gemini-3.8-flash", "google/gemini-3.7-flash:beta", "google/gemini-2.5-flash-lite"] 
+  const candidateModels = tier === "TIER_1_FAST"
+    ? ["google/gemini-3.8-flash", "google/gemini-3.7-flash:beta", "google/gemini-2.5-flash-lite"]
     : ["google/gemini-3.8-flash", "google/gemini-3.7-flash", "google/gemini-3.6-flash", "deepseek/deepseek-chat", "google/gemini-2.5-flash"];
 
   const { insforge } = await getInsforgeServerClient().catch(() => ({
@@ -195,6 +236,9 @@ export async function routeAICall<T = any>(req: AICallRequest): Promise<AICallRe
       const claudeCostINR = Number((claudeCostUSD * 86.5).toFixed(4));
       const savingsVsClaudeINR = Number(Math.max(0, claudeCostINR - costINR).toFixed(4));
 
+      // Store successful result in cache
+      setCachedAIResponse<T>(cacheKey, parsedData as T, rawText, modelToTry, req.task);
+
       return {
         success: true,
         data: parsedData,
@@ -207,6 +251,7 @@ export async function routeAICall<T = any>(req: AICallRequest): Promise<AICallRe
           costINR,
           savingsVsClaudeINR,
           latencyMs,
+          cacheHit: false,
         },
       };
     } catch (err: any) {
@@ -229,6 +274,7 @@ export async function routeAICall<T = any>(req: AICallRequest): Promise<AICallRe
       costINR: 0,
       savingsVsClaudeINR: 0,
       latencyMs: Date.now() - startTime,
+      cacheHit: false,
     },
   };
 }
