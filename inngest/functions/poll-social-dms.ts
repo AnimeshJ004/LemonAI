@@ -2,6 +2,7 @@ import { inngest } from "../client";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { decrypt } from "@/lib/encryption";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 import { sendPrivateDM } from "@/lib/meta-messaging";
 
 /**

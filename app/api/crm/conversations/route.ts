@@ -8,12 +8,13 @@ import {
   createConversation,
 } from "@/lib/crm-service";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 import { dispatchCRMOutboundMessage } from "@/lib/crm-outbound-dispatcher";
 
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : null);
+    const targetUserId = userId;
     if (!targetUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : null);
+    const targetUserId = userId;
     if (!targetUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -246,7 +247,7 @@ Answer their questions directly in 2-3 sentences. Suggest scheduling a quick 15-
 export async function PATCH(request: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : null);
+    const targetUserId = userId;
     if (!targetUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

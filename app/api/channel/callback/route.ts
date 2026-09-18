@@ -124,11 +124,7 @@ export async function GET(request: NextRequest) {
             }
         }
 
-        console.log(`[OAuth Callback] Successfully connected ${state.channelType}:`, JSON.stringify({
-          providerAccountId: profile.providerAccountId,
-          handle: profile.handle,
-          availableCount: profile.availableAccounts?.length || 1,
-        }));
+        // Do not log OAuth callback payloads (may contain sensitive account/provider details)
 
         // If multiple Instagram accounts were found, store pending selection and redirect to account selection modal
         if (
@@ -219,8 +215,8 @@ export async function GET(request: NextRequest) {
                             access_token: pageToken,
                         }),
                     });
-                    const subData = await subRes.json().catch(() => ({}));
-                    console.log(`[OAuth Callback] Page ${pageId} webhook subscription result:`, JSON.stringify(subData));
+                    await subRes.json().catch(() => ({}));
+                    // Do not log OAuth callback payloads (may contain access tokens / sensitive details)
                 } catch (subErr) {
                     console.warn("[OAuth Callback] Notice subscribing page to webhooks:", subErr);
                 }
@@ -232,6 +228,26 @@ export async function GET(request: NextRequest) {
             channelType: state.channelType,
         });
         response.cookies.delete(pkceCookieName);
+
+        // Fire-and-forget audit entry for the successful connection.
+        try {
+            const { writeAuditEntry, AUDIT_EVENT } = await import("@/lib/audit-log");
+            void writeAuditEntry({
+                userId: state.userId,
+                event: AUDIT_EVENT.CHANNEL_CONNECTED,
+                resourceType: "user_channel",
+                metadata: {
+                    channelType: state.channelType,
+                    channelTypeId: state.channelTypeId,
+                    handle: profile.handle ?? null,
+                },
+                ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+                userAgent: request.headers.get("user-agent") ?? null,
+            });
+        } catch {
+            /* best-effort — never break the OAuth redirect */
+        }
+
         return response;
     } catch (error: any) {
         console.error('OAuth callback error:', error);

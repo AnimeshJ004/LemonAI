@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { generateAdCreativeImage, ImageAspectRatio } from "@/lib/ai-image-generator";
 
 export async function POST(request: NextRequest) {
@@ -8,6 +9,14 @@ export async function POST(request: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    // Image generation is expensive — cap per-user throughput.
+    const limited = await enforceRateLimit(request, {
+      limit: 15,
+      windowMs: 60_000,
+      namespace: "ai-image",
+    });
+    if (limited) return limited;
 
     const body = await request.json();
     const prompt = body.prompt?.trim();

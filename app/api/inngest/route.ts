@@ -5,6 +5,7 @@ import { pollPostComments } from "@/inngest/functions/poll-post-comments";
 import { leadFollowupOrchestrator } from "@/inngest/functions/lead-followup-orchestrator";
 import { adOptimizerCron } from "@/inngest/functions/ad-optimizer-cron";
 import { pollSocialDMs } from "@/inngest/functions/poll-social-dms";
+import { dataRetentionCron } from "@/inngest/functions/data-retention-cron";
 
 export const { GET, POST, PUT } = serve({
   client: inngest,
@@ -15,5 +16,6 @@ export const { GET, POST, PUT } = serve({
     leadFollowupOrchestrator,
     adOptimizerCron,
     pollSocialDMs,
+    dataRetentionCron,
   ],
 });

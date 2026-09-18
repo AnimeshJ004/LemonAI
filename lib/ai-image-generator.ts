@@ -80,7 +80,7 @@ async function buildBrandAlignedVisualPrompt(
     .replace(/[#@]/g, "")
     .trim();
 
-  // Enhance using Gemini AI when gateway is available
+  // Enhance using Groq AI when gateway is available
   try {
     const { callResilientCompletion } = await import("@/lib/ai-gateway");
     const aiRes = await callResilientCompletion<string>({

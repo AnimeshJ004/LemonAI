@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { getInsforgeAdminClient, getInsforgeServerClient } from "@/lib/insforge-server";
 import { isValidUuid, normalizeSentiment } from "@/lib/social-comments-service";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 
 export const maxDuration = 30;
 

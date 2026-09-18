@@ -1,5 +1,6 @@
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 import { decrypt } from "@/lib/encryption";
 import { sendPrivateDM } from "@/lib/meta-messaging";
 import {
@@ -9,32 +10,6 @@ import {
   addMessage,
   recordActivity,
 } from "@/lib/crm-service";
-
-// ---------------------------------------------------------------------------
-// In-Memory Idempotency & Concurrency Locks
-// ---------------------------------------------------------------------------
-// Prevents any simultaneous concurrent executions from double-replying
-const inFlightCommentIds = new Set<string>();
-
-// Caches recently replied comment IDs for 1 hour to prevent any instant re-entry
-const recentRepliedCommentIds = new Map<string, number>();
-
-// Tracks IDs of replies posted by our bot so webhooks don't treat them as incoming comments
-const ourPostedReplyIds = new Set<string>();
-
-// Periodically clean up cache entries older than 1 hour
-setInterval(() => {
-  const oneHourAgo = Date.now() - 60 * 60 * 1000;
-  for (const [id, timestamp] of recentRepliedCommentIds.entries()) {
-    if (timestamp < oneHourAgo) {
-      recentRepliedCommentIds.delete(id);
-    }
-  }
-  // Cap ourPostedReplyIds size
-  if (ourPostedReplyIds.size > 10000) {
-    ourPostedReplyIds.clear();
-  }
-}, 10 * 60 * 1000);
 
 export type AllowedSentiment = "INQUIRY" | "PRAISE" | "COMPLAINT" | "SPAM" | "NEUTRAL";
 const VALID_SENTIMENTS: AllowedSentiment[] = ["INQUIRY", "PRAISE", "COMPLAINT", "SPAM", "NEUTRAL"];
@@ -289,18 +264,6 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
   if (cleanChannel && cleanCommenter === cleanChannel) {
     return { success: true, skipped: true, reason: "self_comment_handle" };
   }
-  if (ourPostedReplyIds.has(commentId)) {
-    return { success: true, skipped: true, reason: "is_own_bot_reply" };
-  }
-
-  // ─── 2. In-Memory Idempotency Lock ──────────────────────────────────────────
-  if (inFlightCommentIds.has(commentId)) {
-    return { success: true, skipped: true, reason: "already_in_flight" };
-  }
-
-  if (recentRepliedCommentIds.has(commentId)) {
-    return { success: true, skipped: true, reason: "recently_replied_cache" };
-  }
 
   const admin = getInsforgeAdminClient();
 
@@ -311,14 +274,11 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
       const fromUsername = String(reply?.from?.username || "").toLowerCase().replace(/^@/, "").trim();
       return (
         (igAccountId && fromId === String(igAccountId)) ||
-        (cleanChannel && fromUsername === cleanChannel) ||
-        (reply.id && ourPostedReplyIds.has(reply.id))
+        (cleanChannel && fromUsername === cleanChannel)
       );
     });
 
     if (alreadyRepliedOnInstagram) {
-      recentRepliedCommentIds.set(commentId, Date.now());
-
       // If inquiry or buyer intent detected, ensure the CRM lead is recorded
       if (isCommentInquiry(commentText)) {
         await captureLeadFromComment({
@@ -368,7 +328,6 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
       .limit(1);
 
     if (existing && existing.length > 0) {
-      recentRepliedCommentIds.set(commentId, Date.now());
       // Ensure CRM lead is captured/updated if this was an inquiry
       if (isCommentInquiry(commentText)) {
         await captureLeadFromComment({
@@ -388,9 +347,32 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
     console.warn("[Social Comment Service] DB pre-check notice:", checkErr);
   }
 
-  // ─── 5. Atomic Database Pre-Claim (status: 'processing') ─────────────────────
-  // Acquire in-memory lock
-  inFlightCommentIds.add(commentId);
+  // ─── 5. Durable DB-backed Idempotency Claim ─────────────────────────────────
+  // Replaces the previous in-memory dedup with a durable claim in `replied_comments`.
+  // Works correctly across serverless multi-instance deployments: if another
+  // instance already claimed this comment, the unique PK on comment_id causes a
+  // conflict (Postgres error code 23505) and we skip sending the reply.
+  try {
+    const { error: idempotencyError } = await admin.database
+      .from("replied_comments")
+      .insert({
+        comment_id: commentId,
+        user_id: userId,
+        replied_at: new Date().toISOString(),
+      });
+
+    if (idempotencyError) {
+      // 23505 = unique_violation → another instance already owns this comment.
+      return { success: true, skipped: true, reason: "already_replied_idempotency" };
+    }
+  } catch (idempotencyErr: any) {
+    if (idempotencyErr?.code === "23505") {
+      return { success: true, skipped: true, reason: "already_replied_idempotency" };
+    }
+    // Any other insert failure: treat as an idempotency conflict to be safe and
+    // avoid the risk of a duplicate reply.
+    return { success: true, skipped: true, reason: "idempotency_claim_failed" };
+  }
 
   let safePostId: string | null = null;
   if (isValidUuid(scheduledPostId)) {
@@ -426,8 +408,6 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
 
     if (claimError) {
       // If UNIQUE constraint violated, another thread or worker already claimed this comment
-      inFlightCommentIds.delete(commentId);
-      recentRepliedCommentIds.set(commentId, Date.now());
       return { success: true, skipped: true, reason: "concurrency_preclaim_conflict" };
     }
 
@@ -628,8 +608,6 @@ Return ONLY the JSON object.`,
       if (replyRes.ok && replyJson?.id) {
         replySuccess = true;
         replyId = replyJson.id;
-        ourPostedReplyIds.add(replyJson.id);
-        recentRepliedCommentIds.set(commentId, Date.now());
         const platformLabel = isThreads ? "Threads" : isFacebook ? "Facebook" : "Instagram";
         console.log(`[Social Comment Service] ✓ Auto-reply posted to comment ${commentId} (${platformLabel}), reply ID: ${replyJson.id}`);
       } else {
@@ -774,8 +752,9 @@ Return ONLY the JSON object.`,
       dmSent: dmSuccess,
       reason: replySuccess ? undefined : (leadId ? "lead_captured_reply_pending" : "reply_failed"),
     };
-  } finally {
-    inFlightCommentIds.delete(commentId);
+  } catch (outerErr: any) {
+    console.error("[Social Comment Service] Unexpected error in processSingleComment:", outerErr?.message || outerErr);
+    return { success: false, skipped: false, reason: "unexpected_error" };
   }
 }
 

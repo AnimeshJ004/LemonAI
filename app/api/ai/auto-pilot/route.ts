@@ -8,6 +8,7 @@ import { inngest } from "@/inngest/client";
 import { publishPostDirectly } from "@/lib/direct-publisher";
 import { getUserMemoryContext, buildMemoryPromptBlock } from "@/lib/ai-memory";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 import { getPlatformPeakTime, adaptCaptionForPlatform, getPlatformStaggeredDate, parseCustomTimeString } from "@/lib/platform-adapt-helper";
 
 export const maxDuration = 120; // Support extended AI batch generation

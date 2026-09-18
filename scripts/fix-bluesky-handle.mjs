@@ -33,7 +33,12 @@ async function fix() {
   const apiKey = process.env.INSFORGE_PROJECT_API_KEY || process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY;
   const bskyHandle = process.env.BLUESKY_IDENTIFIER || 'testaipost.bsky.social';
   const formattedHandle = bskyHandle.startsWith('@') ? bskyHandle : `@${bskyHandle}`;
-  const encryptedPass = encrypt(process.env.BLUESKY_APP_PASSWORD || 'qe4m-ztqb-tlbp-pdxz');
+  const rawPass = process.env.BLUESKY_APP_PASSWORD || '';
+  if (!rawPass) {
+    console.error('Missing BLUESKY_APP_PASSWORD environment variable.');
+    return;
+  }
+  const encryptedPass = encrypt(rawPass);
 
   console.log(`Connecting to Insforge at ${baseUrl}...`);
   const insforge = createClient({

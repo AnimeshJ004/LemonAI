@@ -2,6 +2,7 @@ import { getInsforgeServerClient, getInsforgeAdminClient } from "@/lib/insforge-
 import { getBrandProfileForUser, formatBrandHashtags, cleanTag } from "@/lib/brand-helper";
 import { generateAdCreativeImage } from "@/lib/ai-image-generator";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 import { POST_STATUS } from "@/constants/post";
 import { auth } from "@clerk/nextjs/server";
 import { inngest } from "@/inngest/client";
@@ -37,6 +38,19 @@ export async function POST(request: NextRequest) {
         }
         if (action === "generate" && !prompt.trim()) {
             return NextResponse.json({ error: "Prompt is required for generate action" }, { status: 400 });
+        }
+
+        // Input length validation to prevent oversized prompts / abuse
+        if (
+            (typeof prompt === "string" && prompt.length > 2000) ||
+            (typeof content === "string" && content.length > 5000) ||
+            (typeof targetChannel === "string" && targetChannel.length > 100) ||
+            (typeof goal === "string" && goal.length > 100)
+        ) {
+            return NextResponse.json(
+                { error: "Input too long. prompt max 2000, content max 5000 characters." },
+                { status: 400 }
+            );
         }
 
         let channelType: string | undefined;
@@ -131,7 +145,7 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
   ]
 }`;
 
-            // Resilient Completion: Cascades from InsForge Gemini models to Groq Cloud Llama models
+            // Resilient Completion: Executes via Groq Cloud production models
             const completion = await callResilientCompletion({
                 messages: [{ role: "user", content: multiPrompt }],
                 jsonMode: true,

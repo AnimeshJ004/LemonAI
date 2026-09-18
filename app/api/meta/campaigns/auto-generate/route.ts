@@ -4,6 +4,7 @@ import { getInsforgeServerClient, getInsforgeAdminClient } from "@/lib/insforge-
 import { getBrandProfileForUser } from "@/lib/brand-helper";
 import { generateAdCreativeImage } from "@/lib/ai-image-generator";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 
 export interface AutoGenerateCampaignsRequest {
   campaignsCount?: number; // default: 3
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
     const isMetaConnected = metaChannels.length > 0;
     const adAccountId = process.env.META_AD_ACCOUNT_ID || "act_000000000";
 
-    // 3. AI Autonomous Campaign Planning (Gemini 3.8 Flash)
+    // 3. AI Autonomous Campaign Planning (Groq AI)
     const systemPrompt = `You are a world-class Direct Response Meta Ads Strategist and Creative Director for ${businessName}.
 Industry / Niche: ${niche}.
 Target Audience: ${targetAudience}.

@@ -4,6 +4,7 @@ import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { getBrandProfileForUser } from "@/lib/brand-helper";
 import { generateAdCreativeImage } from "@/lib/ai-image-generator";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 
 export const maxDuration = 90;
 

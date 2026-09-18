@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 import { evaluateBANTLeadScore } from "@/lib/lead-scoring";
 import { userBrandCache } from "@/lib/brand-helper";
 import {
@@ -319,7 +320,7 @@ STRICT SECURITY INSTRUCTIONS:
 
         const updated = await updateLead(leadId, updatePayload, userId);
         if (updated) {
-          console.log(`[Chatbot CRM] Lead updated: ${updated.name} (Stage: ${updated.stage})`);
+          console.log(`[Chatbot CRM] Lead updated: [redacted] (Stage: ${updated.stage})`);
         }
       } else if (extractedEmail || extractedPhone || hasIntent || bookingDateTime.dateText) {
         // Create new lead
@@ -345,7 +346,7 @@ STRICT SECURITY INSTRUCTIONS:
         });
 
         leadId = newLead.id;
-        console.log(`[Chatbot CRM] New lead created: ${newLead.name} (Stage: ${newLead.stage})`);
+        console.log(`[Chatbot CRM] New lead created: [redacted] (Stage: ${newLead.stage})`);
       }
 
       // Record Activity in CRM Activities table and local store

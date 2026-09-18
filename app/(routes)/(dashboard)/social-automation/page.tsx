@@ -223,7 +223,7 @@ export default function SocialAutomationPage() {
             <Sparkles className="size-4 text-primary" /> Simulator Sandbox (Preview AI Responses)
           </CardTitle>
           <CardDescription>
-            Use this sandbox to test how Gemini AI classifies and answers different comments. <strong>In production, real comments from Instagram & Facebook are answered 100% automatically without any manual action.</strong>
+            Use this sandbox to test how Groq AI classifies and answers different comments. <strong>In production, real comments from Instagram & Facebook are answered 100% automatically without any manual action.</strong>
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

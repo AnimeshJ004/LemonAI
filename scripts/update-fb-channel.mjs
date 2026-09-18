@@ -27,9 +27,13 @@ function encrypt(text) {
 }
 
 async function updateChannel() {
-  const pageAccessToken = 'EAAj8NdgwzwsBSU1VefD6JxZCbfO0OCIrzn4fdnZC7J9HhNPpuZA0imxEqKl7oubtwNZBEftVKTi6KMa5jJnsyZBXLA3SjbIxK81rXXNOkbnH5O1Mc5LZBhwhnAgCg41f0A7orPQlGIHZB58Lqns3tBfY9BfAUeFFhV2pZCcKRmSqmDnmdIjQwx4ELZCGpqeS2EDwvE9HF';
-  const pageId = '1308682348996283';
-  const pageName = 'Lemonai';
+  const pageAccessToken = process.env.FB_PAGE_ACCESS_TOKEN || '';
+  if (!pageAccessToken) {
+    console.error('Missing FB_PAGE_ACCESS_TOKEN in environment. Please set it before running this script.');
+    return;
+  }
+  const pageId = process.env.FB_PAGE_ID || '1308682348996283';
+  const pageName = process.env.FB_PAGE_NAME || 'Lemonai';
 
   const insforge = createClient({
     baseUrl: process.env.NEXT_PUBLIC_INSFORGE_BASE_URL,

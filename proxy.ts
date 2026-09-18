@@ -4,16 +4,15 @@ import { NextResponse } from "next/server";
 // Public routes that don't require authentication
 const isPublicRoute = createRouteMatcher([
   "/",
+  "/privacy",                  // Public privacy policy page
   "/sign-in(.*)",
   "/sign-up(.*)",
-  "/api/auth/(.*)",
   "/api/chat/(.*)",            // Public website embed chat
   "/api/webhooks/(.*)",        // Meta, WhatsApp, Calcom, Clerk, Voice webhooks
   "/api/social/webhook(.*)",   // Instagram/Facebook comment webhook (Meta pushes here)
   "/api/social/whatsapp(.*)",  // WhatsApp Cloud API webhook
   "/api/chatbot(.*)",          // Public website chatbot widget
-  "/api/crm/(.*)",
-  "/api/voice/(.*)",
+  "/api/lead-form/(.*)",       // Public embeddable lead capture form
   "/api/inngest(.*)",          // Inngest background job runner
 ]);
 
@@ -30,9 +29,16 @@ export default clerkMiddleware(
 
     // 1. Unauthenticated users:
     if (!userId) {
-      // Allow public routes and API routes (APIs handle auth internally and return JSON)
-      if (isPublicRoute(req) || isApiRoute(req)) {
+      // Allow explicitly public routes (public pages + public API endpoints).
+      if (isPublicRoute(req)) {
         return NextResponse.next();
+      }
+
+      // Non-public API routes: reject at the edge with JSON 401 as
+      // defense-in-depth. Individual handlers still enforce auth, but this
+      // guarantees a forgotten in-handler guard cannot leak data.
+      if (isApiRoute(req)) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
 
       // Redirect private dashboard routes to sign-in

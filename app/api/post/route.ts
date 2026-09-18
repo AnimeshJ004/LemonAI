@@ -63,8 +63,6 @@ export async function GET(request: NextRequest) {
             groupMap.get(key)!.posts.push(post);
         });
 
-        console.log("groupMap size:", groupMap.size)
-
         const groupPosts = Array.from(groupMap.entries()).map(([key, value]) => ({
             key,
             ...value
@@ -224,7 +222,7 @@ export async function POST(request: NextRequest) {
             .select()
 
         if (error) {
-            console.log(error, "error")
+            console.error("[Posts] Failed to insert scheduled posts:", error.message)
             return NextResponse.json({ error: "Failed to create posts" }, { status: 500 })
         }
 

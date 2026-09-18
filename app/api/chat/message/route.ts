@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { getBrandProfileForUser } from "@/lib/brand-helper";
 import { routeAICall } from "@/lib/ai-router";
 import {
@@ -12,6 +13,14 @@ import { generateCalcomBookingUrl } from "@/lib/calcom-client";
 
 export async function POST(request: NextRequest) {
   try {
+    // Anti-abuse rate limiting for the public embed widget (per client).
+    const limited = await enforceRateLimit(request, {
+      limit: 20,
+      windowMs: 60_000,
+      namespace: "chat-message",
+    });
+    if (limited) return limited;
+
     const body = await request.json().catch(() => ({}));
     const {
       message,
@@ -26,8 +35,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Message is required" }, { status: 400 });
     }
 
-    // Determine tenant/brand user_id (from body, or default to system/first account for embed widget)
-    const targetUserId = passedUserId || "user_lemon_default";
+    // Determine tenant/brand user_id. The embed widget must supply the account
+    // id it was configured for; we never fall back to a shared demo tenant.
+    const targetUserId = typeof passedUserId === "string" ? passedUserId.trim() : "";
+    if (!targetUserId) {
+      return NextResponse.json(
+        { error: "Missing widget account identifier" },
+        { status: 400 }
+      );
+    }
 
     // 1. Fetch brand profile for grounding
     const brand = await getBrandProfileForUser(targetUserId);

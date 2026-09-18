@@ -12,14 +12,8 @@ function getOAuthStateSecret(): string {
     return "LemonAI_BuildPhase_OAuthSecret_Placeholder_32chars";
   }
   if (process.env.NODE_ENV === "production") {
-    // In production runtime, check if an alternative secure server key is available as fallback
-    const fallback = process.env.CLERK_SECRET_KEY || process.env.INSFORGE_PROJECT_API_KEY;
-    if (fallback && fallback.trim().length >= 16) {
-      console.warn(
-        "[SECURITY WARNING] CHANNEL_OAUTH_STATE_SECRET not set in production. Using fallback server secret."
-      );
-      return fallback.trim();
-    }
+    // Fail closed: never borrow other server secrets. If the dedicated OAuth
+    // state secret is not set in production, this is a fatal misconfiguration.
     throw new Error(
       "[SECURITY FATAL] CHANNEL_OAUTH_STATE_SECRET must be set in production with at least 16 characters."
     );
@@ -61,7 +55,12 @@ export function verifyOAuthState(state: string): OAuthStatePayload {
     const secret = getOAuthStateSecret();
     const expectedSignature = createHmac('sha256', secret).update(encodedState).digest('base64url');
 
-    const isValid = timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expectedSignature);
+    if (sigBuf.length !== expBuf.length) {
+        throw new Error('Invalid state signature');
+    }
+    const isValid = timingSafeEqual(sigBuf, expBuf);
     if (!isValid) {
         throw new Error('Invalid state signature');
     }

@@ -1,16 +1,19 @@
 import { callGroqChatCompletion, isGroqConfigured, GROQ_THINKING_MODELS } from "@/lib/groq-client";
+import {
+  buildCacheKey,
+  getCachedAIResponse,
+  setCachedAIResponse,
+} from "@/lib/ai-cache";
 
 /**
- * Resilient AI completion — Groq (GPT-OSS) direct.
+ * Resilient AI completion — Groq production models direct.
  *
- * InsForge Gemini has been removed from the codepath. All content generation
- * routes through Groq's OpenAI GPT-OSS production models (openai/gpt-oss-120b
- * for reasoning, openai/gpt-oss-20b as an in-tier last resort). The public
- * signature of `callResilientCompletion` is intentionally unchanged so every
+ * All content generation routes through Groq's production models:
+ * openai/gpt-oss-120b for deep reasoning, groq/compound, and openai/gpt-oss-20b as fallback.
+ * The public signature of `callResilientCompletion` is intentionally unchanged so every
  * existing caller keeps working without edits.
  *
- * MODEL_WATERFALL is retained (as Groq GPT-OSS IDs) so callers that read it for
- * diagnostics still compile — but the internal loop now targets Groq only.
+ * MODEL_WATERFALL is populated from GROQ_THINKING_MODELS.
  */
 
 // Retained for backward compatibility with any diagnostic caller that imports it.
@@ -29,6 +32,7 @@ export interface ResilientCompletionResult<T = any> {
   content: string;
   data: T | null;
   modelUsed: string;
+  cacheHit: boolean; // true when served from in-memory cache
 }
 
 /**
@@ -59,6 +63,30 @@ export function extractJsonFromText<T = any>(raw: string): T | null {
 export async function callResilientCompletion<T = any>(
   options: ResilientCompletionOptions
 ): Promise<ResilientCompletionResult<T>> {
+  // ── Cache lookup ──────────────────────────────────────────────────────────
+  const systemMsg = options.messages.find((m) => m.role === "system")?.content ?? "";
+  const userMsg = options.messages.find((m) => m.role === "user")?.content ?? "";
+  const cacheKey = buildCacheKey({
+    systemPrompt: systemMsg,
+    userPrompt: userMsg,
+    temperature: options.temperature,
+    jsonMode: options.jsonMode,
+    maxTokens: options.maxTokens,
+  });
+
+  const cached = getCachedAIResponse<T>(cacheKey);
+  if (cached) {
+    console.log(`[AI Gateway] Cache HIT (model: ${cached.model})`);
+    return {
+      success: true,
+      content: cached.rawText,
+      data: cached.data,
+      modelUsed: cached.model,
+      cacheHit: true,
+    };
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   if (!isGroqConfigured()) {
     console.error("[AI Gateway] GROQ_API_KEY is not configured. All content generation is disabled.");
     return {
@@ -66,6 +94,7 @@ export async function callResilientCompletion<T = any>(
       content: "",
       data: null,
       modelUsed: "none",
+      cacheHit: false,
     };
   }
 
@@ -78,11 +107,13 @@ export async function callResilientCompletion<T = any>(
     });
 
     if (groqRes.success && groqRes.content) {
+      setCachedAIResponse<T>(cacheKey, groqRes.data!, groqRes.content, groqRes.modelUsed, "GENERIC");
       return {
         success: true,
         content: groqRes.content,
         data: groqRes.data,
         modelUsed: groqRes.modelUsed,
+        cacheHit: false,
       };
     }
 
@@ -96,5 +127,6 @@ export async function callResilientCompletion<T = any>(
     content: "",
     data: null,
     modelUsed: "none",
+    cacheHit: false,
   };
 }

@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { getInsforgeAdminClient } from "./insforge-server";
 import { decrypt } from "./encryption";
 import { getBrandBrainSummary, getBrandProfileForUser } from "./brand-helper";
@@ -32,170 +30,66 @@ export interface DMConversation {
   updated_at: string;
 }
 
-const DB_FILE = path.join(process.cwd(), ".lemon_dms_memory.json");
-let memoryDMs = new Map<string, DMConversation>();
-
-function loadFromDisk() {
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const data = JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
-      if (data?.dms) {
-        memoryDMs = new Map(Object.entries(data.dms));
-      }
-    }
-  } catch (err) {
-    console.error("[DM Service] Error loading dev DB file:", err);
-  }
-}
-
-function saveToDisk() {
-  try {
-    const data = {
-      dms: Object.fromEntries(memoryDMs),
-    };
-    fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
-  } catch (err) {
-    console.error("[DM Service] Error saving dev DB file:", err);
-  }
-}
-
-loadFromDisk();
-
-const INITIAL_DEMO_DMS: DMConversation[] = [
-  {
-    id: "dm-seed-1",
-    user_id: "user_lemon_default",
-    platform: "INSTAGRAM",
-    conversation_id: "ig_conv_178414331_001",
-    sender_id: "ig_user_priya_sharma",
-    sender_name: "Priya Sharma (@priyastyle)",
-    last_message: "Hi! What are your pricing plans for the social media AI automation tool? We run a fashion brand with 45k followers.",
-    last_message_at: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-    is_read: false,
-    messages_count: 2,
-    raw_messages: [
-      {
-        id: "msg_1a",
-        message: "Hey! Loved your recent video on multi-channel scheduling.",
-        from: { id: "ig_user_priya_sharma", name: "Priya Sharma" },
-        created_time: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
-      },
-      {
-        id: "msg_1b",
-        message: "Hi! What are your pricing plans for the social media AI automation tool? We run a fashion brand with 45k followers.",
-        from: { id: "ig_user_priya_sharma", name: "Priya Sharma" },
-        created_time: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-      },
-    ],
-    created_at: new Date(Date.now() - 1000 * 60 * 25).toISOString(),
-    updated_at: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-  },
-  {
-    id: "dm-seed-2",
-    user_id: "user_lemon_default",
-    platform: "FACEBOOK",
-    conversation_id: "fb_conv_1221066_002",
-    sender_id: "fb_user_rahul_verma",
-    sender_name: "Rahul Verma (Apex Digital Agency)",
-    last_message: "Can we schedule a 15-min product walkthrough? We need automated comment replies & DM-to-lead capture for 6 client accounts.",
-    last_message_at: new Date(Date.now() - 1000 * 60 * 42).toISOString(),
-    is_read: false,
-    messages_count: 1,
-    raw_messages: [
-      {
-        id: "msg_2a",
-        message: "Can we schedule a 15-min product walkthrough? We need automated comment replies & DM-to-lead capture for 6 client accounts.",
-        from: { id: "fb_user_rahul_verma", name: "Rahul Verma" },
-        created_time: new Date(Date.now() - 1000 * 60 * 42).toISOString(),
-      },
-    ],
-    created_at: new Date(Date.now() - 1000 * 60 * 42).toISOString(),
-    updated_at: new Date(Date.now() - 1000 * 60 * 42).toISOString(),
-  },
-  {
-    id: "dm-seed-3",
-    user_id: "user_lemon_default",
-    platform: "INSTAGRAM",
-    conversation_id: "ig_conv_178414331_003",
-    sender_id: "ig_user_arjun_tech",
-    sender_name: "Arjun Mehta (@arjun_growth)",
-    last_message: "Does LemonAI support auto-reply to Instagram comments with an instant DM coupon code?",
-    last_message_at: new Date(Date.now() - 1000 * 60 * 85).toISOString(),
-    last_reply: "Yes, absolutely Arjun! You can set up keyword-triggered auto replies in Social Automation that instantly comment back and send a personalized DM with your promo code.",
-    last_replied_at: new Date(Date.now() - 1000 * 60 * 70).toISOString(),
-    is_read: true,
-    messages_count: 2,
-    raw_messages: [
-      {
-        id: "msg_3a",
-        message: "Does LemonAI support auto-reply to Instagram comments with an instant DM coupon code?",
-        from: { id: "ig_user_arjun_tech", name: "Arjun Mehta" },
-        created_time: new Date(Date.now() - 1000 * 60 * 85).toISOString(),
-      },
-    ],
-    created_at: new Date(Date.now() - 1000 * 60 * 85).toISOString(),
-    updated_at: new Date(Date.now() - 1000 * 60 * 70).toISOString(),
-  },
-];
-
-// Ensure initial seed DMs exist
-if (memoryDMs.size === 0) {
-  for (const dm of INITIAL_DEMO_DMS) {
-    memoryDMs.set(dm.conversation_id, dm);
-  }
-  saveToDisk();
-}
-
+/**
+ * Social DM service.
+ *
+ * All conversations are persisted in the `social_dms` database table and are
+ * strictly scoped to the owning `user_id`. There is no local filesystem cache
+ * (unsafe on ephemeral serverless runtimes) and no demo/seed data — only real
+ * conversations synced from the Meta Graph API are stored.
+ */
 export const socialDMService = {
   /**
-   * Get all DM conversations for a user
+   * Get all DM conversations for a user.
    */
   async getDMs(userId: string, platform?: string | null, limit: number = 50): Promise<DMConversation[]> {
+    if (!userId) return [];
     const admin = getInsforgeAdminClient();
 
     try {
       let query = admin.database
         .from("social_dms")
         .select("*")
+        .eq("user_id", userId)
         .order("last_message_at", { ascending: false })
         .limit(limit);
 
-      if (userId && userId !== "user_lemon_default") {
-        query = query.eq("user_id", userId);
-      }
       if (platform) {
         query = query.eq("platform", platform.toUpperCase());
       }
 
       const { data, error } = await query;
-
-      if (!error && data && data.length > 0) {
-        // Sync DB rows into memory
-        for (const row of data) {
-          memoryDMs.set(row.conversation_id, row);
-        }
-        saveToDisk();
-        return data;
+      if (error) {
+        console.warn("[DM Service] Error reading DMs from DB:", error.message);
+        return [];
       }
-    } catch (dbErr) {
-      console.warn("[DM Service] DB query fallback to local cache:", dbErr);
+      return (data as DMConversation[]) || [];
+    } catch (dbErr: any) {
+      console.warn("[DM Service] Error reading DMs from DB:", dbErr?.message);
+      return [];
     }
-
-    // Return from disk/memory
-    let list = Array.from(memoryDMs.values());
-    if (platform) {
-      list = list.filter((dm) => dm.platform === platform.toUpperCase());
-    }
-    list.sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
-    return list.slice(0, limit);
   },
 
   /**
-   * Upsert a DM conversation into both database and local memory
+   * Upsert a DM conversation into the database.
    */
   async upsertDM(dm: Partial<DMConversation> & { conversation_id: string; user_id: string }): Promise<DMConversation> {
-    const existing = memoryDMs.get(dm.conversation_id);
+    const admin = getInsforgeAdminClient();
     const now = new Date().toISOString();
+
+    // Load any existing row so we can merge fields without clobbering history.
+    let existing: DMConversation | null = null;
+    try {
+      const { data } = await admin.database
+        .from("social_dms")
+        .select("*")
+        .eq("conversation_id", dm.conversation_id)
+        .eq("user_id", dm.user_id)
+        .maybeSingle();
+      existing = (data as DMConversation) || null;
+    } catch {
+      existing = null;
+    }
 
     const record: DMConversation = {
       id: existing?.id || dm.id || `dm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -221,15 +115,10 @@ export const socialDMService = {
       updated_at: now,
     };
 
-    memoryDMs.set(dm.conversation_id, record);
-    saveToDisk();
-
-    // Try DB upsert
     try {
-      const admin = getInsforgeAdminClient();
       await admin.database.from("social_dms").upsert(record, { onConflict: "conversation_id" });
-    } catch {
-      // Graceful fallback
+    } catch (err: any) {
+      console.warn("[DM Service] Error upserting DM to DB:", err?.message);
     }
 
     return record;
@@ -237,24 +126,29 @@ export const socialDMService = {
 
   /**
    * Perform DM synchronization:
-   * 1. Detect connected Meta channels for user
-   * 2. Attempt live Meta Graph API fetch with access tokens
-   * 3. If live API has permission limits in dev, populate realistic active client inquiries
+   * 1. Detect connected Meta channels for the user
+   * 2. Fetch live conversations from the Meta Graph API using stored tokens
+   *
+   * No simulated/seed data is ever produced — if the live API returns nothing
+   * (or lacks permissions), we report zero synced conversations honestly.
    */
-  async syncDMs(userId: string): Promise<{ synced: number; message: string; source: "live" | "simulated" | "none" }> {
+  async syncDMs(userId: string): Promise<{ synced: number; message: string; source: "live" | "none" }> {
+    if (!userId) {
+      return { synced: 0, message: "Missing user context.", source: "none" };
+    }
     const admin = getInsforgeAdminClient();
 
-    // Find connected Meta channels
-    let { data: channels } = await admin.database
+    // Find connected Meta channels for this user only
+    const { data: channels } = await admin.database
       .from("user_channels")
-      .select("*, channel_types(*)");
+      .select("*, channel_types(*)")
+      .eq("user_id", userId);
 
-    let metaChannels = (channels || []).filter((c: any) =>
+    const metaChannels = (channels || []).filter((c: any) =>
       ["INSTAGRAM", "FACEBOOK"].includes(c.channel_types?.type) &&
       (c.is_connected || c.access_token)
     );
 
-    // If no channels connected at all
     if (metaChannels.length === 0) {
       return {
         synced: 0,
@@ -309,7 +203,7 @@ export const socialDMService = {
         } else {
           hadPermissionIssue = true;
         }
-      } catch (err: any) {
+      } catch {
         hadPermissionIssue = true;
       }
     }
@@ -322,30 +216,17 @@ export const socialDMService = {
       };
     }
 
-    // Refresh active conversations with realistic recent timestamps
-    const refreshed = INITIAL_DEMO_DMS.map((d, i) => ({
-      ...d,
-      user_id: userId,
-      last_message_at: new Date(Date.now() - 1000 * 60 * (i + 1) * 8).toISOString(),
-      updated_at: new Date().toISOString(),
-    }));
-
-    for (const d of refreshed) {
-      await this.upsertDM(d);
-    }
-
-    const channelNames = metaChannels.map((c: any) => c.handle || c.channel_types?.name).join(", ");
     return {
-      synced: refreshed.length,
-      message: `Synced ${refreshed.length} conversations for connected channels (${channelNames})${
-        hadPermissionIssue ? " [Development test mode]" : ""
-      }!`,
-      source: "simulated",
+      synced: 0,
+      message: hadPermissionIssue
+        ? "No new conversations synced. Your Meta account may not have granted messaging permissions yet, or there are no recent DMs."
+        : "No new conversations found on your connected Meta accounts.",
+      source: "none",
     };
   },
 
   /**
-   * Reply to a DM conversation (AI or manual)
+   * Reply to a DM conversation (AI or manual).
    */
   async replyDM({
     conversationId,
@@ -419,9 +300,22 @@ export const socialDMService = {
     }
 
     const now = new Date().toISOString();
-    const existing = memoryDMs.get(conversationId);
 
-    // Append outgoing message
+    // Load existing conversation to append the outgoing message
+    const admin = getInsforgeAdminClient();
+    let existing: DMConversation | null = null;
+    try {
+      const { data } = await admin.database
+        .from("social_dms")
+        .select("*")
+        .eq("conversation_id", conversationId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      existing = (data as DMConversation) || null;
+    } catch {
+      existing = null;
+    }
+
     const updatedMessages = [...(existing?.raw_messages || [])];
     updatedMessages.push({
       id: `reply_${Date.now()}`,

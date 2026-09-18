@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { createLead, updateLead, recordActivity } from "@/lib/crm-service";
 
 export async function POST(req: NextRequest) {
   try {
+    const limited = await enforceRateLimit(req, {
+      limit: 10,
+      windowMs: 60_000,
+      namespace: "lead-form-submit",
+    });
+    if (limited) return limited;
+
     const body = await req.json();
     const { userId, type, source, name, email, phone, service, message, budgetRange, timeline, preferredDate, preferredTimeSlot, selectedPackageId } = body;
 

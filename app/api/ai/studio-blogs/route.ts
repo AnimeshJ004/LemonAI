@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { getBrandProfileForUser } from "@/lib/brand-helper";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 
 export const maxDuration = 90;
 
@@ -17,6 +18,9 @@ export async function POST(req: NextRequest) {
     if (!topic) {
       return NextResponse.json({ error: "topic is required" }, { status: 400 });
     }
+
+    const invalid = validateInputLengths(body, { topic: 500, keyword: 200 });
+    if (invalid) return invalid;
 
     const brand = await getBrandProfileForUser(userId);
 

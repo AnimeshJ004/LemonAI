@@ -10,9 +10,11 @@ import { getActivitiesForUser, recordActivity } from "@/lib/crm-service";
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const { searchParams } = new URL(request.url);
-    const queryUserId = searchParams.get("userId");
-    const targetUserId = queryUserId || userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : null) || "usr_lemon_demo";
+    const targetUserId = userId;
 
     const leadId = searchParams.get("lead_id");
     const limitParam = searchParams.get("limit");
@@ -34,8 +36,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
     const body = await request.json().catch(() => ({}));
-    const targetUserId = body.userId || userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : null) || "usr_lemon_demo";
+    const targetUserId = userId;
 
     const { lead_id, type, title, description, metadata } = body;
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { researchMarketTrends } from "@/lib/trend-researcher";
+import { validateInputLengths } from "@/lib/validate-inputs";
 import { getBrandProfileForUser } from "@/lib/brand-helper";
 
 export const maxDuration = 60;
@@ -20,6 +21,9 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    const invalid = validateInputLengths(body, { niche: 300, targetAudience: 300, businessName: 200, country: 100 });
+    if (invalid) return invalid;
 
     // Get brand profile to enrich the research with actual business context
     const brand = await getBrandProfileForUser(userId);

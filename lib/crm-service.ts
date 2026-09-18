@@ -1,5 +1,3 @@
-import fs from "fs";
-import path from "path";
 import crypto from "crypto";
 import { getInsforgeAdminClient } from "./insforge-server";
 
@@ -112,56 +110,17 @@ export interface CRMActivity {
 }
 
 // ----------------------------------------------------------------------
-// PERSISTENT LOCAL CRM DATA ENGINE (Fallback when SQL table not yet migrated)
+// LEADS REPOSITORY (PostgreSQL via InsForge/Supabase)
+//
+// All reads and writes are scoped to the authenticated user (or the set of
+// users who share a connected channel). There are NO demo/test bypasses and
+// NO local filesystem persistence — the database is the single source of
+// truth so the service is safe on ephemeral serverless runtimes.
 // ----------------------------------------------------------------------
 
-interface LocalCRMData {
-  leads: Lead[];
-  activities: CRMActivity[];
-  conversations: CRMConversation[];
-  messages: CRMMessage[];
-}
-
-const DATA_DIR = path.join(process.cwd(), ".data");
-const CRM_STORE_PATH = path.join(DATA_DIR, "crm-store.json");
-
-function getLocalStore(): LocalCRMData {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    if (fs.existsSync(CRM_STORE_PATH)) {
-      const raw = fs.readFileSync(CRM_STORE_PATH, "utf-8");
-      const parsed = JSON.parse(raw);
-      return {
-        leads: Array.isArray(parsed.leads) ? parsed.leads : [],
-        activities: Array.isArray(parsed.activities) ? parsed.activities : [],
-        conversations: Array.isArray(parsed.conversations) ? parsed.conversations : [],
-        messages: Array.isArray(parsed.messages) ? parsed.messages : [],
-      };
-    }
-  } catch (e) {
-    console.warn("Notice reading local CRM store:", e);
-  }
-  return { leads: [], activities: [], conversations: [], messages: [] };
-}
-
-function saveLocalStore(data: LocalCRMData) {
-  try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
-    fs.writeFileSync(CRM_STORE_PATH, JSON.stringify(data, null, 2), "utf-8");
-  } catch (e) {
-    console.warn("Notice writing local CRM store:", e);
-  }
-}
-
-// ----------------------------------------------------------------------
-// LEADS REPOSITORY (PostgreSQL via InsForge + Durable Local Fallback)
-// ----------------------------------------------------------------------
-
-// Helper to resolve all user IDs that share connected channels with the given user
+// Resolve all user IDs that share connected channels with the given user.
+// This lets teammates who connect the same social channel see shared leads,
+// while still preventing cross-tenant leakage to unrelated users.
 async function getConnectedUserIds(userId: string): Promise<string[]> {
   if (!userId) return [];
   const userIds = new Set<string>([userId]);
@@ -188,27 +147,15 @@ async function getConnectedUserIds(userId: string): Promise<string[]> {
         if (s.user_id) userIds.add(s.user_id);
       }
     }
-
-    // In development or demo fallback: ensure connected channel leads are never hidden
-    if (userIds.size <= 1 || userId === "user_lemon_default" || userId === "usr_lemon_demo") {
-      const { data: allActiveChans } = await admin.database
-        .from("user_channels")
-        .select("user_id")
-        .eq("is_connected", true);
-      for (const c of allActiveChans || []) {
-        if (c.user_id) userIds.add(c.user_id);
-      }
-    }
-  } catch {}
+  } catch (err: any) {
+    console.warn("Notice resolving connected user IDs:", err?.message);
+  }
   return Array.from(userIds);
 }
 
 export async function getLeadsForUser(userId: string): Promise<Lead[]> {
+  if (!userId) return [];
   const allowedUserIds = await getConnectedUserIds(userId);
-  const local = getLocalStore();
-  const localLeads = local.leads.filter(
-    (l) => !userId || allowedUserIds.includes(l.user_id) || userId === "usr_lemon_demo" || userId === "user_lemon_default" || l.user_id === "usr_lemon_demo"
-  );
 
   try {
     const admin = getInsforgeAdminClient();
@@ -218,35 +165,29 @@ export async function getLeadsForUser(userId: string): Promise<Lead[]> {
       .in("user_id", allowedUserIds)
       .order("created_at", { ascending: false });
 
-    if (!error && data && data.length > 0) {
-      const mergedMap = new Map<string, Lead>();
-      localLeads.forEach((l) => mergedMap.set(l.id, l));
-      (data as Lead[]).forEach((l) => mergedMap.set(l.id, l));
-      return Array.from(mergedMap.values()).sort((a, b) => {
-        const timeA = new Date(a.updated_at || a.created_at).getTime();
-        const timeB = new Date(b.updated_at || b.created_at).getTime();
-        return timeB - timeA;
-      });
+    if (error) {
+      console.warn("Notice reading leads from DB:", error.message);
+      return [];
     }
+
+    return ((data as Lead[]) || []).sort((a, b) => {
+      const timeA = new Date(a.updated_at || a.created_at).getTime();
+      const timeB = new Date(b.updated_at || b.created_at).getTime();
+      return timeB - timeA;
+    });
   } catch (err: any) {
     console.warn("Notice reading leads from DB:", err?.message);
+    return [];
   }
-  return localLeads.sort((a, b) => {
-    const timeA = new Date(a.updated_at || a.created_at).getTime();
-    const timeB = new Date(b.updated_at || b.created_at).getTime();
-    return timeB - timeA;
-  });
 }
 
 export async function getLeadById(leadId: string, userId?: string): Promise<Lead | null> {
-  const local = getLocalStore();
-  const localLead = local.leads.find((l) => l.id === leadId);
-
   try {
     const admin = getInsforgeAdminClient();
     let query = admin.database.from("leads").select("*").eq("id", leadId);
     if (userId) {
-      query = query.eq("user_id", userId);
+      const allowedUserIds = await getConnectedUserIds(userId);
+      query = query.in("user_id", allowedUserIds);
     }
     const { data, error } = await query.maybeSingle();
     if (!error && data) {
@@ -255,7 +196,7 @@ export async function getLeadById(leadId: string, userId?: string): Promise<Lead
   } catch (err: any) {
     console.warn("Notice reading lead by id from DB:", err?.message);
   }
-  return localLead || null;
+  return null;
 }
 
 export async function createLead(
@@ -288,16 +229,6 @@ export async function createLead(
     updated_at: now,
   };
 
-  // Always save to durable local cache first
-  const local = getLocalStore();
-  const idx = local.leads.findIndex((l) => l.id === newLead.id);
-  if (idx >= 0) {
-    local.leads[idx] = newLead;
-  } else {
-    local.leads.unshift(newLead);
-  }
-  saveLocalStore(local);
-
   try {
     const admin = getInsforgeAdminClient();
     const { data, error } = await admin.database
@@ -306,14 +237,15 @@ export async function createLead(
       .select()
       .maybeSingle();
 
-    if (!error && data) {
-      return data as Lead;
+    if (error) {
+      console.error("Failed to save lead to DB:", error.message);
+      throw new Error(`Failed to create lead: ${error.message}`);
     }
+    return (data as Lead) || newLead;
   } catch (err: any) {
-    console.warn("Notice saving lead to DB:", err?.message);
+    console.error("Failed to save lead to DB:", err?.message || err);
+    throw err instanceof Error ? err : new Error("Failed to create lead");
   }
-
-  return newLead;
 }
 
 export async function updateLead(
@@ -322,23 +254,6 @@ export async function updateLead(
   userId?: string
 ): Promise<Lead | null> {
   const now = new Date().toISOString();
-
-  const local = getLocalStore();
-  const idx = local.leads.findIndex((l) => l.id === leadId);
-  let updatedLead: Lead | null = null;
-  if (idx >= 0) {
-    local.leads[idx] = {
-      ...local.leads[idx],
-      ...updates,
-      metadata: {
-        ...(local.leads[idx].metadata || {}),
-        ...(updates.metadata || {}),
-      },
-      updated_at: now,
-    };
-    updatedLead = local.leads[idx];
-    saveLocalStore(local);
-  }
 
   try {
     const admin = getInsforgeAdminClient();
@@ -371,35 +286,26 @@ export async function updateLead(
       .update(payloadToDb)
       .eq("id", leadId);
 
-    if (userId && userId !== "user_lemon_default" && userId !== "usr_lemon_demo") {
-      query = query.eq("user_id", userId);
+    if (userId) {
+      const allowedUserIds = await getConnectedUserIds(userId);
+      query = query.in("user_id", allowedUserIds);
     }
 
     const { data, error } = await query.select().maybeSingle();
-    if (!error && data) {
-      return data as Lead;
+    if (error) {
+      console.warn("Notice updating lead in DB:", error.message);
+      return null;
     }
+    return (data as Lead) || null;
   } catch (err: any) {
     console.warn("Notice updating lead in DB:", err?.message);
+    return null;
   }
-
-  return updatedLead;
 }
 
 export async function deleteLead(leadId: string, userId?: string): Promise<boolean> {
   if (!leadId) return false;
 
-  // 1. Remove from local store
-  const local = getLocalStore();
-  const initialLength = local.leads.length;
-  local.leads = local.leads.filter((l) => l.id !== leadId);
-  local.activities = local.activities.filter((a) => a.lead_id !== leadId);
-  local.conversations = local.conversations.filter((c) => c.lead_id !== leadId);
-  if (local.leads.length !== initialLength) {
-    saveLocalStore(local);
-  }
-
-  // 2. Remove from database
   try {
     const admin = getInsforgeAdminClient();
 
@@ -412,8 +318,9 @@ export async function deleteLead(leadId: string, userId?: string): Promise<boole
     } catch {}
 
     let deleteQuery = admin.database.from("leads").delete().eq("id", leadId);
-    if (userId && userId !== "user_lemon_default" && userId !== "usr_lemon_demo") {
-      deleteQuery = deleteQuery.eq("user_id", userId);
+    if (userId) {
+      const allowedUserIds = await getConnectedUserIds(userId);
+      deleteQuery = deleteQuery.in("user_id", allowedUserIds);
     }
 
     const { error } = await deleteQuery;
@@ -437,28 +344,7 @@ export async function findOrCreateLeadByContact(params: {
 }): Promise<Lead> {
   const { user_id, name, email, phone, source } = params;
 
-  // 1. Check local store
-  const local = getLocalStore();
-  const localExisting = local.leads.find(
-    (l) =>
-      (l.user_id === user_id || user_id === "usr_lemon_demo" || user_id === "user_lemon_default") &&
-      ((email && l.email && l.email.toLowerCase() === email.toLowerCase()) ||
-        (phone && l.phone && l.phone === phone))
-  );
-  if (localExisting) {
-    const updates: Partial<Lead> = {};
-    if (name && (!localExisting.name || localExisting.name === "Website Visitor" || localExisting.name === "Anonymous Lead")) {
-      updates.name = name;
-    }
-    if (phone && !localExisting.phone) updates.phone = phone;
-    if (email && !localExisting.email) updates.email = email;
-    if (Object.keys(updates).length > 0) {
-      return (await updateLead(localExisting.id, updates, user_id)) || localExisting;
-    }
-    return localExisting;
-  }
-
-  // 2. Search Postgres DB
+  // Search existing leads owned by this user
   try {
     const admin = getInsforgeAdminClient();
     let query = admin.database
@@ -475,7 +361,9 @@ export async function findOrCreateLeadByContact(params: {
     const { data: existing } = await query.limit(1).maybeSingle();
     if (existing) {
       const updates: Partial<Lead> = {};
-      if (name && (!existing.name || existing.name === "Anonymous Lead")) updates.name = name;
+      if (name && (!existing.name || existing.name === "Anonymous Lead" || existing.name === "Website Visitor")) {
+        updates.name = name;
+      }
       if (phone && !existing.phone) updates.phone = phone;
       if (email && !existing.email) updates.email = email;
       if (Object.keys(updates).length > 0) {
@@ -505,21 +393,23 @@ export async function findOrCreateLeadByContact(params: {
 // ----------------------------------------------------------------------
 
 export async function getConversationsForUser(userId: string): Promise<CRMConversation[]> {
+  if (!userId) return [];
   const allowedUserIds = await getConnectedUserIds(userId);
+
   try {
     const admin = getInsforgeAdminClient();
-    let convQuery = admin.database
+    const { data: convs, error } = await admin.database
       .from("crm_conversations")
       .select("*, lead:leads(*)")
+      .in("user_id", allowedUserIds)
       .order("last_message_at", { ascending: false });
 
-    if (allowedUserIds.length > 0 && userId !== "user_lemon_default" && userId !== "usr_lemon_demo") {
-      convQuery = convQuery.in("user_id", allowedUserIds);
+    if (error) {
+      console.warn("Notice: reading conversations from DB:", error.message);
+      return [];
     }
 
-    const { data: convs, error } = await convQuery;
-
-    if (!error && convs && convs.length > 0) {
+    if (convs && convs.length > 0) {
       // Fetch latest messages for these conversations so conversation list displays real snippets
       const convIds = convs.map((c: any) => c.id).slice(0, 100);
       const { data: msgs } = await admin.database
@@ -541,16 +431,11 @@ export async function getConversationsForUser(userId: string): Promise<CRMConver
         messages: msgMap.get(c.id) || [],
       })) as CRMConversation[];
     }
+    return [];
   } catch (err: any) {
     console.warn("Notice: reading conversations from DB:", err?.message);
+    return [];
   }
-
-  // Fallback to local store
-  const local = getLocalStore();
-  return local.conversations.map((c) => ({
-    ...c,
-    messages: local.messages.filter((m) => m.conversation_id === c.id),
-  }));
 }
 
 export async function getConversationWithMessages(
@@ -564,8 +449,7 @@ export async function getConversationWithMessages(
       .select("*, lead:leads(*)")
       .eq("id", conversationId);
 
-    // Only filter by user_id if specific Clerk user and not dev/demo mode
-    if (userId && userId !== "user_lemon_default" && userId !== "usr_lemon_demo") {
+    if (userId) {
       const allowedUserIds = await getConnectedUserIds(userId);
       convQuery = convQuery.in("user_id", allowedUserIds);
     }
@@ -586,17 +470,6 @@ export async function getConversationWithMessages(
     }
   } catch (err: any) {
     console.warn("Notice: reading conv with messages from DB:", err?.message);
-  }
-
-  // Fallback to local store
-  const local = getLocalStore();
-  const localConv = local.conversations.find((c) => c.id === conversationId);
-  if (localConv) {
-    const localMsgs = local.messages.filter((m) => m.conversation_id === conversationId);
-    return {
-      conversation: localConv,
-      messages: localMsgs.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()),
-    };
   }
 
   return { conversation: null, messages: [] };
@@ -621,11 +494,6 @@ export async function createConversation(data: {
     created_at: now,
   };
 
-  // Local store sync
-  const local = getLocalStore();
-  local.conversations.unshift(newConv);
-  saveLocalStore(local);
-
   try {
     const admin = getInsforgeAdminClient();
     const { data: inserted, error } = await admin.database
@@ -634,14 +502,15 @@ export async function createConversation(data: {
       .select("*, lead:leads(*)")
       .maybeSingle();
 
-    if (!error && inserted) {
-      return inserted as CRMConversation;
+    if (error) {
+      console.error("Failed to insert conversation in DB:", error.message);
+      throw new Error(`Failed to create conversation: ${error.message}`);
     }
+    return (inserted as CRMConversation) || newConv;
   } catch (err: any) {
-    console.warn("Notice: inserting conversation in DB:", err?.message);
+    console.error("Failed to insert conversation in DB:", err?.message || err);
+    throw err instanceof Error ? err : new Error("Failed to create conversation");
   }
-
-  return newConv;
 }
 
 export async function addMessage(data: {
@@ -659,15 +528,6 @@ export async function addMessage(data: {
     created_at: now,
   };
 
-  // Local store sync
-  const local = getLocalStore();
-  local.messages.push(newMsg);
-  const convIdx = local.conversations.findIndex((c) => c.id === data.conversation_id);
-  if (convIdx >= 0) {
-    local.conversations[convIdx].last_message_at = now;
-  }
-  saveLocalStore(local);
-
   try {
     const admin = getInsforgeAdminClient();
     await admin.database
@@ -681,14 +541,15 @@ export async function addMessage(data: {
       .select()
       .maybeSingle();
 
-    if (!error && inserted) {
-      return inserted as CRMMessage;
+    if (error) {
+      console.error("Failed to add message in DB:", error.message);
+      throw new Error(`Failed to add message: ${error.message}`);
     }
+    return (inserted as CRMMessage) || newMsg;
   } catch (err: any) {
-    console.warn("Notice: adding message in DB:", err?.message);
+    console.error("Failed to add message in DB:", err?.message || err);
+    throw err instanceof Error ? err : new Error("Failed to add message");
   }
-
-  return newMsg;
 }
 
 export async function toggleAIActive(
@@ -703,7 +564,7 @@ export async function toggleAIActive(
       .update({ is_ai_active })
       .eq("id", conversationId);
 
-    if (userId && userId !== "user_lemon_default" && userId !== "usr_lemon_demo") {
+    if (userId) {
       const allowedUserIds = await getConnectedUserIds(userId);
       query = query.in("user_id", allowedUserIds);
     }
@@ -712,13 +573,15 @@ export async function toggleAIActive(
       .select("*, lead:leads(*)")
       .maybeSingle();
 
-    if (!error && data) {
-      return data as CRMConversation;
+    if (error) {
+      console.warn("Notice: toggling AI in DB:", error.message);
+      return null;
     }
+    return (data as CRMConversation) || null;
   } catch (err: any) {
     console.warn("Notice: toggling AI in DB:", err?.message);
+    return null;
   }
-  return null;
 }
 
 
@@ -747,15 +610,12 @@ export async function recordActivity(params: {
     created_at: now,
   };
 
-  // Always save locally
-  const local = getLocalStore();
-  local.activities.unshift(activity);
-  saveLocalStore(local);
-
-  // Attempt to write to InsForge Postgres
   try {
     const admin = getInsforgeAdminClient();
-    await admin.database.from("crm_activities").insert([activity]);
+    const { error } = await admin.database.from("crm_activities").insert([activity]);
+    if (error) {
+      console.warn("Notice: saving activity to DB:", error.message);
+    }
   } catch (e: any) {
     console.warn("Notice: saving activity to DB:", e?.message);
   }
@@ -764,10 +624,7 @@ export async function recordActivity(params: {
 }
 
 export async function getActivitiesForUser(userId: string): Promise<CRMActivity[]> {
-  const local = getLocalStore();
-  const localActs = local.activities.filter(
-    (a) => !userId || a.user_id === userId || userId === "usr_lemon_demo" || userId === "user_lemon_default" || a.user_id === "usr_lemon_demo"
-  );
+  if (!userId) return [];
 
   try {
     const admin = getInsforgeAdminClient();
@@ -777,21 +634,18 @@ export async function getActivitiesForUser(userId: string): Promise<CRMActivity[
       .eq("user_id", userId)
       .order("created_at", { ascending: false });
 
-    if (!error && data && data.length > 0) {
-      const mergedMap = new Map<string, CRMActivity>();
-      localActs.forEach((a) => mergedMap.set(a.id, a));
-      (data as CRMActivity[]).forEach((a) => mergedMap.set(a.id, a));
-      return Array.from(mergedMap.values()).sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
+    if (error) {
+      console.warn("Notice: reading activities from DB:", error.message);
+      return [];
     }
+
+    return ((data as CRMActivity[]) || []).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
   } catch (e: any) {
     console.warn("Notice: reading activities from DB:", e?.message);
+    return [];
   }
-
-  return localActs.sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-  );
 }
 
 // ----------------------------------------------------------------------
@@ -844,6 +698,3 @@ export async function getAppointmentsForUser(userId: string): Promise<Appointmen
 
   return appointments;
 }
-
-
-

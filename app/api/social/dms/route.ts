@@ -10,7 +10,7 @@ import { socialDMService } from "@/lib/social-dm-service";
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : null);
+    const targetUserId = userId;
     if (!targetUserId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { searchParams } = new URL(request.url);
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : null);
+    const targetUserId = userId;
     if (!targetUserId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const result = await socialDMService.syncDMs(targetUserId);

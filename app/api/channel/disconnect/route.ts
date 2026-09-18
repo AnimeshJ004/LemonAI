@@ -1,5 +1,7 @@
 import { getInsforgeServerClient } from "@/lib/insforge-server";
 import { NextRequest, NextResponse } from "next/server";
+import { writeAuditEntry, AUDIT_EVENT } from "@/lib/audit-log";
+import { reportError } from "@/lib/observability";
 
 
 export async function POST(request: NextRequest) {
@@ -42,10 +44,26 @@ export async function POST(request: NextRequest) {
         if (updateError) {
             throw updateError;
         }
+
+        // Audit trail — a disconnect is a privacy-relevant event: OAuth tokens
+        // are cleared and the user has revoked our access to that platform.
+        void writeAuditEntry({
+            userId,
+            event: AUDIT_EVENT.CHANNEL_DISCONNECTED,
+            resourceType: "user_channel",
+            resourceId: userChannelId ?? undefined,
+            metadata: {
+                userChannelId: userChannelId ?? null,
+                channelTypeId: channelTypeId ?? null,
+            },
+            ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
+            userAgent: request.headers.get("user-agent") ?? null,
+        });
+
         return NextResponse.json({ success: true })
 
     } catch (error) {
-        console.error("Error disconnecting channel:", error);
+        await reportError(error, { scope: "api/channel/disconnect" }, "error");
         return NextResponse.json({ error: "Failed to disconnect channel" }, { status: 500 });
     }
 }

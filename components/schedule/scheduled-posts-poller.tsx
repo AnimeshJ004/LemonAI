@@ -27,7 +27,9 @@ export function ScheduledPostsPoller() {
         if (res.ok) {
           const data = await res.json();
           if (data.successfulCount && data.successfulCount > 0) {
-            console.log(`[Poller] Published ${data.successfulCount} due post(s). Refreshing UI.`);
+            if (process.env.NODE_ENV !== "production") {
+              console.log(`[Poller] Published ${data.successfulCount} due post(s). Refreshing UI.`);
+            }
             queryClient.invalidateQueries({
               predicate: (q) => q.queryKey[0] === "posts",
             });
@@ -58,7 +60,9 @@ export function ScheduledPostsPoller() {
             return;
           }
           if (data.repliedCount && data.repliedCount > 0) {
-            console.log(`[Auto-Reply Poller] Answered ${data.repliedCount} new comment(s) on Instagram.`);
+            if (process.env.NODE_ENV !== "production") {
+              console.log(`[Auto-Reply Poller] Answered ${data.repliedCount} new comment(s) on Instagram.`);
+            }
             queryClient.invalidateQueries({
               predicate: (q) => q.queryKey[0] === "social-comments",
             });

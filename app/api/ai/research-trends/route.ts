@@ -17,6 +17,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Input length validation to prevent oversized prompts / abuse
+    if (
+      (body.niche?.length ?? 0) > 300 ||
+      (body.targetAudience?.length ?? 0) > 300 ||
+      (body.businessName?.length ?? 0) > 300
+    ) {
+      return NextResponse.json(
+        { error: "Input too long. niche, targetAudience, and businessName must be 300 characters or fewer." },
+        { status: 400 }
+      );
+    }
+
     const researchResponse = await researchMarketTrends({
       businessName: body.businessName || "My Business",
       niche: body.niche,

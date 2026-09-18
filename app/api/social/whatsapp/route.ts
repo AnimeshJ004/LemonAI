@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 import { evaluateBANTLeadScore } from "@/lib/lead-scoring";
 import { userBrandCache } from "@/lib/brand-helper";
 import {
@@ -66,7 +67,13 @@ export async function POST(req: NextRequest) {
     if (isSimulator) {
       text = String(body.message || "").trim();
       from = String(body.from || "+15550198342").trim();
-      tenantUserId = String(body.userId || "usr_lemon_demo").trim();
+      tenantUserId = String(body.userId || "").trim();
+      if (!tenantUserId) {
+        return NextResponse.json(
+          { error: "Missing tenant userId for simulator request" },
+          { status: 400 }
+        );
+      }
       senderName = body.senderName || `WhatsApp User ${from.slice(-4)}`;
     } else {
       // Official Meta WhatsApp Cloud API webhook format
@@ -108,10 +115,6 @@ export async function POST(req: NextRequest) {
             .maybeSingle();
           if (channel?.user_id) detectedId = channel.user_id;
         }
-      }
-
-      if (!detectedId && process.env.NODE_ENV === "development") {
-        detectedId = "user_lemon_default";
       }
 
       if (!detectedId) {

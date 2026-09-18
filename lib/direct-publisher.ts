@@ -18,6 +18,7 @@ export async function publishPostDirectly(postId: string): Promise<{
   publishedUrl?: string | null;
   error?: string;
   simulated?: boolean;
+  skipped?: boolean;
 }> {
   const admin = getInsforgeAdminClient();
 
@@ -38,11 +39,18 @@ export async function publishPostDirectly(postId: string): Promise<{
     return { success: true, publishedUrl: post.published_url };
   }
 
-  // Lock status to publishing
-  await admin.database
+  // Lock status to publishing using a compare-and-swap (CAS) so only one
+  // instance can claim a queued/failed post. Prevents double-publish across
+  // concurrent serverless invocations.
+  const { data: locked } = await admin.database
     .from("scheduled_posts")
-    .update({ status: "publishing" })
-    .eq("id", postId);
+    .update({ status: "publishing", publishing_started_at: new Date().toISOString() })
+    .eq("id", postId)
+    .in("status", ["queue", "failed"]) // only lock if actually queued
+    .select("id");
+  if (!locked || locked.length === 0) {
+    return { success: true, skipped: true }; // another instance owns it
+  }
 
   let userChannel = post.user_channels;
   if (!userChannel && post.user_id) {

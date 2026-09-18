@@ -1,22 +1,31 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto"
 
+/**
+ * Token encryption for stored OAuth / channel access tokens.
+ *
+ * Production requires a dedicated CHANNEL_TOKEN_ENCRYPTION_KEY. The key is
+ * NEVER derived from other application secrets (Clerk/Supabase), so those can
+ * be rotated independently without invalidating stored tokens.
+ *
+ * Key rotation: to rotate the encryption key, set the new key as
+ * CHANNEL_TOKEN_ENCRYPTION_KEY and move the previous key(s) into
+ * CHANNEL_TOKEN_ENCRYPTION_KEYS_LEGACY (comma-separated). Decryption will try
+ * the active key first, then each legacy key, so already-stored tokens remain
+ * readable until they are re-encrypted. No secrets are hardcoded in source.
+ */
+
 function getEncryptionKey(): string {
     const key = process.env.CHANNEL_TOKEN_ENCRYPTION_KEY;
     if (key && key.trim().length >= 16) {
         return key.trim();
     }
-    // During build phase or static analysis, return a placeholder to prevent build failure
+    // During the build/static-analysis phase return a placeholder so the build
+    // does not fail when env vars are not injected. This key is never used to
+    // encrypt real data at runtime.
     if (process.env.NEXT_PHASE === "phase-production-build") {
         return "LemonAI_BuildPhase_EphemeralKey_ReplaceInProd_32chars";
     }
     if (process.env.NODE_ENV === "production") {
-        const fallback = process.env.CLERK_SECRET_KEY || process.env.INSFORGE_PROJECT_API_KEY;
-        if (fallback && fallback.trim().length >= 16) {
-            console.warn(
-                "[SECURITY WARNING] CHANNEL_TOKEN_ENCRYPTION_KEY is not set. Using derived fallback server key."
-            );
-            return fallback.trim();
-        }
         throw new Error(
             "[SECURITY FATAL] CHANNEL_TOKEN_ENCRYPTION_KEY must be set in production with at least 16 characters."
         );
@@ -27,14 +36,31 @@ function getEncryptionKey(): string {
     return "LemonAI_DevOnly_EphemeralKey_ReplaceInProduction_32chars";
 }
 
-const KNOWN_KEYS = [
-    process.env.CHANNEL_TOKEN_ENCRYPTION_KEY,
-    "LemonAISuperSecretTokenEncryptKey",
-    "LemonAI_DevOnly_EphemeralKey_ReplaceInProduction_32chars",
-    "default_token_encryption_key_32chars_lemon",
-    process.env.CLERK_SECRET_KEY,
-    process.env.INSFORGE_PROJECT_API_KEY,
-].filter(Boolean) as string[];
+/**
+ * Ordered list of keys to attempt during decryption: the active key first,
+ * then any legacy keys configured for rotation. Sourced entirely from env —
+ * no secrets are embedded in the codebase.
+ */
+function getDecryptionKeys(): string[] {
+    const keys: string[] = [];
+
+    try {
+        keys.push(getEncryptionKey());
+    } catch {
+        // In production with no key configured, decryption cannot proceed.
+    }
+
+    const legacy = process.env.CHANNEL_TOKEN_ENCRYPTION_KEYS_LEGACY;
+    if (legacy) {
+        for (const k of legacy.split(",")) {
+            const trimmed = k.trim();
+            if (trimmed.length >= 16) keys.push(trimmed);
+        }
+    }
+
+    // De-duplicate while preserving order.
+    return Array.from(new Set(keys));
+}
 
 export function encrypt(text: string | null | undefined){
     if(!text) return null
@@ -66,13 +92,13 @@ export function decrypt(encrypted: string | null | undefined){
     const [iv, tag, encryted] = parts;
     if(!iv || !tag || !encryted) return encrypted;
 
-    // Try decrypting with verified keys
-    for (const keyStr of KNOWN_KEYS) {
+    // Try the active key, then any configured legacy keys.
+    for (const keyStr of getDecryptionKeys()) {
         try {
             const encryptionKey = createHash("sha256").update(keyStr).digest();
             const decipher = createDecipheriv("aes-256-gcm", encryptionKey, Buffer.from(iv, "base64url"));
             decipher.setAuthTag(Buffer.from(tag, "base64url"));
-            
+
             const decrypted = Buffer.concat([
                 decipher.update(Buffer.from(encryted, "base64url")),
                 decipher.final()
@@ -84,6 +110,6 @@ export function decrypt(encrypted: string | null | undefined){
         }
     }
 
-    console.warn("[Encryption] Could not decrypt token with active keys. Returning raw string.");
+    console.warn("[Encryption] Could not decrypt token with active or legacy keys. Returning raw string.");
     return encrypted;
-}
+}

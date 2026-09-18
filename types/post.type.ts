@@ -44,3 +44,21 @@ export type CalendarPostType = {
   user_channel_id: string
   channel_types: ChannelType
 }
+
+/**
+ * CalendarPost
+ *
+ * Extended shape used by the calendar view when merging a clicked post with
+ * calendar-specific runtime metadata. Declaring these fields here removes the
+ * `(mergedPost as any).*` casts in components/schedule/calendar-view.tsx.
+ */
+export type CalendarPost = PostType & {
+  /** All posts that fall on the same calendar cell (multi-post days). */
+  allPosts?: PostType[]
+  /** The channel type currently in focus for the clicked calendar entry. */
+  activeChannelType?: string
+  /** Alternate scheduled start timestamp used by some calendar sources. */
+  start?: string
+  /** Pre-resolved channel object attached to the calendar entry. */
+  channel?: ChannelType | null
+}

@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
             const { getInsforgeAdminClient } = await import("@/lib/insforge-server");
             return { insforge: getInsforgeAdminClient(), userId: null };
         });
-        const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : null);
+        const targetUserId = userId;
         if (!targetUserId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const filter = request.nextUrl.searchParams.get('filter')

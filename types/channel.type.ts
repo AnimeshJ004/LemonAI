@@ -14,5 +14,10 @@ export type ChannelType = {
     provider_account_id?: string | null
     oauth_configured?: boolean
     has_token?: boolean
+    // Extended fields used across connect-channel-dialog and calendar-view.
+    // Declared here to eliminate `as any` casts on ChannelType values.
+    is_connected?: boolean
+    access_token?: string | null
+    channel_types?: ChannelType
 }
 

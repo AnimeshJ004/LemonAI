@@ -65,11 +65,6 @@ export async function POST(request: NextRequest) {
         } catch {}
       }
 
-      // Development fallback only
-      if (!targetUserId && process.env.NODE_ENV === "development") {
-        targetUserId = "user_lemon_default";
-      }
-
       if (!targetUserId) {
         console.warn("[WhatsApp Webhook] Discarding message: No registered tenant for WhatsApp message from:", msg.from);
         continue;

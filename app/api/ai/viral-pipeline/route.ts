@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { researchMarketTrends } from "@/lib/trend-researcher";
+import { validateInputLengths } from "@/lib/validate-inputs";
 import { routeAICall } from "@/lib/ai-router";
 import { getBrandProfileForUser, getBrandBrainSummary, cleanTag } from "@/lib/brand-helper";
 
@@ -15,7 +16,7 @@ function addDays(date: Date, days: number): Date {
 export async function POST(req: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : null);
+    const targetUserId = userId;
     if (!targetUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -35,6 +36,9 @@ export async function POST(req: NextRequest) {
       body.brand_tone || body.brandTone || brand?.brand_tone || "High-Energy & Engaging";
     const mainOffer =
       body.main_offer || body.mainOffer || brand?.main_offer || "Value & Growth";
+
+    const invalid = validateInputLengths(body, { niche: 300, businessName: 200, targetAudience: 300, brandTone: 200, mainOffer: 500 });
+    if (invalid) return invalid;
     const preferredFormats =
       body.preferred_formats || body.preferredFormats || "🌟 All-in-One Balanced Mix";
     const competitors =

@@ -14,7 +14,7 @@ import { scoreAndUpdateLead } from "@/lib/lead-scoring";
 export async function GET(request: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : "usr_lemon_demo");
+    const targetUserId = userId;
     if (!targetUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -74,7 +74,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : "usr_lemon_demo");
+    const targetUserId = userId;
     if (!targetUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : "usr_lemon_demo");
+    const targetUserId = userId;
     if (!targetUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -219,7 +219,7 @@ export async function PATCH(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : "usr_lemon_demo");
+    const targetUserId = userId;
     if (!targetUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

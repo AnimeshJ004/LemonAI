@@ -13,7 +13,7 @@ import { evaluateCampaignsForOptimization, applyOptimizationAction } from "@/lib
 export async function GET(req: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : null);
+    const targetUserId = userId;
     if (!targetUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const { userId } = await auth();
-    const targetUserId = userId || (process.env.NODE_ENV === "development" ? "user_lemon_default" : null);
+    const targetUserId = userId;
     if (!targetUserId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse, after } from "next/server";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 import { decrypt } from "@/lib/encryption";
 import { processSingleComment } from "@/lib/social-comments-service";
 import { socialDMService } from "@/lib/social-dm-service";
@@ -26,8 +27,17 @@ export async function handleMetaWebhookGet(req: NextRequest) {
 
   const verifyToken =
     process.env.META_WEBHOOK_VERIFY_TOKEN ||
-    process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN ||
-    "lemon_ai_webhook";
+    process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN;
+
+  // Fail closed: if no verify token is configured, refuse verification in ALL
+  // environments (production, dev, and test). Never fall back to a hardcoded
+  // default, which would allow anyone to complete Meta webhook verification.
+  if (!verifyToken || verifyToken.trim().length === 0) {
+    console.error(
+      "[Meta Webhook] No verify token configured (META_WEBHOOK_VERIFY_TOKEN / WHATSAPP_WEBHOOK_VERIFY_TOKEN). Rejecting verification."
+    );
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   if (mode === "subscribe" && token === verifyToken && challenge) {
     return new Response(challenge, {
@@ -55,8 +65,21 @@ export async function handleMetaWebhookPost(req: NextRequest) {
     // ─── 0. Cryptographic Signature Verification (X-Hub-Signature-256) ───
     const appSecret = process.env.META_APP_SECRET || process.env.META_CLIENT_SECRET;
     const signature = req.headers.get("x-hub-signature-256");
+    const isProduction = process.env.NODE_ENV === "production";
 
-    if (appSecret && signature) {
+    if (isProduction) {
+      // Signature verification is MANDATORY in production. Fail closed on any
+      // missing configuration or missing/invalid signature.
+      if (!appSecret) {
+        console.error(
+          "[Meta Webhook] META_APP_SECRET is not configured in production. Rejecting webhook."
+        );
+        return NextResponse.json({ error: "Webhook signature verification not configured" }, { status: 401 });
+      }
+      if (!signature) {
+        console.warn("[Meta Webhook] Missing X-Hub-Signature-256 header in production. Rejecting.");
+        return NextResponse.json({ error: "Missing webhook signature" }, { status: 401 });
+      }
       const expected = `sha256=${crypto.createHmac("sha256", appSecret).update(rawBody).digest("hex")}`;
       const sigBuf = Buffer.from(signature);
       const expBuf = Buffer.from(expected);
@@ -64,9 +87,17 @@ export async function handleMetaWebhookPost(req: NextRequest) {
         console.warn("[Meta Webhook] Signature verification failed.");
         return NextResponse.json({ error: "Invalid webhook signature" }, { status: 401 });
       }
-    } else if (process.env.NODE_ENV === "production" && !appSecret) {
-      console.warn("[Meta Webhook Warning] META_APP_SECRET is not configured for signature verification.");
+    } else if (appSecret && signature) {
+      // Non-production: verify when we have both the secret and a signature.
+      const expected = `sha256=${crypto.createHmac("sha256", appSecret).update(rawBody).digest("hex")}`;
+      const sigBuf = Buffer.from(signature);
+      const expBuf = Buffer.from(expected);
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+        console.warn("[Meta Webhook] Signature verification failed.");
+        return NextResponse.json({ error: "Invalid webhook signature" }, { status: 401 });
+      }
     }
+    // Non-production with appSecret unset: skip the check to ease local testing.
 
     const body = JSON.parse(rawBody || "{}");
     const entries = body?.entry || [];

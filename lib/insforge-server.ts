@@ -1,125 +1,17 @@
-import { auth } from '@clerk/nextjs/server';
-import { createClient, type InsForgeClient } from '@insforge/sdk';
+/**
+ * InsForge Compatibility Layer — Powered by Supabase
+ *
+ * This module re-exports the Supabase client implementation from `@/lib/supabase-server`
+ * to maintain complete backward compatibility across all existing endpoints and server functions.
+ */
 
-// Environment variables
-const BASE_URL = process.env.NEXT_PUBLIC_INSFORGE_BASE_URL
-const ANON_KEY = process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY
-const PROJECT_API_KEY = process.env.INSFORGE_PROJECT_API_KEY
-const TEMPLATE = process.env.CLERK_INSFORGE_TEMPLATE;
-
-const SERVER_TOKEN_TEMPLATE = TEMPLATE || 'insforge';
-
-const TOKEN_REFRESH_MS = 50_000; // Clerk template tokens expire in 60s by default
-
-let cachedClient: InsForgeClient | null = null;
-let cachedUserId: string | null = null;
-let refreshInterval: NodeJS.Timeout | null = null;
-
-async function refreshAuthToken(client: InsForgeClient, retries = 3): Promise<void> {
-  try {
-    const session = await auth();
-    const token = await session?.getToken({ template: SERVER_TOKEN_TEMPLATE });
-    if (token) {
-      client.getHttpClient().setAuthToken(token);
-    } else {
-      throw new Error('No token received from Clerk');
-    }
-  } catch (err) {
-    // if (retries > 0) {
-    //   console.log(`Retrying token refresh... (${retries} retries left)`);
-    //   setTimeout(() => refreshAuthToken(client, retries - 1), 1000);
-    // }else {
-    console.error('Failed to refresh Clerk token for InsForge client', err);
-    client.getHttpClient().setAuthToken(null);
-  }
-}
-
-/*
-// Per-request client version I tried. Keeping here only for comparison.
-export async function getInsforgeServerClient(): Promise<{ insforge: InsForgeClient; userId: string | null }> {
-  if (!BASE_URL) {
-    throw new Error('Missing NEXT_PUBLIC_INSFORGE_BASE_URL or INSFORGE_BASE_URL environment variable');
-  }
-  if (!ANON_KEY) {
-    throw new Error('Missing NEXT_PUBLIC_INSFORGE_ANON_KEY or INSFORGE_ANON_KEY environment variable');
-  }
-
-  const session = await auth();
-  const { userId } = session;
-
-  const insforge = createClient({
-    baseUrl: BASE_URL,
-    anonKey: ANON_KEY,
-    isServerMode: true,
-  });
-
-  if (userId) {
-    const token = await session.getToken({ template: SERVER_TOKEN_TEMPLATE });
-
-    if (token) {
-      insforge.getHttpClient().setAuthToken(token);
-    } else {
-      console.error('No Clerk token received for InsForge client');
-      insforge.getHttpClient().setAuthToken(null);
-    }
-  }
-
-  return { insforge, userId };
-}
-*/
-
-export async function getInsforgeServerClient(): Promise<{ insforge: InsForgeClient; userId: string | null }> {
-  if (!BASE_URL) {
-    throw new Error('Missing NEXT_PUBLIC_INSFORGE_BASE_URL or INSFORGE_BASE_URL environment variable');
-  }
-
-  // Get current user from Clerk
-  const { userId } = await auth();
-
-  // Use PROJECT_API_KEY if available for robust server-side database access, otherwise ANON_KEY
-  const apiKey = PROJECT_API_KEY || ANON_KEY;
-  if (!apiKey) {
-    throw new Error('Missing INSFORGE_PROJECT_API_KEY or NEXT_PUBLIC_INSFORGE_ANON_KEY');
-  }
-
-  const insforge = createClient({
-    baseUrl: BASE_URL,
-    anonKey: apiKey,
-    isServerMode: true,
-  });
-
-  if (userId && !PROJECT_API_KEY) {
-    try {
-      const session = await auth();
-      const token = await session?.getToken({ template: SERVER_TOKEN_TEMPLATE });
-      if (token) {
-        insforge.getHttpClient().setAuthToken(token);
-      }
-    } catch (err) {
-      console.warn('Failed to get Clerk JWT token, falling back to API Key', err);
-    }
-  }
-
-  return { insforge, userId };
-}
-
-export function getInsforgeAdminClient(): InsForgeClient {
-  // Validate environment variables
-  if (!BASE_URL) {
-    throw new Error('Missing NEXT_PUBLIC_INSFORGE_BASE_URL or INSFORGE_BASE_URL environment variable');
-  }
-  if (!ANON_KEY) {
-    throw new Error('Missing NEXT_PUBLIC_INSFORGE_ANON_KEY or INSFORGE_ANON_KEY environment variable');
-  }
-  if (!PROJECT_API_KEY) {
-    throw new Error('Missing INSFORGE_PROJECT_API_KEY or INSFORGE_API_KEY environment variable');
-  }
-
-  return createClient({
-    baseUrl: BASE_URL,
-    anonKey: PROJECT_API_KEY,
-    isServerMode: true,
-  });
-}
-
-export const getInsforgeUploadClient = getInsforgeAdminClient;
+export {
+  getSupabaseServerClient as getInsforgeServerClient,
+  getSupabaseAdminClient as getInsforgeAdminClient,
+  getSupabaseUploadClient as getInsforgeUploadClient,
+  getSupabaseServerClient,
+  getSupabaseAdminClient,
+  getSupabaseUploadClient,
+  type EnhancedSupabaseClient as InsForgeClient,
+  type EnhancedSupabaseClient,
+} from '@/lib/supabase-server';

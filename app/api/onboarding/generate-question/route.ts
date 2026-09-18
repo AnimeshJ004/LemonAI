@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 
 /**
  * POST /api/onboarding/generate-question
- * Uses Gemini / Groq via AI gateway to generate a smart contextual
+ * Uses Groq via AI gateway to generate a smart contextual
  * follow-up question based on previous answers from the onboarding wizard.
  *
  * Body: {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import { generateVideoReel } from "@/lib/video-generator";
 import type { GenerateReelOptions } from "@/lib/video-generator";
 
@@ -11,6 +12,14 @@ export async function POST(request: NextRequest) {
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    // Video generation is the most expensive operation — tight per-user cap.
+    const limited = await enforceRateLimit(request, {
+      limit: 5,
+      windowMs: 60_000,
+      namespace: "ai-video",
+    });
+    if (limited) return limited;
 
     const body = await request.json();
 

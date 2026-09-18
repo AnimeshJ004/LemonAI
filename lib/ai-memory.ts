@@ -5,7 +5,7 @@
  * - Records user feedback signals (edit, like, dislike, delete, explicit)
  * - Retrieves recent memories for a user
  * - Builds a memory block string injected into AI system prompts
- * - Optionally generates a 1-line insight summary via Gemini (tiny call, negligible cost)
+ * - Optionally generates a 1-line insight summary via Groq (tiny call, negligible cost)
  *
  * No external vector DB or embedding service required — pure Postgres + prompt injection.
  */
@@ -46,7 +46,7 @@ export async function recordMemorySignal(
   try {
     let learnedInsight: string | null = null;
 
-    // For edits: auto-generate a 1-line insight using a tiny Gemini call
+    // For edits: auto-generate a 1-line insight using a tiny Groq call
     if (
       signal.signalType === "edited" &&
       signal.originalContent &&
@@ -168,6 +168,7 @@ export function buildMemoryPromptBlock(memories: AIMemoryRow[]): string {
 }
 
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 
 /**
  * Generate a 1-line insight from an edit using a minimal Groq Llama call.
@@ -208,7 +209,7 @@ Answer:`;
 }
 
 /**
- * Simple rule-based insight for edits (fallback when Gemini fails).
+ * Simple rule-based insight for edits (fallback when Groq fails).
  */
 function deriveEditInsight(original: string, edited: string): string {
   const origLen = original.length;

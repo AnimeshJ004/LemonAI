@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { enforceRateLimit } from "@/lib/rate-limit";
+import { reportError } from "@/lib/observability";
 import { generateAdScriptAndHooks } from "@/lib/ai-router";
 
 export interface GenerateAdScriptRequest {
@@ -19,10 +21,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const limited = await enforceRateLimit(request, {
+      limit: 30,
+      windowMs: 60_000,
+      namespace: "ai",
+    });
+    if (limited) return limited;
+
     const body: GenerateAdScriptRequest = await request.json();
     if (!body.businessName || !body.niche || !body.targetAudience || !body.productOffer) {
       return NextResponse.json(
         { error: "Missing required fields: businessName, niche, targetAudience, and productOffer are required." },
+        { status: 400 }
+      );
+    }
+
+    // Input length validation to prevent oversized prompts / abuse
+    if (
+      (body.businessName?.length ?? 0) > 100 ||
+      (body.niche?.length ?? 0) > 200 ||
+      (body.targetAudience?.length ?? 0) > 200 ||
+      (body.productOffer?.length ?? 0) > 500 ||
+      (body.competitorAngle?.length ?? 0) > 1000
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Input too long. Limits: businessName 100, niche 200, targetAudience 200, productOffer 500, competitorAngle 1000 characters.",
+        },
         { status: 400 }
       );
     }
@@ -49,7 +75,7 @@ export async function POST(request: NextRequest) {
       metrics: result.metrics,
     });
   } catch (error: any) {
-    console.error("[Generate Ad Script API Error]:", error);
+    await reportError(error, { scope: "api/ai/generate-ad-script" });
     return NextResponse.json(
       { error: error?.message || "Internal server error" },
       { status: 500 }

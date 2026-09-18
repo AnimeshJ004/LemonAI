@@ -2,19 +2,20 @@
  * Lemon AI – Video Reel Generation Pipeline
  *
  * Full pipeline:
- *   1. AI generates viral scene scripts (Gemini Flash — ~₹0.05)
+ *   1. AI generates viral scene scripts (Groq AI — ~₹0.05)
  *   2. Scene images fetched from Pollinations FLUX (free)
  *   3. Edge TTS voiceover via Microsoft Edge Speech (free)
  *   4. FFmpeg (WASM or static binary) stitches images + audio → MP4
- *   5. MP4 uploaded to InsForge Storage
+ *   5. MP4 uploaded to Supabase Storage
  */
 
 import path from "path";
 import fs from "fs";
 import os from "os";
-// NOTE: getInsforgeAdminClient imported dynamically in functions to avoid Next.js edge runtime issues
-import type { InsForgeClient } from "@insforge/sdk";
+// NOTE: getSupabaseAdminClient / getInsforgeAdminClient imported dynamically in functions to avoid Next.js edge runtime issues
+import type { InsForgeClient } from "@/lib/supabase-server";
 import { callResilientCompletion } from "@/lib/ai-gateway";
+import { validateInputLengths } from "@/lib/validate-inputs";
 
 export type ReelStyle = "product_promo" | "awareness" | "testimonial" | "story";
 export type ReelAspect = "9:16" | "1:1" | "16:9";

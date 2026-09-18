@@ -17,26 +17,26 @@
 
 export const GROQ_MODELS = [
   // High-capability / reasoning tier (GPT-OSS 120B — Groq Production GA)
-  "openai/gpt-oss-120b",   // OpenAI GPT-OSS 120B — Groq Production
+  "openai/gpt-oss-120b",   // High-level: Deep reasoning & complex content generation
+  "groq/compound",         // High-level fallback: Groq Compound reasoning model
 
   // Fast / low-cost tier (GPT-OSS 20B — Groq Production GA)
-  "openai/gpt-oss-20b",    // OpenAI GPT-OSS 20B — Groq Production
+  "openai/gpt-oss-20b",    // Low-level: Ultra-fast & low-cost classification, hooks & cleanup
+  "groq/compound-mini",    // Low-level fallback: Groq Compound Mini fast model
 ];
 
 /**
  * Named model constants — use these in tier-aware routing instead of raw strings
  * so the whole codebase updates from one place if Groq changes their IDs.
- *
- * NOTE: In-tier fallback is limited because Groq currently ships two
- * production GPT-OSS sizes. If the primary model 429s, we cross-tier
- * cascade (120b → 20b) rather than fail the whole request.
  */
 export const GROQ_FAST_MODELS = [
   "openai/gpt-oss-20b",
+  "groq/compound-mini",
 ] as const;
 
 export const GROQ_THINKING_MODELS = [
   "openai/gpt-oss-120b",
+  "groq/compound",
   "openai/gpt-oss-20b", // cross-tier last-resort so thinking calls always get an answer
 ] as const;
 
@@ -65,7 +65,7 @@ export interface GroqCompletionResult<T = any> {
  * Returns whether a Groq API key is present in environment variables.
  */
 export function isGroqConfigured(): boolean {
-  const key = process.env.GROQ_API_KEY || process.env.NEXT_PUBLIC_GROQ_API_KEY;
+  const key = process.env.GROQ_API_KEY;
   return Boolean(key && key.trim().length > 0);
 }
 
@@ -96,7 +96,7 @@ export function extractJsonFromText<T = any>(raw: string): T | null {
 export async function callGroqChatCompletion<T = any>(
   options: GroqCompletionOptions
 ): Promise<GroqCompletionResult<T>> {
-  const apiKey = (process.env.GROQ_API_KEY || process.env.NEXT_PUBLIC_GROQ_API_KEY || "").trim();
+  const apiKey = (process.env.GROQ_API_KEY || "").trim();
 
   if (!apiKey) {
     return {

@@ -1,30 +1,82 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { purgeAllUserData } from "@/lib/user-purge";
+import { reportError, logInfo } from "@/lib/observability";
+import { writeAuditEntry, AUDIT_EVENT } from "@/lib/audit-log";
 
 /**
  * DELETE /api/user/delete-account
- * Allows an authenticated user to initiate account self-deletion,
- * wiping their Clerk user profile and all database records.
+ *
+ * GDPR Art. 17 (Right to erasure) + DPDP Sec. 12 (Right to erasure).
+ * Fully wipes:
+ *   • Every user_id-keyed row across the DB (see lib/user-purge.ts)
+ *   • The Clerk user profile
+ *   • The user's private folder in the storage bucket
+ *
+ * An audit_logs entry is recorded BEFORE and AFTER the purge (user-purge.ts
+ * emits both). A dsr_requests row is also created here for regulator evidence.
  */
 export async function DELETE(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+  const userAgent = req.headers.get("user-agent") ?? null;
+
+  logInfo("Account deletion initiated", { scope: "delete-account", userId });
+
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Record the DSR request first so the compliance timeline survives even if
+    // a later step (Clerk deletion, storage purge) fails part-way.
+    try {
+      const { getInsforgeAdminClient } = await import("@/lib/insforge-server");
+      const admin = getInsforgeAdminClient();
+      await admin.database.from("dsr_requests").insert({
+        user_id: userId,
+        request_type: "deletion",
+        status: "processing",
+        metadata: { source: "self-service" },
+      });
+    } catch {
+      /* best-effort — do not block deletion on DSR record failure */
     }
 
-    console.log(`[Account Deletion API] Initiating self-deletion for user: ${userId}`);
+    void writeAuditEntry({
+      userId,
+      event: AUDIT_EVENT.ACCOUNT_DELETION_REQUESTED,
+      resourceType: "user_account",
+      resourceId: userId,
+      metadata: { entry: "api/user/delete-account" },
+      ip,
+      userAgent,
+    });
 
-    // 1. Wipe all records across the database tables
+    // 1. Purge all DB rows (user-purge writes its own audit entries).
     const purgeResult = await purgeAllUserData(userId);
 
-    // 2. Delete user from Clerk authentication
+    // 2. Belt-and-suspenders: also try to delete the Clerk user here in case
+    //    the internal purge helper skipped it. Non-fatal if already gone.
     try {
       const client = await clerkClient();
       await client.users.deleteUser(userId);
-    } catch (clerkErr: any) {
-      console.warn("[Account Deletion API] Notice deleting user from Clerk:", clerkErr?.message);
+    } catch (clerkErr) {
+      await reportError(clerkErr, { scope: "delete-account.clerk", userId }, "warning");
+    }
+
+    // 3. Close out the DSR request as completed.
+    try {
+      const { getInsforgeAdminClient } = await import("@/lib/insforge-server");
+      const admin = getInsforgeAdminClient();
+      await admin.database
+        .from("dsr_requests")
+        .update({ status: "completed", fulfilled_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("request_type", "deletion")
+        .eq("status", "processing");
+    } catch {
+      /* best-effort */
     }
 
     return NextResponse.json({
@@ -32,10 +84,10 @@ export async function DELETE(req: NextRequest) {
       message: "Your account and all associated data have been permanently erased.",
       purgedTables: purgeResult.purgedTables,
     });
-  } catch (error: any) {
-    console.error("[Account Deletion API] Error deleting account:", error);
+  } catch (error) {
+    await reportError(error, { scope: "delete-account", userId }, "error");
     return NextResponse.json(
-      { error: error?.message || "Failed to delete account" },
+      { error: "Failed to delete account. Please contact support." },
       { status: 500 }
     );
   }

@@ -185,7 +185,6 @@ const IdeaKanban = () => {
             )
             setColumns(newColumn)
         }
-        console.log(idea,"idea")
         saveIdeaMutation.mutate(idea, {
             onSuccess: () => {
                 setSelectedIdea(null);

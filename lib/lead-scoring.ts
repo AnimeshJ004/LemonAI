@@ -13,7 +13,7 @@ export interface BANTEvaluationResult {
 
 /**
  * Evaluates a conversation transcript or lead interaction using BANT framework
- * (Budget, Authority, Need, Timing) via low-latency Gemini LLM.
+ * (Budget, Authority, Need, Timing) via low-latency Groq LLM.
  */
 export async function evaluateBANTLeadScore(params: {
   leadName?: string;

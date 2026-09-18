@@ -4,6 +4,11 @@ import {
   GROQ_FAST_MODELS,
   GROQ_THINKING_MODELS,
 } from "@/lib/groq-client";
+import {
+  buildCacheKey,
+  getCachedAIResponse,
+  setCachedAIResponse,
+} from "@/lib/ai-cache";
 
 /**
  * Multi-Tier Budget-Friendly LLM Cost Router — Groq (GPT-OSS) direct.
@@ -25,6 +30,7 @@ export type AITaskType =
   | "JSON_CLEANUP"
   | "QUICK_IDEA"
   | "SHORTEN_REPHRASE"
+  | "CHATBOT_REPLY"
   | "DEEP_SCRIPTWRITING"
   | "AD_COPY_HOOKS"
   | "COMPETITOR_RESEARCH"
@@ -39,7 +45,7 @@ export interface AIModelConfig {
   maxTokens: number;
 }
 
-// Groq-only model registry. Prices reflect published Groq rates for GPT-OSS.
+// Groq-only model registry. Prices reflect published Groq rates.
 export const MODEL_REGISTRY: Record<string, AIModelConfig> = {
   "openai/gpt-oss-20b": {
     name: "openai/gpt-oss-20b",
@@ -48,8 +54,22 @@ export const MODEL_REGISTRY: Record<string, AIModelConfig> = {
     outputCostPer1M: 0.30,
     maxTokens: 8192,
   },
+  "groq/compound-mini": {
+    name: "groq/compound-mini",
+    tier: "TIER_1_FAST",
+    inputCostPer1M: 0.075,
+    outputCostPer1M: 0.30,
+    maxTokens: 8192,
+  },
   "openai/gpt-oss-120b": {
     name: "openai/gpt-oss-120b",
+    tier: "TIER_2_SMART",
+    inputCostPer1M: 0.15,
+    outputCostPer1M: 0.60,
+    maxTokens: 8192,
+  },
+  "groq/compound": {
+    name: "groq/compound",
     tier: "TIER_2_SMART",
     inputCostPer1M: 0.15,
     outputCostPer1M: 0.60,
@@ -64,6 +84,7 @@ export const TASK_TIER_MAPPING: Record<AITaskType, AITier> = {
   JSON_CLEANUP: "TIER_1_FAST",
   QUICK_IDEA: "TIER_1_FAST",
   SHORTEN_REPHRASE: "TIER_1_FAST",
+  CHATBOT_REPLY: "TIER_2_SMART",
   DEEP_SCRIPTWRITING: "TIER_2_SMART",
   AD_COPY_HOOKS: "TIER_2_SMART",
   COMPETITOR_RESEARCH: "TIER_2_SMART",
@@ -93,6 +114,7 @@ export interface AICallResponse<T = any> {
     costINR: number;
     savingsVsClaudeINR: number;
     latencyMs: number;
+    cacheHit: boolean; // true when response was served from in-memory cache
   };
 }
 
@@ -137,6 +159,38 @@ export function cleanAndParseJSON<T = any>(text: string): T | null {
 export async function routeAICall<T = any>(req: AICallRequest): Promise<AICallResponse<T>> {
   const startTime = Date.now();
   const tier = req.preferredTier || TASK_TIER_MAPPING[req.task] || "TIER_1_FAST";
+
+  // ── Cache lookup ──────────────────────────────────────────────────────────
+  const cacheKey = buildCacheKey({
+    task: req.task,
+    systemPrompt: req.systemPrompt,
+    userPrompt: req.userPrompt,
+    temperature: req.temperature,
+    jsonMode: req.jsonMode,
+    maxTokens: req.maxTokens,
+  });
+
+  const cached = getCachedAIResponse<T>(cacheKey);
+  if (cached) {
+    const latencyMs = Date.now() - startTime;
+    console.log(`[AI Router] Cache HIT for task ${req.task} (model: ${cached.model}, latency: ${latencyMs}ms)`);
+    return {
+      success: true,
+      data: cached.data,
+      rawText: cached.rawText,
+      metrics: {
+        model: cached.model,
+        tier,
+        estimatedTokens: 0,
+        costUSD: 0,
+        costINR: 0,
+        savingsVsClaudeINR: 0,
+        latencyMs,
+        cacheHit: true,
+      },
+    };
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   const candidateModels: readonly string[] =
     tier === "TIER_1_FAST" ? GROQ_FAST_MODELS : GROQ_THINKING_MODELS;
@@ -200,6 +254,9 @@ export async function routeAICall<T = any>(req: AICallRequest): Promise<AICallRe
       const claudeCostINR = Number((claudeCostUSD * 86.5).toFixed(4));
       const savingsVsClaudeINR = Number(Math.max(0, claudeCostINR - costINR).toFixed(4));
 
+      // Store successful result in cache
+      setCachedAIResponse<T>(cacheKey, parsedData as T, rawText, modelToTry, req.task);
+
       return {
         success: true,
         data: parsedData,
@@ -212,6 +269,7 @@ export async function routeAICall<T = any>(req: AICallRequest): Promise<AICallRe
           costINR,
           savingsVsClaudeINR,
           latencyMs,
+          cacheHit: false,
         },
       };
     } catch (err: any) {
@@ -243,6 +301,7 @@ function emptyResponse(startTime: number, tier: AITier): AICallResponse<any> {
       costINR: 0,
       savingsVsClaudeINR: 0,
       latencyMs: Date.now() - startTime,
+      cacheHit: false,
     },
   };
 }
