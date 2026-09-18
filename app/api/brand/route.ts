@@ -75,7 +75,41 @@ export async function POST(request: NextRequest) {
       updated_at: new Date().toISOString(),
     };
 
-    // Base schema columns that exist in the core database table
+    // Save immediately into server cache with all extended attributes
+    userBrandCache.set(userId, payload);
+
+    // Persist into database.
+    //
+    // Strategy: attempt a SINGLE merged upsert with base + extended columns
+    // first. If the extended columns don't exist yet (e.g. migration
+    // `08-brand-profiles-extended-columns.sql` hasn't been applied), the
+    // update will fail — we catch that and retry with just the base columns,
+    // logging a clear warning so the operator knows to run the migration.
+    // This replaces the previous silent try/catch that swallowed failures
+    // and prevented Products & Services / Pricing Details / Knowledge Docs
+    // from ever persisting.
+    let savedData: any = null;
+    const admin = getInsforgeAdminClient();
+
+    const fullPayload = {
+      user_id: userId,
+      business_name: payload.business_name,
+      niche: payload.niche,
+      target_audience: payload.target_audience,
+      brand_tone: payload.brand_tone,
+      main_offer: payload.main_offer,
+      competitors: payload.competitors,
+      products_services: payload.products_services,
+      pricing_details: payload.pricing_details,
+      knowledge_docs: payload.knowledge_docs,
+      location: payload.location,
+      booking_url: payload.booking_url,
+      auto_call_enabled: payload.auto_call_enabled,
+      auto_call_min_score: payload.auto_call_min_score,
+      whatsapp_phone_number_id: payload.whatsapp_phone_number_id,
+      updated_at: payload.updated_at,
+    };
+
     const basePayload = {
       user_id: userId,
       business_name: payload.business_name,
@@ -87,13 +121,6 @@ export async function POST(request: NextRequest) {
       updated_at: payload.updated_at,
     };
 
-    // Save immediately into server cache with all extended attributes
-    userBrandCache.set(userId, payload);
-
-    // Persist into database
-    let savedData: any = null;
-    const admin = getInsforgeAdminClient();
-
     try {
       const { data: existing } = await admin.database
         .from("brand_profiles")
@@ -103,60 +130,52 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
 
       if (existing?.id) {
-        // Update core columns
-        const { data: updated, error: updateErr } = await admin.database
+        // Try full update first.
+        const { data: updatedFull, error: fullErr } = await admin.database
           .from("brand_profiles")
-          .update(basePayload)
+          .update(fullPayload)
           .eq("id", existing.id)
           .select()
           .maybeSingle();
 
-        savedData = updated || { ...basePayload, id: existing.id };
-
-        // Attempt extended columns silently if migration was applied
-        try {
-          await admin.database
+        if (fullErr) {
+          console.warn(
+            "[Brand API] Full update failed — likely missing extended columns. " +
+            "Apply lib/db/08-brand-profiles-extended-columns.sql to your database.",
+            fullErr?.message
+          );
+          const { data: updatedBase } = await admin.database
             .from("brand_profiles")
-            .update({
-              products_services: payload.products_services,
-              pricing_details: payload.pricing_details,
-              knowledge_docs: payload.knowledge_docs,
-              location: payload.location,
-              booking_url: payload.booking_url,
-              auto_call_enabled: payload.auto_call_enabled,
-              auto_call_min_score: payload.auto_call_min_score,
-              whatsapp_phone_number_id: payload.whatsapp_phone_number_id,
-            })
-            .eq("id", existing.id);
-        } catch {
-          // Non-fatal if extended columns are not yet present in DB schema
+            .update(basePayload)
+            .eq("id", existing.id)
+            .select()
+            .maybeSingle();
+          savedData = updatedBase || { ...basePayload, id: existing.id };
+        } else {
+          savedData = updatedFull || { ...fullPayload, id: existing.id };
         }
       } else {
-        // Insert core columns
-        const { data: inserted, error: insertErr } = await admin.database
+        // Try full insert first.
+        const { data: insertedFull, error: fullInsertErr } = await admin.database
           .from("brand_profiles")
-          .insert(basePayload)
+          .insert(fullPayload)
           .select()
           .maybeSingle();
 
-        savedData = inserted || basePayload;
-
-        // Attempt extended columns silently if migration was applied
-        try {
-          await admin.database
+        if (fullInsertErr) {
+          console.warn(
+            "[Brand API] Full insert failed — likely missing extended columns. " +
+            "Apply lib/db/08-brand-profiles-extended-columns.sql to your database.",
+            fullInsertErr?.message
+          );
+          const { data: insertedBase } = await admin.database
             .from("brand_profiles")
-            .update({
-              products_services: payload.products_services,
-              pricing_details: payload.pricing_details,
-              knowledge_docs: payload.knowledge_docs,
-              location: payload.location,
-              booking_url: payload.booking_url,
-              auto_call_enabled: payload.auto_call_enabled,
-              auto_call_min_score: payload.auto_call_min_score,
-            })
-            .eq("id", inserted?.id || basePayload.user_id);
-        } catch {
-          // Non-fatal if extended columns are not yet present in DB schema
+            .insert(basePayload)
+            .select()
+            .maybeSingle();
+          savedData = insertedBase || basePayload;
+        } else {
+          savedData = insertedFull || fullPayload;
         }
       }
 

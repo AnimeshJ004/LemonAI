@@ -1,17 +1,21 @@
-import { getInsforgeServerClient, getInsforgeAdminClient } from "@/lib/insforge-server";
-import { callGroqChatCompletion, isGroqConfigured } from "@/lib/groq-client";
+import { callGroqChatCompletion, isGroqConfigured, GROQ_THINKING_MODELS } from "@/lib/groq-client";
 
 /**
- * Priority waterfall of AI models supported by InsForge / Gemini Gateway.
- * Cascades automatically from fastest/smartest to standard fallback models.
+ * Resilient AI completion — Groq (GPT-OSS) direct.
+ *
+ * InsForge Gemini has been removed from the codepath. All content generation
+ * routes through Groq's OpenAI GPT-OSS production models (openai/gpt-oss-120b
+ * for reasoning, openai/gpt-oss-20b as an in-tier last resort). The public
+ * signature of `callResilientCompletion` is intentionally unchanged so every
+ * existing caller keeps working without edits.
+ *
+ * MODEL_WATERFALL is retained (as Groq GPT-OSS IDs) so callers that read it for
+ * diagnostics still compile — but the internal loop now targets Groq only.
  */
-export const MODEL_WATERFALL = [
-  "google/gemini-3.8-flash",
-  "google/gemini-3.7-flash",
-  "google/gemini-2.5-flash",
-  "google/gemini-2.5-flash-lite",
-  "deepseek/deepseek-chat",
-];
+
+// Retained for backward compatibility with any diagnostic caller that imports it.
+// Populated from GROQ_THINKING_MODELS so it reflects the actual runtime waterfall.
+export const MODEL_WATERFALL: readonly string[] = GROQ_THINKING_MODELS;
 
 export interface ResilientCompletionOptions {
   messages: { role: "system" | "user" | "assistant"; content: string }[];
@@ -36,7 +40,6 @@ export function extractJsonFromText<T = any>(raw: string): T | null {
   try {
     return JSON.parse(clean) as T;
   } catch {
-    // Attempt relaxed regex search for outermost object or array
     const match = clean.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
     if (match) {
       try {
@@ -50,89 +53,44 @@ export function extractJsonFromText<T = any>(raw: string): T | null {
 }
 
 /**
- * Executes a resilient AI chat completion with automatic model waterfall fallbacks.
- * Cascades through InsForge Gemini models, then automatically fails over to Groq AI (Llama 3.3 70B / 3.1 8B).
- * Prevents 500 errors when a single model endpoint is unavailable, rate-limited, or deprecated.
+ * Executes a resilient AI chat completion using Groq GPT-OSS models exclusively.
+ * Waterfall order: openai/gpt-oss-120b → openai/gpt-oss-20b.
  */
 export async function callResilientCompletion<T = any>(
   options: ResilientCompletionOptions
 ): Promise<ResilientCompletionResult<T>> {
-  let insforgeClient: any = null;
+  if (!isGroqConfigured()) {
+    console.error("[AI Gateway] GROQ_API_KEY is not configured. All content generation is disabled.");
+    return {
+      success: false,
+      content: "",
+      data: null,
+      modelUsed: "none",
+    };
+  }
+
   try {
-    const { insforge } = await getInsforgeServerClient().catch(() => ({
-      insforge: getInsforgeAdminClient(),
-    }));
-    insforgeClient = insforge;
-  } catch (err) {
-    console.warn("[AI Gateway] Insforge client initialization notice:", err);
-  }
+    const groqRes = await callGroqChatCompletion<T>({
+      messages: options.messages,
+      temperature: options.temperature,
+      maxTokens: options.maxTokens,
+      jsonMode: options.jsonMode,
+    });
 
-  let lastError: any = null;
-
-  // 1. Try InsForge AI Gateway waterfall first
-  if (insforgeClient?.ai?.chat?.completions) {
-    for (const modelName of MODEL_WATERFALL) {
-      try {
-        const messages = [...options.messages];
-        if (options.jsonMode && messages.length > 0) {
-          const lastMsg = messages[messages.length - 1];
-          if (!lastMsg.content.toLowerCase().includes("json")) {
-            messages[messages.length - 1] = {
-              ...lastMsg,
-              content: `${lastMsg.content}\n\nReturn ONLY valid JSON without markdown formatting.`,
-            };
-          }
-        }
-
-        const completion = await insforgeClient.ai.chat.completions.create({
-          model: modelName,
-          messages,
-          temperature: options.temperature ?? 0.7,
-          maxTokens: options.maxTokens,
-        });
-
-        const content = completion?.choices?.[0]?.message?.content ?? "";
-        if (content) {
-          const data = options.jsonMode ? extractJsonFromText<T>(content) : (content as unknown as T);
-          return {
-            success: true,
-            content,
-            data,
-            modelUsed: modelName,
-          };
-        }
-      } catch (err: any) {
-        lastError = err;
-        console.warn(`[AI Gateway] InsForge model ${modelName} failed, cascading:`, err?.message || err);
-      }
+    if (groqRes.success && groqRes.content) {
+      return {
+        success: true,
+        content: groqRes.content,
+        data: groqRes.data,
+        modelUsed: groqRes.modelUsed,
+      };
     }
+
+    console.error("[AI Gateway] Groq completion returned no content:", groqRes.error);
+  } catch (groqErr) {
+    console.error("[AI Gateway] Groq call threw:", groqErr);
   }
 
-  // 2. Cascade fallback to Groq AI Cloud if InsForge fails or limits out
-  if (isGroqConfigured()) {
-    console.log("[AI Gateway] Cascading to Groq AI fallback...");
-    try {
-      const groqRes = await callGroqChatCompletion<T>({
-        messages: options.messages,
-        temperature: options.temperature,
-        maxTokens: options.maxTokens,
-        jsonMode: options.jsonMode,
-      });
-
-      if (groqRes.success && groqRes.content) {
-        return {
-          success: true,
-          content: groqRes.content,
-          data: groqRes.data,
-          modelUsed: groqRes.modelUsed,
-        };
-      }
-    } catch (groqErr) {
-      console.error("[AI Gateway] Groq fallback error:", groqErr);
-    }
-  }
-
-  console.error("[AI Gateway] All models in waterfall (InsForge + Groq) failed:", lastError);
   return {
     success: false,
     content: "",

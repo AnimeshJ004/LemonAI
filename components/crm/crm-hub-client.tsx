@@ -20,7 +20,6 @@ import {
   Plus,
   Flame,
   CalendarCheck,
-  RefreshCw,
   CalendarClock,
   CheckCircle,
 } from "lucide-react";
@@ -105,7 +104,7 @@ export function CRMHubClient() {
   const [isAddOpen, setIsAddOpen] = useState(false);
 
   // Fetch leads and stats
-  const { data, isLoading, refetch, isRefetching } = useQuery({
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ["crm-leads"],
     queryFn: async () => {
       const res = await fetch("/api/crm/leads");
@@ -130,31 +129,32 @@ export function CRMHubClient() {
   }).format(stats.totalPipelineValue);
 
   return (
-    <div className="max-w-6xl mx-auto py-6 px-4 space-y-8 animate-in fade-in duration-300">
+    <div className="max-w-6xl mx-auto py-4 sm:py-6 px-3.5 sm:px-4 space-y-6 sm:space-y-8 animate-in fade-in duration-300">
       {/* Header Banner */}
-      <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-background p-6 md:p-8 shadow-xs">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="max-w-2xl space-y-2.5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-semibold">
-              <Users className="size-3.5" /> Autonomous Sales & Conversion Engine
+      <div className="relative overflow-hidden rounded-xl sm:rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-primary/5 to-background p-4 sm:p-6 md:p-8 shadow-xs">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 sm:gap-6">
+          <div className="max-w-2xl space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-primary/10 text-primary text-[11px] sm:text-xs font-semibold">
+              <Users className="size-3.5 shrink-0" />
+              <span>Autonomous Sales & Conversion Engine</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-foreground">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-extrabold tracking-tight text-foreground">
               Unified CRM & Deal Center
             </h1>
-            <p className="text-sm text-muted-foreground leading-relaxed">
+            <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
               Manage leads captured across Instagram, Facebook, Website bots, and WhatsApp. Add new prospects, edit details, and track conversions.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3 shrink-0 w-full md:w-auto">
             <Button
               onClick={() => setIsAddOpen(true)}
               size="sm"
-              className="gap-2 font-semibold shadow-xs bg-primary text-primary-foreground hover:bg-primary/90"
+              className="w-full sm:w-auto gap-2 font-semibold shadow-xs bg-primary text-primary-foreground hover:bg-primary/90 text-xs sm:text-sm h-9 sm:h-10"
             >
               <Plus className="size-4" /> Add Prospect
             </Button>
-            <Button asChild variant="outline" size="sm" className="gap-2">
+            <Button asChild variant="outline" size="sm" className="w-full sm:w-auto gap-2 text-xs sm:text-sm h-9 sm:h-10">
               <Link href="/crm/pipeline">
                 <Kanban className="size-4" /> View Kanban Pipeline
               </Link>
@@ -164,51 +164,53 @@ export function CRMHubClient() {
       </div>
 
       {/* KPI Stats Strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-4 rounded-xl border border-border/70 bg-card/60 backdrop-blur-xs space-y-1 shadow-xs">
-          <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="p-3.5 sm:p-4 rounded-xl border border-border/70 bg-card/60 backdrop-blur-xs space-y-1 shadow-xs">
+          <div className="flex items-center justify-between text-muted-foreground text-[11px] sm:text-xs font-medium">
             <span>Pipeline Value</span>
-            <DollarSign className="size-4 text-emerald-500" />
+            <DollarSign className="size-3.5 sm:size-4 text-emerald-500" />
           </div>
-          <div className="text-2xl font-bold text-foreground">{formattedTotalValue}</div>
-          <p className="text-[11px] text-muted-foreground">Across all stages</p>
+          <div className="text-lg sm:text-2xl font-bold text-foreground truncate">{formattedTotalValue}</div>
+          <p className="text-[10px] sm:text-[11px] text-muted-foreground">Across all stages</p>
         </div>
 
-        <div className="p-4 rounded-xl border border-border/70 bg-card/60 backdrop-blur-xs space-y-1 shadow-xs">
-          <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
+        <div className="p-3.5 sm:p-4 rounded-xl border border-border/70 bg-card/60 backdrop-blur-xs space-y-1 shadow-xs">
+          <div className="flex items-center justify-between text-muted-foreground text-[11px] sm:text-xs font-medium">
             <span>Total Leads</span>
-            <Users className="size-4 text-sky-500" />
+            <Users className="size-3.5 sm:size-4 text-sky-500" />
           </div>
-          <div className="text-2xl font-bold text-foreground">{stats.totalLeads}</div>
-          <p className="text-[11px] text-muted-foreground">Captured from all sources</p>
+          <div className="text-lg sm:text-2xl font-bold text-foreground">{stats.totalLeads}</div>
+          <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">Captured from all sources</p>
         </div>
 
-        <div className="p-4 rounded-xl border border-border/70 bg-card/60 backdrop-blur-xs space-y-1 shadow-xs">
-          <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
+        <div className="p-3.5 sm:p-4 rounded-xl border border-border/70 bg-card/60 backdrop-blur-xs space-y-1 shadow-xs">
+          <div className="flex items-center justify-between text-muted-foreground text-[11px] sm:text-xs font-medium">
             <span>Qualified (Score ≥ 7)</span>
-            <Flame className="size-4 text-amber-500" />
+            <Flame className="size-3.5 sm:size-4 text-amber-500" />
           </div>
-          <div className="text-2xl font-bold text-foreground">{stats.qualifiedCount}</div>
-          <p className="text-[11px] text-muted-foreground">Ready for sales outreach</p>
+          <div className="text-lg sm:text-2xl font-bold text-foreground">{stats.qualifiedCount}</div>
+          <p className="text-[10px] sm:text-[11px] text-muted-foreground truncate">Ready for sales outreach</p>
         </div>
 
-        <div className="p-4 rounded-xl border border-border/70 bg-card/60 backdrop-blur-xs space-y-1 shadow-xs">
-          <div className="flex items-center justify-between text-muted-foreground text-xs font-medium">
+        <div className="p-3.5 sm:p-4 rounded-xl border border-border/70 bg-card/60 backdrop-blur-xs space-y-1 shadow-xs">
+          <div className="flex items-center justify-between text-muted-foreground text-[11px] sm:text-xs font-medium">
             <span>Won Deals</span>
-            <CalendarCheck className="size-4 text-purple-500" />
+            <CalendarCheck className="size-3.5 sm:size-4 text-purple-500" />
           </div>
-          <div className="text-2xl font-bold text-foreground">{stats.wonCount} won ({stats.conversionRate}%)</div>
-          <p className="text-[11px] text-muted-foreground">Conversion rate</p>
+          <div className="text-lg sm:text-2xl font-bold text-foreground truncate">
+            {stats.wonCount} won <span className="text-xs font-normal text-muted-foreground">({stats.conversionRate}%)</span>
+          </div>
+          <p className="text-[10px] sm:text-[11px] text-muted-foreground">Conversion rate</p>
         </div>
       </div>
 
       {/* Leads Table Management Section */}
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div>
-            <h2 className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
+            <h2 className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
               <span>All Prospects & Leads</span>
-              <Badge variant="secondary" className="text-xs">
+              <Badge variant="secondary" className="text-xs px-2 py-0.5">
                 {leads.length}
               </Badge>
             </h2>
@@ -217,7 +219,7 @@ export function CRMHubClient() {
             </p>
           </div>
 
-          <Button asChild variant="ghost" size="sm" className="text-xs text-primary gap-1 self-start sm:self-auto">
+          <Button asChild variant="ghost" size="sm" className="text-xs text-primary gap-1 self-start sm:self-auto px-0 sm:px-3">
             <Link href="/crm/pipeline">
               <span>Open Full Kanban Board</span>
               <ArrowRight className="size-3.5" />
@@ -247,36 +249,36 @@ export function CRMHubClient() {
       {/* CRM Modules Grid */}
       <div className="space-y-4 pt-4 border-t border-border/60">
         <div>
-          <h2 className="text-lg font-bold tracking-tight text-foreground">CRM Automation Modules</h2>
+          <h2 className="text-base sm:text-lg font-bold tracking-tight text-foreground">CRM Automation Modules</h2>
           <p className="text-xs text-muted-foreground">
             Explore dedicated hubs for deal pipelines, omnichannel messaging, automated calling, and appointments.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
           {CRM_MODULES.map((mod) => {
             const Icon = mod.icon;
             return (
               <Card
                 key={mod.title}
-                className={`flex flex-col justify-between hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 border ${mod.border}`}
+                className={`flex flex-col justify-between hover:shadow-md transition-all duration-200 border ${mod.border}`}
               >
-                <CardHeader className="pb-3">
+                <CardHeader className="p-4 sm:p-6 pb-3 sm:pb-3">
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <div className={`size-10 rounded-xl ${mod.bg} flex items-center justify-center`}>
-                      <Icon className={`size-5 ${mod.color}`} />
+                    <div className={`size-9 sm:size-10 rounded-xl ${mod.bg} flex items-center justify-center shrink-0`}>
+                      <Icon className={`size-4 sm:size-5 ${mod.color}`} />
                     </div>
-                    <Badge variant="outline" className={`text-[11px] font-semibold ${mod.badgeColor}`}>
+                    <Badge variant="outline" className={`text-[10px] sm:text-[11px] font-semibold ${mod.badgeColor}`}>
                       {mod.badge}
                     </Badge>
                   </div>
-                  <CardTitle className="text-base font-bold text-foreground">{mod.title}</CardTitle>
+                  <CardTitle className="text-sm sm:text-base font-bold text-foreground">{mod.title}</CardTitle>
                   <CardDescription className="text-xs leading-relaxed mt-1">
                     {mod.description}
                   </CardDescription>
                 </CardHeader>
 
-                <CardContent className="pt-0">
+                <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
                   <Button asChild className="w-full justify-between gap-2 text-xs font-semibold h-9" variant="outline">
                     <Link href={mod.href}>
                       <span>{mod.actionText}</span>

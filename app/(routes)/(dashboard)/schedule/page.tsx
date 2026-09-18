@@ -10,8 +10,10 @@ import ListView from "@/components/schedule/list-view";
 import CalendarView from "@/components/schedule/calendar-view";
 import CreatePostDialog from "@/components/schedule/create-post-dialog";
 import { ModernLoader } from "@/components/ui/modern-loader";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 
 type ViewType = "calendar" | "list"
+
 const SchedulePageContent = () => {
   const [activeView, setActiveView] = useQueryState("view", {
     defaultValue: "calendar",
@@ -24,7 +26,9 @@ const SchedulePageContent = () => {
   return (
     <div className="flex flex-col h-full w-full min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-3 px-2 sm:px-4 pt-1 pb-3 border-b border-border/40 shrink-0">
-        <div>
+        <div className="flex items-center gap-2">
+          {/* Mobile Sidebar Toggle Button */}
+          <SidebarTrigger className="md:hidden" />
           <h1 className="text-lg sm:text-xl font-semibold text-foreground">All Channels</h1>
         </div>
 
@@ -56,12 +60,15 @@ const SchedulePageContent = () => {
         </div>
       </header>
 
-      <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden pt-2">
-        {activeView === "list" ? (
-          <ListView setCreatePostModalOpen={setCreatePostModalOpen} />
-        ) : (
-          <CalendarView />
-        )}
+      {/* Main View Container with Mobile Horizontal Scroll Support */}
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-x-auto overflow-y-auto pt-2">
+        <div className="min-w-[650px] md:min-w-0 h-full flex flex-col">
+          {activeView === "list" ? (
+            <ListView setCreatePostModalOpen={setCreatePostModalOpen} />
+          ) : (
+            <CalendarView />
+          )}
+        </div>
       </div>
 
       <CreatePostDialog 
@@ -71,8 +78,6 @@ const SchedulePageContent = () => {
     </div>
   );
 };
-
-
 
 const SchedulePage = () => {
   return (

@@ -10,21 +10,26 @@ import { HumanTakeoverBanner } from "@/components/crm/inbox/human-takeover-banne
 import { NewConversationDialog } from "@/components/crm/inbox/new-conversation-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { generateCalcomBookingUrl } from "@/lib/calcom-url";
 import { toast } from "sonner";
 import {
   Phone,
   Mail,
   Building2,
-  Calendar,
-  ExternalLink,
   Sparkles,
   Bot,
-  Copy,
   DollarSign,
   MessageSquare,
   RefreshCw,
-  Plus,
+  ArrowLeft,
+  UserCheck,
 } from "lucide-react";
 
 export default function InboxPage() {
@@ -32,6 +37,7 @@ export default function InboxPage() {
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [isCalling, setIsCalling] = useState(false);
   const [isNewConvOpen, setIsNewConvOpen] = useState(false);
+  const [showMobileChat, setShowMobileChat] = useState(false);
 
   // Fetch active conversations
   const { data: convsData, isLoading: isLoadingConvs, refetch: refetchConvs } = useQuery({
@@ -41,7 +47,7 @@ export default function InboxPage() {
       if (!res.ok) throw new Error("Failed to load conversations");
       return res.json();
     },
-    refetchInterval: 5000, // Real-time polling fallback
+    refetchInterval: 5000,
   });
 
   const conversations: CRMConversation[] = convsData?.conversations || [];
@@ -242,14 +248,123 @@ export default function InboxPage() {
 
   const bant = activeLead?.metadata?.bant;
 
+  // Render Dossier Details Component
+  const RenderLeadDossier = () => (
+    <div className="space-y-4 text-xs">
+      <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
+        <h3 className="font-bold text-xs uppercase tracking-wider text-muted-foreground">
+          Lead Dossier
+        </h3>
+        <Badge variant="secondary" className="text-[10px] capitalize">
+          Stage: {activeLead?.stage?.replace("_", " ") || "New"}
+        </Badge>
+      </div>
+
+      {activeLead ? (
+        <div className="space-y-4">
+          <div className="space-y-2 p-3 rounded-xl bg-muted/30 border border-border/50">
+            <div className="font-semibold text-sm text-foreground">
+              {activeLead.name || "Anonymous Prospect"}
+            </div>
+            {activeLead.metadata?.company && (
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <Building2 className="size-3.5 shrink-0" />
+                <span>{activeLead.metadata.company}</span>
+              </div>
+            )}
+            {activeLead.email && (
+              <div className="flex items-center gap-1.5 text-muted-foreground truncate">
+                <Mail className="size-3.5 shrink-0" />
+                <span className="truncate">{activeLead.email}</span>
+              </div>
+            )}
+            {activeLead.phone && (
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <Phone className="size-3.5 shrink-0" />
+                <span>{activeLead.phone}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between p-3 rounded-xl bg-muted/20 border border-border/50">
+            <span className="text-muted-foreground font-medium">Deal Value:</span>
+            <strong className="text-sm text-foreground flex items-center gap-0.5">
+              <DollarSign className="size-3.5 text-muted-foreground -mr-0.5" />
+              {new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(
+                Number(activeLead.deal_value) || 0
+              )}
+            </strong>
+          </div>
+
+          <div className="p-3 rounded-xl border border-border/70 space-y-2.5 bg-card/60">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 text-primary">
+                <Sparkles className="size-3" />
+                BANT Score
+              </span>
+              <Badge variant="outline" className="text-[10px]">
+                {activeLead.score}/10
+              </Badge>
+            </div>
+
+            {bant ? (
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                  <div className="p-1.5 rounded bg-muted/40 text-center">
+                    <span className="text-[9px] text-muted-foreground block">BUDGET</span>
+                    <strong>{bant.budgetScore}/10</strong>
+                  </div>
+                  <div className="p-1.5 rounded bg-muted/40 text-center">
+                    <span className="text-[9px] text-muted-foreground block">AUTHORITY</span>
+                    <strong>{bant.authorityScore}/10</strong>
+                  </div>
+                  <div className="p-1.5 rounded bg-muted/40 text-center">
+                    <span className="text-[9px] text-muted-foreground block">NEED</span>
+                    <strong>{bant.needScore}/10</strong>
+                  </div>
+                  <div className="p-1.5 rounded bg-muted/40 text-center">
+                    <span className="text-[9px] text-muted-foreground block">TIMING</span>
+                    <strong>{bant.timingScore}/10</strong>
+                  </div>
+                </div>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  {bant.summary}
+                </p>
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                Lead is pending automated transcript scoring.
+              </p>
+            )}
+          </div>
+
+          <Button
+            type="button"
+            size="sm"
+            onClick={handleTriggerCall}
+            disabled={isCalling || !activeLead.phone}
+            className="w-full gap-2 text-xs font-semibold"
+          >
+            <Bot className="size-4" />
+            {isCalling ? "Dispatching Call..." : "Call Lead via Voice AI"}
+          </Button>
+        </div>
+      ) : (
+        <div className="text-center text-muted-foreground text-xs p-6">
+          No lead linked to this conversation yet.
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="h-full flex-1 flex flex-col min-h-0 overflow-hidden max-w-[1700px] w-full mx-auto space-y-2">
       {/* Top Header */}
-      <div className="flex items-center justify-between shrink-0">
+      <div className="flex items-center justify-between shrink-0 px-1 sm:px-0">
         <div>
-          <h1 className="text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
+          <h1 className="text-base sm:text-lg font-bold tracking-tight text-foreground flex items-center gap-2">
             Omnichannel CRM Inbox
-            <Badge variant="outline" className="text-[10px] font-semibold uppercase">
+            <Badge variant="outline" className="text-[10px] font-semibold uppercase hidden sm:inline-flex">
               Unified Threads
             </Badge>
           </h1>
@@ -268,48 +383,89 @@ export default function InboxPage() {
           className="h-7 gap-1.5 text-xs"
         >
           <RefreshCw className="size-3.5" />
-          Sync
+          <span className="hidden sm:inline">Sync</span>
         </Button>
       </div>
 
-      {/* 3-Column Main Workspace */}
-      <div className="flex-1 min-h-0 flex border border-border/70 rounded-2xl overflow-hidden bg-card/50 backdrop-blur-xs shadow-xs">
+      {/* Main Workspace */}
+      <div className="flex-1 min-h-0 flex border border-border/70 rounded-2xl overflow-hidden bg-card/50 backdrop-blur-xs shadow-xs relative">
         {/* Column 1: Conversations List */}
-        <div className="w-64 sm:w-72 lg:w-80 shrink-0 h-full min-h-0 flex flex-col">
+        <div
+          className={`w-full md:w-64 lg:w-80 shrink-0 h-full min-h-0 flex flex-col ${
+            showMobileChat ? "hidden md:flex" : "flex"
+          }`}
+        >
           <ConversationList
             conversations={conversations}
             selectedId={selectedConvId}
-            onSelect={(conv) => setSelectedConvId(conv.id)}
+            onSelect={(conv) => {
+              setSelectedConvId(conv.id);
+              setShowMobileChat(true);
+            }}
             onNewConversation={() => setIsNewConvOpen(true)}
           />
         </div>
 
         {/* Column 2: Active Chat Area */}
-        <div className="flex-1 min-h-0 flex flex-col h-full border-r border-border/70 min-w-0 bg-background/50">
+        <div
+          className={`flex-1 min-h-0 flex flex-col h-full border-r border-border/70 min-w-0 bg-background/50 ${
+            !showMobileChat ? "hidden md:flex" : "flex"
+          }`}
+        >
           {activeConv ? (
             <>
-              {/* Chat Top Banner with Human Takeover */}
+              {/* Chat Top Banner with Mobile Back Button & Sheet Dossier */}
               <div className="p-2.5 sm:p-3 border-b border-border/70 bg-card/60 space-y-2 shrink-0">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 truncate">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 md:hidden shrink-0"
+                      onClick={() => setShowMobileChat(false)}
+                    >
+                      <ArrowLeft className="size-4" />
+                    </Button>
                     <h3 className="font-bold text-sm text-foreground truncate">
                       {activeLead?.name || "Prospect Thread"}
                     </h3>
-                    <Badge variant="outline" className="h-5 text-[10px] uppercase">
+                    <Badge variant="outline" className="h-5 text-[10px] uppercase shrink-0">
                       {activeConv.channel}
                     </Badge>
                   </div>
-                  {activeLead?.score !== undefined && (
-                    <Badge
-                      className={
-                        activeLead.score >= 8
-                          ? "bg-emerald-500/15 text-emerald-600 border-emerald-500/30"
-                          : "bg-amber-500/15 text-amber-600 border-amber-500/30"
-                      }
-                    >
-                      BANT: {activeLead.score}/10
-                    </Badge>
-                  )}
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Lead Dossier Sheet Button for Mobile/Tablet */}
+                    <Sheet>
+                      <SheetTrigger asChild>
+                        <Button variant="ghost" size="icon" className="size-7 lg:hidden">
+                          <UserCheck className="size-4 text-muted-foreground" />
+                        </Button>
+                      </SheetTrigger>
+                      <SheetContent side="right" className="w-[300px] sm:w-[360px] p-4">
+                        <SheetHeader className="p-0 pb-2">
+                          <SheetTitle className="text-left text-sm font-bold">
+                            Lead Information
+                          </SheetTitle>
+                        </SheetHeader>
+                        <div className="mt-2">
+                          <RenderLeadDossier />
+                        </div>
+                      </SheetContent>
+                    </Sheet>
+
+                    {activeLead?.score !== undefined && (
+                      <Badge
+                        className={
+                          activeLead.score >= 8
+                            ? "bg-emerald-500/15 text-emerald-600 border-emerald-500/30"
+                            : "bg-amber-500/15 text-amber-600 border-amber-500/30"
+                        }
+                      >
+                        BANT: {activeLead.score}/10
+                      </Badge>
+                    )}
+                  </div>
                 </div>
 
                 <HumanTakeoverBanner
@@ -335,120 +491,14 @@ export default function InboxPage() {
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-8 text-muted-foreground text-xs space-y-2">
               <MessageSquare className="size-8 text-muted-foreground/50" />
-              <p>Select a conversation from the left to view messages and interact.</p>
+              <p>Select a conversation to view messages and interact.</p>
             </div>
           )}
         </div>
 
-        {/* Column 3: Lead Intelligence Dossier */}
-        <div className="w-72 lg:w-80 shrink-0 h-full min-h-0 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4 bg-card/30 hidden lg:block scrollbar-thin">
-          <div className="flex items-center justify-between border-b border-border/60 pb-2.5">
-            <h3 className="font-bold text-xs uppercase tracking-wider text-muted-foreground">
-              Lead Dossier
-            </h3>
-            <Badge variant="secondary" className="text-[10px] capitalize">
-              Stage: {activeLead?.stage?.replace("_", " ") || "New"}
-            </Badge>
-          </div>
-
-          {activeLead ? (
-            <div className="space-y-4 text-xs">
-              {/* Contact Snapshot */}
-              <div className="space-y-2 p-3 rounded-xl bg-muted/30 border border-border/50">
-                <div className="font-semibold text-sm text-foreground">
-                  {activeLead.name || "Anonymous Prospect"}
-                </div>
-                {activeLead.metadata?.company && (
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <Building2 className="size-3.5 shrink-0" />
-                    <span>{activeLead.metadata.company}</span>
-                  </div>
-                )}
-                {activeLead.email && (
-                  <div className="flex items-center gap-1.5 text-muted-foreground truncate">
-                    <Mail className="size-3.5 shrink-0" />
-                    <span className="truncate">{activeLead.email}</span>
-                  </div>
-                )}
-                {activeLead.phone && (
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <Phone className="size-3.5 shrink-0" />
-                    <span>{activeLead.phone}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Deal Value */}
-              <div className="flex items-center justify-between p-3 rounded-xl bg-muted/20 border border-border/50">
-                <span className="text-muted-foreground font-medium">Deal Value:</span>
-                <strong className="text-sm text-foreground flex items-center gap-0.5">
-                  <DollarSign className="size-3.5 text-muted-foreground -mr-0.5" />
-                  {new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(
-                    Number(activeLead.deal_value) || 0
-                  )}
-                </strong>
-              </div>
-
-              {/* BANT Qualification Card */}
-              <div className="p-3 rounded-xl border border-border/70 space-y-2.5 bg-card/60">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold uppercase tracking-wider flex items-center gap-1 text-primary">
-                    <Sparkles className="size-3" />
-                    BANT Score
-                  </span>
-                  <Badge variant="outline" className="text-[10px]">
-                    {activeLead.score}/10
-                  </Badge>
-                </div>
-
-                {bant ? (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                      <div className="p-1.5 rounded bg-muted/40 text-center">
-                        <span className="text-[9px] text-muted-foreground block">BUDGET</span>
-                        <strong>{bant.budgetScore}/10</strong>
-                      </div>
-                      <div className="p-1.5 rounded bg-muted/40 text-center">
-                        <span className="text-[9px] text-muted-foreground block">AUTHORITY</span>
-                        <strong>{bant.authorityScore}/10</strong>
-                      </div>
-                      <div className="p-1.5 rounded bg-muted/40 text-center">
-                        <span className="text-[9px] text-muted-foreground block">NEED</span>
-                        <strong>{bant.needScore}/10</strong>
-                      </div>
-                      <div className="p-1.5 rounded bg-muted/40 text-center">
-                        <span className="text-[9px] text-muted-foreground block">TIMING</span>
-                        <strong>{bant.timingScore}/10</strong>
-                      </div>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground leading-relaxed">
-                      {bant.summary}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground">
-                    Lead is pending automated transcript scoring.
-                  </p>
-                )}
-              </div>
-
-              {/* Action 1: Call Lead via Voice AI */}
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleTriggerCall}
-                disabled={isCalling || !activeLead.phone}
-                className="w-full gap-2 text-xs font-semibold"
-              >
-                <Bot className="size-4" />
-                {isCalling ? "Dispatching Call..." : "Call Lead via Voice AI"}
-              </Button>
-            </div>
-          ) : (
-            <div className="text-center text-muted-foreground text-xs p-6">
-              No lead linked to this conversation yet.
-            </div>
-          )}
+        {/* Column 3: Lead Intelligence Dossier (Desktop View) */}
+        <div className="w-72 lg:w-80 shrink-0 h-full min-h-0 overflow-y-auto p-3 sm:p-4 bg-card/30 hidden lg:block scrollbar-thin">
+          <RenderLeadDossier />
         </div>
       </div>
 
@@ -458,6 +508,7 @@ export default function InboxPage() {
         onClose={() => setIsNewConvOpen(false)}
         onCreated={(conv) => {
           setSelectedConvId(conv.id);
+          setShowMobileChat(true);
           queryClient.invalidateQueries({ queryKey: ["crm-conversations"] });
           refetchConvs();
           refetchActive();

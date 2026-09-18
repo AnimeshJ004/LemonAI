@@ -15,6 +15,7 @@ import { Button } from '../ui/button';
 import { Spinner } from '../ui/spinner';
 
 import { ConnectChannelDialog } from './connect-channel-dialog';
+import { SelectAccountDialog } from './select-account-dialog';
 
 function ChannelTabContent() {
     const searchParams = useSearchParams()
@@ -258,6 +259,8 @@ function ChannelTabContent() {
                     queryClient.invalidateQueries({ queryKey: ["channels"] })
                 }}
             />
+
+            <SelectAccountDialog />
         </>
     )
 }

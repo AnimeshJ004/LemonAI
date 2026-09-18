@@ -14,6 +14,7 @@ import fs from "fs";
 import os from "os";
 // NOTE: getInsforgeAdminClient imported dynamically in functions to avoid Next.js edge runtime issues
 import type { InsForgeClient } from "@insforge/sdk";
+import { callResilientCompletion } from "@/lib/ai-gateway";
 
 export type ReelStyle = "product_promo" | "awareness" | "testimonial" | "story";
 export type ReelAspect = "9:16" | "1:1" | "16:9";
@@ -81,29 +82,16 @@ Write a high-converting viral reel script.`;
 
   let rawText = "";
   try {
-    const result = await insforgeClient.ai.chat.completions.create({
-      model: "google/gemini-3.8-flash",
+    const completion = await callResilientCompletion({
+      temperature: 0.8,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
-      temperature: 0.8,
     });
-    rawText = result.choices[0]?.message?.content ?? "";
+    rawText = completion.content || "";
   } catch {
-    try {
-      const result2 = await insforgeClient.ai.chat.completions.create({
-        model: "google/gemini-3.7-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.8,
-      });
-      rawText = result2.choices[0]?.message?.content ?? "";
-    } catch {
-      rawText = "";
-    }
+    rawText = "";
   }
 
   // Clean markdown fences and parse JSON
@@ -182,33 +170,37 @@ export async function fetchSceneImages(
         }
       }
 
-      // ── Priority 2: Pollinations with API Key ──
-      const pollKey = process.env.POLLINATIONS_API_KEY;
-      if (pollKey) {
+      // ── Priority 2: Cloudflare Workers AI FLUX.1 ──
+      const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+      const cfApiToken = process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_KEY;
+      if (cfAccountId && cfApiToken) {
         try {
-          const pPrompt = encodeURIComponent(fullPrompt);
-          const pUrl = `https://gen.pollinations.ai/image/${pPrompt}?model=flux&width=${w}&height=${h}&key=${pollKey}&nologo=true`;
-          const pRes = await fetch(pUrl);
-          if (pRes.ok) {
-            const ab = await pRes.arrayBuffer();
-            return { sceneNumber: scene.sceneNumber, imageBuffer: Buffer.from(ab) };
+          const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${cfAccountId.trim()}/ai/run/@cf/black-forest-labs/flux-1-schnell`;
+          const cfRes = await fetch(cfUrl, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${cfApiToken.trim()}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              prompt: fullPrompt,
+              steps: 4,
+            }),
+          });
+          if (cfRes.ok) {
+            const json = (await cfRes.json()) as any;
+            const b64 = json.result?.image || json.image;
+            if (b64) {
+              return { sceneNumber: scene.sceneNumber, imageBuffer: Buffer.from(b64, "base64") };
+            }
           }
         } catch {
-          // fall through to public
+          // fall through to empty buffer
         }
       }
 
-      // ── Priority 3: Pollinations Public (fallback) ──
-      try {
-        const prompt = encodeURIComponent(fullPrompt);
-        const seed = Math.floor(Math.random() * 999999);
-        const url = `https://image.pollinations.ai/prompt/${prompt}?width=${w}&height=${h}&seed=${seed}&nologo=true`;
-        const res = await fetch(url);
-        const ab = await res.arrayBuffer();
-        return { sceneNumber: scene.sceneNumber, imageBuffer: Buffer.from(ab) };
-      } catch {
-        return { sceneNumber: scene.sceneNumber, imageBuffer: Buffer.alloc(0) };
-      }
+      // ── Priority 3: Fallback ──
+      return { sceneNumber: scene.sceneNumber, imageBuffer: Buffer.alloc(0) };
     })
   );
   return results;

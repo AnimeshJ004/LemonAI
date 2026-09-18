@@ -5,7 +5,7 @@ import { createLead, updateLead, recordActivity } from "@/lib/crm-service";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { userId, type, source, name, email, phone, service, message, budgetRange, timeline, preferredDate, preferredTimeSlot } = body;
+    const { userId, type, source, name, email, phone, service, message, budgetRange, timeline, preferredDate, preferredTimeSlot, selectedPackageId } = body;
 
     if (!userId || !name || !email || !phone) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
@@ -13,12 +13,50 @@ export async function POST(req: NextRequest) {
 
     const admin = getInsforgeAdminClient();
 
+    // If a package was selected, look it up so we can seed deal_value from its
+    // real numeric price (more accurate than the budget-range heuristic).
+    let selectedPackage: {
+      id: string;
+      name: string;
+      price_display: string;
+      price_amount: number | null;
+    } | null = null;
+
+    if (selectedPackageId) {
+      try {
+        const { data: pkg } = await admin.database
+          .from("brand_pricing_packages")
+          .select("id, name, price_display, price_amount, user_id")
+          .eq("id", selectedPackageId)
+          .maybeSingle();
+
+        // Guard: package must belong to the same user_id the form was submitted for.
+        if (pkg && pkg.user_id === userId) {
+          selectedPackage = {
+            id: pkg.id,
+            name: pkg.name,
+            price_display: pkg.price_display,
+            price_amount:
+              typeof pkg.price_amount === "number" ? pkg.price_amount : null,
+          };
+        }
+      } catch (pkgErr: any) {
+        console.warn("[Lead Form Submit] Package lookup notice:", pkgErr?.message);
+      }
+    }
+
     // Estimate deal value from budget range
-    const dealValue = budgetRange?.includes("1,00,000+") ? 150000
+    const budgetDealValue = budgetRange?.includes("1,00,000+") ? 150000
       : budgetRange?.includes("50,000") ? 75000
       : budgetRange?.includes("20,000") ? 35000
       : budgetRange?.includes("5,000") ? 12000
       : 5000;
+
+    // Prefer the real package price when available; otherwise use the budget heuristic.
+    const dealValue =
+      selectedPackage?.price_amount && selectedPackage.price_amount > 0
+        ? selectedPackage.price_amount
+        : budgetDealValue;
 
     const isBooking = type === "booking" && Boolean(preferredDate);
     const stage = isBooking ? "booked" : "qualified";
@@ -29,7 +67,9 @@ export async function POST(req: NextRequest) {
       : "instagram";
 
     const notes = type === "pricing"
-      ? `Pricing enquiry via lead form. Budget: ${budgetRange || "N/A"}. Timeline: ${timeline || "N/A"}. Service: ${service}. Message: ${message || ""}`
+      ? `Pricing enquiry via lead form. Budget: ${budgetRange || "N/A"}. Timeline: ${timeline || "N/A"}. Service: ${service}.${
+          selectedPackage ? ` Selected package: ${selectedPackage.name} (${selectedPackage.price_display}).` : ""
+        } Message: ${message || ""}`
       : `Appointment request via lead form. Service: ${service}. Date: ${preferredDate || "TBD"}. Slot: ${preferredTimeSlot || "TBD"}. Notes: ${message || ""}`;
 
     const metadata: Record<string, any> = {
@@ -58,6 +98,9 @@ export async function POST(req: NextRequest) {
         service,
         message,
         receivedAt: new Date().toISOString(),
+        selectedPackageId: selectedPackage?.id || null,
+        selectedPackageName: selectedPackage?.name || null,
+        selectedPackagePriceDisplay: selectedPackage?.price_display || null,
       };
     }
 

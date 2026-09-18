@@ -355,13 +355,13 @@ export function ConnectChannelDialog({
                                             isBluesky
                                                 ? "e.g. username.bsky.social"
                                                 : isInstagram
-                                                ? "e.g. animeshjain0602"
+                                                ? "e.g. brand_official"
                                                 : isTwitter
-                                                ? "e.g. your_handle"
+                                                ? "e.g. brand_handle"
                                                 : isThreads
-                                                ? "e.g. your_threads"
+                                                ? "e.g. brand_threads"
                                                 : isFacebook
-                                                ? "e.g. DentalClinicOfficial"
+                                                ? "e.g. YourBrandOfficial"
                                                 : "e.g. your_username"
                                         }
                                         value={handle}
@@ -419,9 +419,9 @@ export function ConnectChannelDialog({
                                                      id="channel-account-id"
                                                      placeholder={
                                                          isInstagram
-                                                             ? "e.g. 17841433178455433"
+                                                             ? "e.g. 17841400012345678"
                                                              : isFacebook
-                                                             ? "e.g. 1000854321..."
+                                                             ? "e.g. 102938475610293"
                                                              : "e.g. 12345678"
                                                      }
                                                      value={providerAccountId}
@@ -458,7 +458,13 @@ export function ConnectChannelDialog({
                                              <Input
                                                  id="channel-token"
                                                  type="password"
-                                                 placeholder={channel.has_token ? "Token stored securely. Leave blank to keep." : "Paste your token or key here..."}
+                                                 placeholder={
+                                                     channel.has_token
+                                                         ? "Token stored securely. Leave blank to keep."
+                                                         : isMeta
+                                                         ? "Paste your Page Access Token (e.g. EAAG...)"
+                                                         : "Paste your access token or key here..."
+                                                 }
                                                  value={accessToken}
                                                  onChange={(e) => setAccessToken(e.target.value)}
                                                  disabled={isLoading}

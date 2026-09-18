@@ -1,6 +1,6 @@
 import { researchMarketTrends } from "./trend-researcher";
 import { routeAICall } from "./ai-router";
-import { getInsforgeAdminClient, getInsforgeServerClient } from "./insforge-server";
+import { getInsforgeAdminClient } from "./insforge-server";
 import { getBrandProfileForUser, getBrandBrainSummary, cleanTag } from "./brand-helper";
 import {
   generateAdCreativeImage,
@@ -8,8 +8,16 @@ import {
   CURATED_VERTICAL_REELS,
 } from "./ai-image-generator";
 import { publishPostDirectly } from "./direct-publisher";
-import { addDays } from "date-fns";
-import { getPlatformPeakTime, adaptCaptionForPlatform, getPlatformStaggeredDate } from "./platform-adapt-helper";
+import { adaptCaptionForPlatform, getPlatformStaggeredDate } from "./platform-adapt-helper";
+
+/**
+ * Adds days to a Date without relying on external date libraries
+ */
+function addDays(date: Date, days: number): Date {
+  const result = new Date(date);
+  result.setDate(result.getDate() + days);
+  return result;
+}
 
 export interface FlywheelRequest {
   userId: string;
@@ -415,14 +423,6 @@ Return ONLY valid JSON matching this schema:
   for (let i = 0; i < generatedPosts.length; i++) {
     const post = generatedPosts[i];
     const asset = visualAssets[i] || visualAssets[i % visualAssets.length];
-
-    // Day 1 (i === 0) is scheduled for right now; subsequent days are scheduled at 10:00 AM UTC.
-    // Using setUTCHours (not setHours) so the time is server-timezone-independent.
-    // 10:00 UTC = 3:30 PM IST, 6:00 AM EST — consistent across all deployments.
-    const scheduleDate = i === 0 ? new Date() : addDays(now, i);
-    if (i > 0) {
-      scheduleDate.setUTCHours(10, 0, 0, 0);
-    }
 
     const isReel = post.format === "REEL";
     const isCarousel = post.format === "CAROUSEL";

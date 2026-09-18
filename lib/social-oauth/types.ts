@@ -1,10 +1,22 @@
 import { ChannelTypeEnum } from "@/constants/channels"
 
+export type DiscoveredInstagramAccount = {
+    providerAccountId: string;
+    handle: string;
+    profileImage?: string | null;
+    pageAccessToken: string;
+    pageName: string;
+    pageId: string;
+}
+
 export type OAuthConnectionProfile = {
     providerAccountId?: string | null
     handle?: string | null;
     profileImage?: string | null
     pageAccessToken?: string | null
+    /** Facebook Page ID backing this account — required for the Meta Messaging API. */
+    pageId?: string | null
+    availableAccounts?: DiscoveredInstagramAccount[];
 }
 
 export type OAuthTokenResponse = {

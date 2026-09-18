@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Bot, MessageSquare, Zap, CheckCircle, Send, RefreshCw, Sparkles, ShieldAlert, Heart, HelpCircle, Inbox, Clock } from "lucide-react";
+import { Bot, MessageSquare, Zap, CheckCircle, Send, RefreshCw, Sparkles, ShieldAlert, Heart, HelpCircle, Inbox, Clock, Wifi, WifiOff, AlertTriangle } from "lucide-react";
 
 export default function SocialAutomationPage() {
   const [testComment, setTestComment] = useState({ text: "", platform: "INSTAGRAM" });
@@ -29,6 +29,22 @@ export default function SocialAutomationPage() {
     // Auto-refresh every 30 seconds to keep comment log fresh
     refetchInterval: 30000,
   });
+
+  // Fetch connected channels to show real per-channel monitoring status
+  const { data: channelsData } = useQuery({
+    queryKey: ["user-channels-automation"],
+    queryFn: async () => {
+      const res = await fetch("/api/channel");
+      if (!res.ok) return { channels: [] };
+      return res.json();
+    },
+    staleTime: 60000,
+  });
+
+  const allChannels: any[] = channelsData?.channels || [];
+  const igChannel = allChannels.find((c: any) => c.channel_types?.type === "INSTAGRAM" && c.is_connected);
+  const fbChannel = allChannels.find((c: any) => c.channel_types?.type === "FACEBOOK" && c.is_connected);
+  const hasAnyMetaChannel = !!(igChannel || fbChannel);
 
   // Bug fix: moved BELOW useQuery so `refetch` is in scope
   const handleSyncLiveComments = async () => {
@@ -149,29 +165,53 @@ export default function SocialAutomationPage() {
         ))}
       </div>
 
-      {/* Autonomous System Status Banner */}
-      <Card className="border-emerald-200/80 bg-emerald-50/30 dark:bg-emerald-950/20 shadow-xs">
-        <CardContent className="pt-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <div className="size-9 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 shrink-0 mt-0.5">
-              <CheckCircle className="size-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-300">
-                  Autonomous Auto-Reply Engine is Active
-                </p>
-                <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+      {/* Autonomous System Status Banner — now reflects real channel connection state */}
+      <Card className={hasAnyMetaChannel ? "border-emerald-200/80 bg-emerald-50/30 dark:bg-emerald-950/20 shadow-xs" : "border-amber-300/60 bg-amber-50/30 dark:bg-amber-950/20"}>
+        <CardContent className="pt-4">
+          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className={`size-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${hasAnyMetaChannel ? "bg-emerald-500/10 text-emerald-600" : "bg-amber-500/10 text-amber-600"}`}>
+                {hasAnyMetaChannel ? <CheckCircle className="size-5" /> : <AlertTriangle className="size-5" />}
               </div>
-              <p className="text-xs text-muted-foreground mt-0.5 max-w-xl">
-                Whenever a comment arrives on your connected Instagram or Facebook posts, Lemon AI reads it, classifies sentiment, posts the public reply, and triggers private lead DMs automatically with zero human effort.
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className={`text-sm font-semibold ${hasAnyMetaChannel ? "text-emerald-900 dark:text-emerald-300" : "text-amber-900 dark:text-amber-300"}`}>
+                    {hasAnyMetaChannel ? "Autonomous Auto-Reply Engine is Active" : "No Meta Channels Connected — Automation Paused"}
+                  </p>
+                  {hasAnyMetaChannel && <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />}
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5 max-w-xl">
+                  {hasAnyMetaChannel
+                    ? `Monitoring ${[igChannel ? "Instagram" : null, fbChannel ? "Facebook" : null].filter(Boolean).join(" & ")} — comments are classified, replied, and high-intent DMs are captured as CRM leads automatically.`
+                    : "Connect Instagram or Facebook in Settings → Channels to activate 24/7 comment and DM auto-reply."}
+                </p>
+                {/* Per-channel monitoring status */}
+                {hasAnyMetaChannel && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {igChannel && (
+                      <span className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/40 px-2.5 py-1 rounded-full">
+                        <Wifi className="size-3" /> 📸 Instagram {igChannel.handle ? `@${igChannel.handle}` : ""} — Comment + DM polling active
+                      </span>
+                    )}
+                    {fbChannel && (
+                      <span className="flex items-center gap-1.5 text-[11px] font-medium text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900/40 px-2.5 py-1 rounded-full">
+                        <Wifi className="size-3" /> 📘 Facebook {fbChannel.handle ? `@${fbChannel.handle}` : "Page"} — Comment + DM polling active
+                      </span>
+                    )}
+                  </div>
+                )}
+                {!hasAnyMetaChannel && (
+                  <div className="mt-2">
+                    <Link href="/settings" className="text-xs text-primary underline font-medium hover:opacity-80">Connect in Settings →</Link>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <Badge variant="outline" className="text-xs font-mono bg-background text-foreground/80">
-              Webhook: /api/social/webhook
-            </Badge>
+            <div className="flex items-center gap-2 shrink-0">
+              <Badge variant="outline" className="text-xs font-mono bg-background text-foreground/80">
+                Webhook: /api/social/webhook
+              </Badge>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -395,16 +435,28 @@ export default function SocialAutomationPage() {
           <div className="flex items-center justify-between p-3 rounded-lg border bg-background">
             <div>
               <p className="text-sm font-medium">Auto-Reply on Instagram DMs</p>
-              <p className="text-xs text-muted-foreground">Respond to new DMs within 30 seconds using brand-trained AI</p>
+              <p className="text-xs text-muted-foreground">
+                {igChannel ? `@${igChannel.handle || "Connected"} — responds within 5 min using brand-trained AI` : "Connect Instagram in Settings to activate"}
+              </p>
             </div>
-            <Badge className="bg-emerald-600 text-white text-xs">Active</Badge>
+            {igChannel ? (
+              <Badge className="bg-emerald-600 text-white text-xs">● Active</Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">Not Connected</Badge>
+            )}
           </div>
           <div className="flex items-center justify-between p-3 rounded-lg border bg-background">
             <div>
               <p className="text-sm font-medium">Auto-Reply on Facebook Messenger DMs</p>
-              <p className="text-xs text-muted-foreground">Qualify leads and collect contact info automatically</p>
+              <p className="text-xs text-muted-foreground">
+                {fbChannel ? `Page: ${fbChannel.handle || "Connected"} — qualifies leads automatically` : "Connect Facebook in Settings to activate"}
+              </p>
             </div>
-            <Badge className="bg-emerald-600 text-white text-xs">Active</Badge>
+            {fbChannel ? (
+              <Badge className="bg-emerald-600 text-white text-xs">● Active</Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">Not Connected</Badge>
+            )}
           </div>
           <div className="flex items-center justify-between p-3 rounded-lg border bg-background opacity-60">
             <div>

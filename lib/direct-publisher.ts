@@ -226,7 +226,7 @@ async function publishToInstagramDirect({
   let resolvedAccountId = instagramAccountId;
   let effectiveToken = accessToken;
 
-  // 1. Auto-discover & verify the true Instagram Business Account ID and Page Token from Meta Graph API
+  // 1. Verify / match Instagram Business Account ID and Page Token from Meta Graph API
   try {
     const accRes = await fetch(
       `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id,username}&access_token=${encodeURIComponent(accessToken)}`
@@ -234,13 +234,22 @@ async function publishToInstagramDirect({
     if (accRes.ok) {
       const accData = await accRes.json();
       const pages = accData?.data || [];
-      const pageWithIg = pages.find(
-        (p: any) => p.instagram_business_account?.id
-      );
-      if (pageWithIg?.instagram_business_account?.id) {
-        resolvedAccountId = pageWithIg.instagram_business_account.id;
-        if (pageWithIg.access_token) {
-          effectiveToken = pageWithIg.access_token;
+      if (instagramAccountId) {
+        // If specific account ID is known, find the specific page that owns it to use its Page Access Token
+        const matchingPage = pages.find((p: any) => p.instagram_business_account?.id === instagramAccountId);
+        if (matchingPage?.access_token) {
+          effectiveToken = matchingPage.access_token;
+        }
+      } else {
+        // Only discover if no account ID was provided
+        const pageWithIg = pages.find(
+          (p: any) => p.instagram_business_account?.id
+        );
+        if (pageWithIg?.instagram_business_account?.id) {
+          resolvedAccountId = pageWithIg.instagram_business_account.id;
+          if (pageWithIg.access_token) {
+            effectiveToken = pageWithIg.access_token;
+          }
         }
       }
     }

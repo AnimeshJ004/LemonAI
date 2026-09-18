@@ -293,10 +293,10 @@ export function BrandProfileForm() {
           <div>
             <h2 className="text-base font-bold text-foreground flex items-center gap-2">
               <Building2 className="size-4 text-primary" />
-              Brand Identity & Knowledge Vault
+              Brand & Creator Identity Vault
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Define your core company credentials so all AI campaigns and post generators faithfully reflect your tone and value.
+              Define your core creator or company credentials so all AI campaigns, scripts, and post generators faithfully reflect your tone and value.
             </p>
           </div>
           <Button
@@ -329,17 +329,17 @@ export function BrandProfileForm() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Business Name */}
+            {/* Brand / Business / Creator Name */}
             <FormField
               id="brand-business-name"
-              label="Business Name"
+              label="Brand, Channel, or Business Name"
               required
-              description="Your company, practice, or brand name"
+              description="Your creator handle, channel name, clinic, or company"
               icon={FIELD_ICONS.business_name}
             >
               <Input
                 id="brand-business-name"
-                placeholder="e.g. Apex Health Clinic, Urban Roast Cafe, Zenith Law"
+                placeholder="e.g. Aura Wellness, Apex Media, Lumina Labs, Nova Skincare, Peak Athletics"
                 value={form.business_name}
                 onChange={(e) => set("business_name", e.target.value)}
                 required
@@ -349,14 +349,14 @@ export function BrandProfileForm() {
             {/* Niche */}
             <FormField
               id="brand-niche"
-              label="Niche / Industry & Product"
+              label="Niche, Industry, or Main Topic"
               required
-              description="What products or services do you provide?"
+              description="What do you do or talk about? (AI extracts viral trends in this space)"
               icon={FIELD_ICONS.niche}
             >
               <Input
                 id="brand-niche"
-                placeholder="e.g. Cosmetic Dentistry, Handcrafted Organic Bakery, Corporate Tax"
+                placeholder="e.g. Cosmetic Dentistry, AI Tools & Tech, High-Ticket Fitness, Luxury Real Estate"
                 value={form.niche}
                 onChange={(e) => set("niche", e.target.value)}
                 required
@@ -367,14 +367,14 @@ export function BrandProfileForm() {
             <div className="sm:col-span-2">
               <FormField
                 id="brand-target-audience"
-                label="Target Audience & Demographics"
+                label="Target Audience, Viewers & Community"
                 required
-                description="Who are your ideal customers and what problems do they have?"
+                description="Who are you creating for and what struggles or desires do they have?"
                 icon={FIELD_ICONS.target_audience}
               >
                 <Textarea
                   id="brand-target-audience"
-                  placeholder="e.g. Working professionals aged 25-45 in urban metro cities seeking convenient high-quality services"
+                  placeholder="e.g. Local residents wanting teeth whitening, Gen-Z tech enthusiasts, aspiring founders, busy corporate moms"
                   value={form.target_audience}
                   onChange={(e) => set("target_audience", e.target.value)}
                   className="min-h-[68px] resize-none"
@@ -387,8 +387,8 @@ export function BrandProfileForm() {
             <div className="sm:col-span-2">
               <FormField
                 id="brand-tone"
-                label="Brand Voice & Tone"
-                description="How should the AI communicate in ad copy and posts?"
+                label="Brand Voice & Tone Style"
+                description="How should the AI sound in reels scripts, captions, and posts?"
                 icon={FIELD_ICONS.brand_tone}
               >
                 <div className="grid grid-cols-5 gap-2">
@@ -415,13 +415,13 @@ export function BrandProfileForm() {
             {/* Main Offer */}
             <FormField
               id="brand-main-offer"
-              label="Primary Offer / Value Proposition (Optional)"
-              description="Special package, discount, guarantee, or key USP"
+              label="Primary Goal, Offer, or Call-To-Action (Optional)"
+              description="Appointment booking, YouTube subscribe, product checkout, or free trial"
               icon={FIELD_ICONS.main_offer}
             >
               <Input
                 id="brand-main-offer"
-                placeholder="e.g. Free Consultation + 20% Off First Visit, Free 7-Day Trial"
+                placeholder="e.g. Free Consultation + 20% Off, Subscribe to YouTube, Buy Online, DM for details"
                 value={form.main_offer}
                 onChange={(e) => set("main_offer", e.target.value)}
               />
@@ -430,13 +430,13 @@ export function BrandProfileForm() {
             {/* Competitor Handles */}
             <FormField
               id="brand-competitors"
-              label="Competitor Handles / Market References (Optional)"
-              description="Handles or brands for market positioning (comma separated)"
+              label="Benchmark Creators, Channels, or Competitors (Optional)"
+              description="Handles, YouTube links, or websites for AI reverse-engineering"
               icon={FIELD_ICONS.competitors}
             >
               <Input
                 id="brand-competitors"
-                placeholder="e.g. @competitor1, @competitor2, IndustryLeader"
+                placeholder="e.g. @creator, @competitor_brand, youtube.com/@channel (or AI auto-discovery)"
                 value={form.competitors}
                 onChange={(e) => set("competitors", e.target.value)}
               />

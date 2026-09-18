@@ -167,17 +167,19 @@ export function buildMemoryPromptBlock(memories: AIMemoryRow[]): string {
   return `\n\n=== PERSONALIZED AI MEMORY (learned from this user's past interactions) ===\n${sections.join("\n\n")}\n=== END MEMORY ===\n`;
 }
 
-import { callGroqChatCompletion, isGroqConfigured } from "@/lib/groq-client";
+import { callResilientCompletion } from "@/lib/ai-gateway";
 
 /**
- * Generate a 1-line insight from an edit using a minimal Gemini / Groq call.
+ * Generate a 1-line insight from an edit using a minimal Groq Llama call.
  * This is extremely cheap (~100 tokens max).
+ * `insforge` is accepted for backwards-compatibility with prior callers but
+ * is no longer used for AI — all content generation runs through Groq Llama.
  */
 async function generateInsight(
   original: string,
   edited: string,
   feedbackText: string | undefined,
-  insforge: any
+  _insforge: any
 ): Promise<string | null> {
   const prompt = `A user edited an AI-generated social media post.
 
@@ -190,33 +192,15 @@ Examples: "User prefers shorter sentences" / "User wants casual tone, not formal
 Answer:`;
 
   try {
-    if (insforge?.ai?.chat?.completions) {
-      const completion = await insforge.ai.chat.completions.create({
-        model: "google/gemini-3.8-flash",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 60,
-      });
-
-      const raw = completion.choices[0]?.message?.content?.trim() || "";
-      if (raw) {
-        return raw.replace(/^["']|["']$/g, "").trim() || null;
-      }
+    const completion = await callResilientCompletion({
+      messages: [{ role: "user", content: prompt }],
+      maxTokens: 60,
+    });
+    if (completion.success && completion.content) {
+      return completion.content.trim().replace(/^["']|["']$/g, "").trim() || null;
     }
-  } catch {
-    // InsForge failed, try Groq
-  }
-
-  if (isGroqConfigured()) {
-    try {
-      const groqRes = await callGroqChatCompletion({
-        model: "openai/gpt-oss-20b",
-        messages: [{ role: "user", content: prompt }],
-        maxTokens: 60,
-      });
-      if (groqRes.success && groqRes.content) {
-        return groqRes.content.trim().replace(/^["']|["']$/g, "").trim() || null;
-      }
-    } catch {}
+  } catch (err) {
+    console.warn("[AI Memory] Insight generation notice:", err);
   }
 
   // Fallback: derive simple insight without AI

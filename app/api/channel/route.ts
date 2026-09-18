@@ -70,7 +70,13 @@ export async function GET(request: NextRequest) {
 
         let channels = channelTypes.map(channel_type => {
             const userChannel = userChannelMap.get(channel_type.id);
-            const isConnected = Boolean(userChannel?.is_connected);
+            const hasValidToken = Boolean(
+                userChannel?.access_token && 
+                typeof userChannel.access_token === "string" && 
+                userChannel.access_token.trim().length > 5
+            );
+            // A channel is genuinely connected only if explicitly marked connected, has a valid token, and is not a placeholder '@user'
+            const isConnected = Boolean(userChannel?.is_connected) && hasValidToken && userChannel?.handle !== "@user";
             return {
               id: channel_type.id,
               type: channel_type.type,
@@ -84,7 +90,7 @@ export async function GET(request: NextRequest) {
               provider_account_id: isConnected ? (userChannel?.provider_account_id ?? null) : null,
               connected: isConnected,
               oauth_configured: isProviderConfigured(channel_type.type as ChannelTypeEnum),
-              has_token: isConnected && Boolean(userChannel?.access_token && userChannel.access_token.length > 5)
+              has_token: hasValidToken
             };
         });
 

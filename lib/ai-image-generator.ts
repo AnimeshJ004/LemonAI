@@ -7,6 +7,7 @@ export interface GenerateImageOptions {
   aspectRatio?: ImageAspectRatio;
   userId?: string;
   niche?: string;
+  brandProfile?: any;
 }
 
 export interface GeneratedImageResult {
@@ -17,8 +18,8 @@ export interface GeneratedImageResult {
   prompt: string;
   provider:
     | "REPLICATE_FLUX_1"
+    | "CLOUDFLARE_WORKERS_AI"
     | "TOGETHER_FLUX"
-    | "DIRECT_FLUX_AI"
     | "GOOGLE_IMAGEN_3"
     | "CURATED_EDITORIAL_PHOTOGRAPHY";
   latencyMs: number;
@@ -33,11 +34,43 @@ export interface GeneratedVideoResult {
   latencyMs: number;
 }
 
+function sanitizePhotorealisticPrompt(raw: string): string {
+  // 1. Strip any anime, manga, cartoon, drawing, illustration words even if negated (FLUX has no negative prompt so tokens like 'anime' trigger anime aesthetics)
+  let cleaned = raw
+    .replace(/(no|zero|without|not|avoid|never|stop)\s+(anime|manga|cartoon|illustration|drawing|avatar|chibi|cgi|3d\s+render|comic)/gi, "")
+    .replace(/\b(anime|manga|cartoon|illustration|drawing|sketch|avatar|chibi|cgi|3d\s+render|comic|pixar|disney)\b/gi, "")
+    .replace(/["'“”]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+
+  // 2. Prepend strong photographic anchors
+  if (!cleaned.toLowerCase().includes("photograph") && !cleaned.toLowerCase().includes("photo")) {
+    cleaned = `Authentic raw color 35mm photograph of ${cleaned}`;
+  }
+
+  // 3. Append physical realism anchors
+  cleaned += ", 35mm Hasselblad H6D-100c camera, 50mm f/1.8 lens, natural daylight, real skin texture with visible pores, real physical world, authentic editorial lighting, high resolution photography.";
+
+  return cleaned;
+}
+
 /**
- * Clean user command terms and condition prompt for ultra-realistic commercial photography
+ * Creates an industry-level commercial art-directed photography prompt
+ * strictly grounded in the user's specific Brand Profile details.
  */
-function buildPhotorealisticPrompt(rawPrompt: string, niche?: string): string {
-  const cleaned = rawPrompt
+async function buildBrandAlignedVisualPrompt(
+  rawPrompt: string,
+  brandProfile?: any,
+  niche?: string
+): Promise<string> {
+  const brandName = brandProfile?.business_name || "";
+  const brandNiche = brandProfile?.niche || niche || "";
+  const products = brandProfile?.products_services || "";
+  const offer = brandProfile?.main_offer || "";
+  const audience = brandProfile?.target_audience || "";
+  const tone = brandProfile?.brand_tone || "Modern, luxury, professional";
+
+  const cleanedSubject = rawPrompt
     .replace(/generate\s+(a\s+)?(post|image|picture|photo|ad|creative|banner|reel|video)\s+(for|about|of|related\s+to)?/gi, "")
     .replace(/attach\s+(this|image|it|photo)\s+(in|to)?\s+(the\s+)?(post)?/gi, "")
     .replace(/with\s+best\s+caption.*/gi, "")
@@ -47,10 +80,53 @@ function buildPhotorealisticPrompt(rawPrompt: string, niche?: string): string {
     .replace(/[#@]/g, "")
     .trim();
 
-  const subject = cleaned || (niche ? `professional ${niche} business context` : "modern professional business environment");
+  // Enhance using Gemini AI when gateway is available
+  try {
+    const { callResilientCompletion } = await import("@/lib/ai-gateway");
+    const aiRes = await callResilientCompletion<string>({
+      messages: [
+        {
+          role: "system",
+          content: `You are an award-winning commercial creative director for top-tier global brands and advertising agencies.
+Your task is to write a single, ultra-realistic, real-world commercial photography visual prompt for FLUX.1 image generation.
 
-  // Strict commercial DSLR documentary conditioning - eliminates cartoon/anime/CGI
-  return `Authentic commercial documentary photograph of ${subject}. Shot on 35mm lens, f/2.8, natural daylight, sharp focus, hyperrealistic human skin textures, cinematic lighting, corporate professional editorial aesthetic. Award-winning commercial photography, zero 3D render, zero CGI, zero cartoon, zero anime.`;
+Brand Profile:
+- Brand Name: ${brandName || "Premium Brand"}
+- Industry / Niche: ${brandNiche || "Modern Business"}
+- Products / Services: ${products || offer || "High-end commercial offerings"}
+- Target Audience: ${audience || "Discerning clients"}
+- Brand Tone & Aesthetic: ${tone}
+
+ART DIRECTION REQUIREMENTS:
+1. Ground the visual scene directly in this brand's actual product, craftsmanship, service space, or refined customer lifestyle.
+2. If products are featured: real physical commercial product photography, minimalist architectural table flatlay, warm directional studio lighting, crisp textures, soft reflections.
+3. If services/spaces are featured: sleek modern architecture, high-end interior design, authentic luxury context.
+4. If people are in the frame: real people, candid documentary capture, natural unairbrushed skin textures with visible pores, elegant posture.
+5. NO TEXT, NO LOGOS, NO WATERMARKS in the scene.
+6. Technical camera specs: "Hasselblad H6D-100c, 50mm f/1.8 lens, natural daylight, rich editorial color grading, 8k commercial photography".
+7. CRITICAL: The visual MUST depict a real physical world photograph taken with a camera. Do NOT use terms like 'illustration', 'art', 'concept', or 'drawing'.
+
+Output ONLY the final 2-3 sentence prompt. No markdown, quotes, or preambles.`,
+        },
+        {
+          role: "user",
+          content: `Topic / post visual idea: "${cleanedSubject || brandNiche || "Brand showcase"}"`,
+        },
+      ],
+      temperature: 0.5,
+      maxTokens: 180,
+    });
+
+    if (aiRes?.content && aiRes.content.trim().length > 25) {
+      return sanitizePhotorealisticPrompt(aiRes.content);
+    }
+  } catch (err) {
+    console.warn("[Image Engine] AI prompt enhancement notice:", err);
+  }
+
+  // Deterministic fallback
+  const contextSubject = cleanedSubject || products || offer || brandNiche || "commercial showcase";
+  return sanitizePhotorealisticPrompt(`Award-winning commercial editorial photograph of ${contextSubject}, reflecting ${brandName || "modern enterprise"} in ${brandNiche || "business"}. High-end ${tone.toLowerCase()} aesthetic, shot on Hasselblad 50mm f/1.8, soft diffused natural daylight, rich architectural materials, realistic textures, cinematic color grading`);
 }
 
 /**
@@ -119,17 +195,33 @@ export const CURATED_VERTICAL_REELS: string[] = [
  * Generate Ultra-Realistic Commercial Ad Creative Image
  * Priority order:
  * 1. Replicate FLUX.1 (if REPLICATE_API_TOKEN is available)
- * 2. Together.ai FLUX.1 (if TOGETHER_API_KEY is available)
- * 3. Pollinations.ai FLUX with API Key (if POLLINATIONS_API_KEY is available)
- * 4. Pollinations.ai Public FLUX endpoint
- * 5. Curated Commercial Photography Fallback
+ * 2. Cloudflare Workers AI FLUX.1 (if CLOUDFLARE_ACCOUNT_ID & CLOUDFLARE_API_TOKEN are available - 10,000 free neurons/day)
+ * 3. Together.ai FLUX.1 (if TOGETHER_API_KEY is available)
+ * 4. Curated Commercial Photography Fallback (Matched to brand industry & aesthetic)
  */
 export async function generateAdCreativeImage(
   options: GenerateImageOptions
 ): Promise<GeneratedImageResult> {
   const startTime = Date.now();
   const aspectRatio = options.aspectRatio || "1:1";
-  const photorealisticPrompt = buildPhotorealisticPrompt(options.prompt, options.niche);
+
+  // Automatically fetch brand profile for user if not already provided
+  let brandProfile = options.brandProfile;
+  if (!brandProfile && options.userId) {
+    try {
+      const { getBrandProfileForUser } = await import("@/lib/brand-helper");
+      brandProfile = await getBrandProfileForUser(options.userId);
+    } catch {
+      // continue without DB profile
+    }
+  }
+
+  // Synthesize industry-level commercial art-directed prompt grounded in brand details
+  const photorealisticPrompt = await buildBrandAlignedVisualPrompt(
+    options.prompt,
+    brandProfile,
+    options.niche
+  );
 
   const dimensions: Record<ImageAspectRatio, { width: number; height: number }> = {
     "1:1":  { width: 1024, height: 1024 },
@@ -153,7 +245,7 @@ export async function generateAdCreativeImage(
         headers: {
           Authorization: `Bearer ${replicateToken.trim()}`,
           "Content-Type": "application/json",
-          Prefer: "wait=10", // Fast return or poll for max 10-12s
+          Prefer: "wait=10",
         },
         body: JSON.stringify({
           input: {
@@ -180,7 +272,7 @@ export async function generateAdCreativeImage(
             imageUrl: outputUrl,
             storageKey: `flux-${prediction.id || Date.now()}`,
             aspectRatio,
-            prompt: options.prompt,
+            prompt: photorealisticPrompt,
             provider: "REPLICATE_FLUX_1",
             latencyMs: Date.now() - startTime,
           };
@@ -191,7 +283,65 @@ export async function generateAdCreativeImage(
     }
   }
 
-  // ─── Priority 2: Together.ai FLUX.1-schnell-Free ─────────────────────────
+  // ─── Priority 2: Cloudflare Workers AI FLUX.1 (10,000 free Neurons/day) ──
+  const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const cfApiToken = process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_KEY;
+  if (cfAccountId && cfApiToken) {
+    try {
+      const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${cfAccountId.trim()}/ai/run/@cf/black-forest-labs/flux-1-schnell`;
+      const cfRes = await fetch(cfUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${cfApiToken.trim()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: photorealisticPrompt,
+          steps: 8,
+        }),
+      });
+
+      if (cfRes.ok) {
+        const json = (await cfRes.json()) as any;
+        const b64 = json.result?.image || json.image;
+        if (b64) {
+          const imageBuffer = Buffer.from(b64, "base64");
+          const storageKey = `creatives/${options.userId || "auto"}/${Date.now()}-cf.jpg`;
+          let finalImageUrl = `data:image/jpeg;base64,${b64}`;
+
+          // Upload to Insforge storage for persistent CDN URL if available
+          try {
+            const { getInsforgeUploadClient } = await import("@/lib/insforge-server");
+            const insforge = getInsforgeUploadClient();
+            const blob = new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" });
+            const { data, error } = await insforge.storage.from("lemon").upload(storageKey, blob as any);
+            if (!error && data?.url) {
+              finalImageUrl = data.url;
+            }
+          } catch (storageErr) {
+            console.warn("[Image Engine] Insforge upload notice:", storageErr);
+          }
+
+          return {
+            success: true,
+            imageUrl: finalImageUrl,
+            storageKey,
+            aspectRatio,
+            prompt: photorealisticPrompt,
+            provider: "CLOUDFLARE_WORKERS_AI",
+            latencyMs: Date.now() - startTime,
+          };
+        }
+      } else {
+        const errText = await cfRes.text().catch(() => "");
+        console.warn(`[Image Engine] Cloudflare FLUX-1 HTTP ${cfRes.status}:`, errText);
+      }
+    } catch (cfErr) {
+      console.warn("[Image Engine] Cloudflare FLUX-1 attempt notice:", cfErr);
+    }
+  }
+
+  // ─── Priority 3: Together.ai FLUX.1-schnell-Free ─────────────────────────
   const togetherKey = process.env.TOGETHER_API_KEY;
   if (togetherKey) {
     try {
@@ -206,7 +356,7 @@ export async function generateAdCreativeImage(
           prompt: photorealisticPrompt,
           width,
           height,
-          steps: 4,
+          steps: 8,
           n: 1,
           response_format: "url",
         }),
@@ -232,57 +382,16 @@ export async function generateAdCreativeImage(
     }
   }
 
-  // ─── Priority 3: Pollinations.ai with API Key (gen.pollinations.ai FLUX) ───
-  const pollinationsKey = process.env.POLLINATIONS_API_KEY;
-  if (pollinationsKey) {
-    try {
-      const pUrl = `https://gen.pollinations.ai/image/${encodeURIComponent(photorealisticPrompt)}?model=flux&width=${width}&height=${height}&key=${pollinationsKey}&nologo=true`;
-      const pRes = await fetch(pUrl, { method: "HEAD" });
-      if (pRes.ok) {
-        return {
-          success: true,
-          imageUrl: pUrl,
-          storageKey: `creatives/${options.userId || "auto"}/${Date.now()}.webp`,
-          aspectRatio,
-          prompt: photorealisticPrompt,
-          provider: "DIRECT_FLUX_AI",
-          latencyMs: Date.now() - startTime,
-        };
-      }
-    } catch (err) {
-      console.warn("[Image Engine] Pollinations API attempt notice:", err);
-    }
-  }
-
-  // ─── Priority 4: Pollinations Public Endpoint ─────────────────────────────
-  try {
-    const encodedPrompt = encodeURIComponent(photorealisticPrompt);
-    const seed = Math.floor(Math.random() * 1_000_000);
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${width}&height=${height}&seed=${seed}&nologo=true`;
-
-    return {
-      success: true,
-      imageUrl: pollinationsUrl,
-      storageKey: `creatives/${options.userId || "auto"}/${Date.now()}-${seed}.webp`,
-      aspectRatio,
-      prompt: options.prompt,
-      provider: "DIRECT_FLUX_AI",
-      latencyMs: Date.now() - startTime,
-    };
-  } catch (pubErr) {
-    console.warn("[Image Engine] Pollinations public attempt notice:", pubErr);
-  }
-
-  // ─── Priority 5: Safe Fallback (Curated Commercial Photography) ────────────
-  const lowerPrompt = options.prompt.toLowerCase();
+  // ─── Priority 4: Curated Commercial Photography Fallback ──────────────────
+  const lowerPrompt = (options.prompt + " " + (options.niche || "") + " " + (brandProfile?.niche || "")).toLowerCase();
   let selectedCategory = "default";
-  if (lowerPrompt.includes("market") || lowerPrompt.includes("growth") || lowerPrompt.includes("ad")) {
+  if (lowerPrompt.includes("market") || lowerPrompt.includes("growth") || lowerPrompt.includes("ad") || lowerPrompt.includes("agency")) {
     selectedCategory = "marketing";
-  } else if (lowerPrompt.includes("tech") || lowerPrompt.includes("software") || lowerPrompt.includes("code")) {
+  } else if (lowerPrompt.includes("tech") || lowerPrompt.includes("software") || lowerPrompt.includes("code") || lowerPrompt.includes("saas") || lowerPrompt.includes("ai")) {
     selectedCategory = "tech";
   } else if (lowerPrompt.includes("team") || lowerPrompt.includes("office") || lowerPrompt.includes("collaborat")) {
     selectedCategory = "teamwork";
-  } else if (lowerPrompt.includes("business") || lowerPrompt.includes("client")) {
+  } else if (lowerPrompt.includes("business") || lowerPrompt.includes("client") || lowerPrompt.includes("finance") || lowerPrompt.includes("consult")) {
     selectedCategory = "business";
   }
 
@@ -294,7 +403,7 @@ export async function generateAdCreativeImage(
     imageUrl: selectedPhoto,
     storageKey: `fallback-editorial-${Date.now()}`,
     aspectRatio,
-    prompt: options.prompt,
+    prompt: photorealisticPrompt,
     provider: "CURATED_EDITORIAL_PHOTOGRAPHY",
     latencyMs: Date.now() - startTime,
   };
@@ -310,7 +419,7 @@ export async function generateAdCreativeVideo(options: {
 }): Promise<GeneratedVideoResult> {
   const startTime = Date.now();
   const replicateToken = process.env.REPLICATE_API_TOKEN;
-  const photorealisticPrompt = buildPhotorealisticPrompt(options.prompt);
+  const photorealisticPrompt = await buildBrandAlignedVisualPrompt(options.prompt);
 
   if (replicateToken && replicateToken.trim()) {
     // 1. Primary: Try Wan 2.2 S2V ($0.02/sec, 1080p Full HD)

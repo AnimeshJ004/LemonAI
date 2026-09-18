@@ -12,10 +12,12 @@ export const maxDuration = 60;
  * Scans the user's recent Instagram/Facebook posts for unreplied comments
  * and replies with AI-generated responses.
  *
- * Robust multi-strategy media fetching:
- *  1. Try /{igAccountId}/media (Instagram Business / Creator)
- *  2. Try /me/media fallback
- *  3. Try fetching from Facebook Page posts (/{pageId}/posts)
+ * Media fetch strategies (tried in order until one returns posts):
+ *  1. IG:       /{igAccountId}/media           (Instagram Business/Creator)
+ *  2. IG:       Facebook Page → instagram_business_account → media
+ *               (correct fallback for Instagram Graph API tokens)
+ *  3. Facebook: /{pageId}/published_posts
+ *  4. Threads:  /{userId}/threads + /{threadId}/replies
  */
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -31,7 +33,7 @@ export async function POST(req: NextRequest) {
       .from("user_channels")
       .select("id, provider_account_id, handle, access_token, channel_types!inner(type)")
       .eq("user_id", userId)
-      .in("channel_types.type", ["INSTAGRAM", "FACEBOOK"])
+      .in("channel_types.type", ["INSTAGRAM", "FACEBOOK", "THREADS"])
       .eq("is_connected", true)
       .order("updated_at", { ascending: false })
       .limit(3);
@@ -73,8 +75,10 @@ export async function POST(req: NextRequest) {
       // Strategy 1: /{accountId}/media  (Instagram Business/Creator standard endpoint)
       if (accountId && channelType === "INSTAGRAM") {
         try {
+          // NOTE: Instagram Graph API exposes only { id, username } on a comment's `from`
+          // node. Asking for `name` triggers #100 "nonexisting field (name)".
           const res = await fetch(
-            `https://graph.facebook.com/v22.0/${accountId}/media?fields=id,caption,comments{id,text,from{id,username,name},timestamp,comments{id,from{id,username},text}}&limit=5&access_token=${encodeURIComponent(accessToken)}`
+            `https://graph.facebook.com/v22.0/${accountId}/media?fields=id,caption,comments{id,text,from{id,username},timestamp,comments{id,from{id,username},text}}&limit=5&access_token=${encodeURIComponent(accessToken)}`
           );
           if (res.ok) {
             const data = await res.json();
@@ -91,20 +95,38 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Strategy 2: /me/media (fallback for some Instagram token types)
+      // Strategy 2: Resolve Page → instagram_business_account and query media via
+      // the Page access token. This is the correct fallback for Instagram Graph
+      // API tokens (the older /me/media edge only exists on Instagram Basic
+      // Display tokens and returns #100 "nonexisting field (media)" here).
       if (posts.length === 0 && channelType === "INSTAGRAM") {
         try {
-          const res = await fetch(
-            `https://graph.facebook.com/v22.0/me/media?fields=id,caption,comments{id,text,from{id,username,name},timestamp,comments{id,from{id,username},text}}&limit=5&access_token=${encodeURIComponent(accessToken)}`
+          const pagesRes = await fetch(
+            `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id}&access_token=${encodeURIComponent(accessToken)}`
           );
-          if (res.ok) {
-            const data = await res.json();
-            if (data?.data?.length > 0) {
-              posts = data.data;
+          if (pagesRes.ok) {
+            const pagesData = await pagesRes.json();
+            const pages = pagesData?.data || [];
+            const targetIgId = channel.provider_account_id;
+            const matchedPage = targetIgId ? pages.find((p: any) => p.instagram_business_account?.id === targetIgId) : null;
+            const pageWithIg = matchedPage || pages.find((p: any) => p.instagram_business_account?.id);
+            if (pageWithIg?.instagram_business_account?.id) {
+              const igId = targetIgId || pageWithIg.instagram_business_account.id;
+              const igToken = pageWithIg.access_token || accessToken;
+              const mediaRes = await fetch(
+                `https://graph.facebook.com/v22.0/${igId}/media?fields=id,caption,comments{id,text,from{id,username},timestamp,comments{id,from{id,username},text}}&limit=5&access_token=${encodeURIComponent(igToken)}`
+              );
+              if (mediaRes.ok) {
+                const mediaData = await mediaRes.json();
+                posts = mediaData?.data || [];
+              } else {
+                const errData = await mediaRes.json().catch(() => ({}));
+                console.warn("[Sync Now] Strategy 2 IG-via-Page failed:", errData?.error?.message || mediaRes.status);
+              }
             }
           } else {
-            const errData = await res.json().catch(() => ({}));
-            console.warn("[Sync Now] Strategy 2 /me/media failed:", errData?.error?.message || res.status);
+            const errData = await pagesRes.json().catch(() => ({}));
+            console.warn("[Sync Now] Strategy 2 /me/accounts failed:", errData?.error?.message || pagesRes.status);
           }
         } catch (e: any) {
           console.warn("[Sync Now] Strategy 2 network error:", e?.message);
@@ -145,28 +167,42 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Strategy 4: Lookup media via Facebook Page -> instagram_business_account
-      if (posts.length === 0 && channelType === "INSTAGRAM") {
+      // Strategy 4: Threads posts + replies (graph.threads.net)
+      if (posts.length === 0 && channelType === "THREADS" && accountId) {
         try {
-          const pagesRes = await fetch(
-            `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,instagram_business_account{id}&access_token=${encodeURIComponent(accessToken)}`
+          const threadsRes = await fetch(
+            `https://graph.threads.net/v1.0/${accountId}/threads?fields=id,text,timestamp&limit=5&access_token=${encodeURIComponent(accessToken)}`
           );
-          if (pagesRes.ok) {
-            const pagesData = await pagesRes.json();
-            const pageWithIg = (pagesData?.data || []).find((p: any) => p.instagram_business_account?.id);
-            if (pageWithIg?.instagram_business_account?.id) {
-              const igId = pageWithIg.instagram_business_account.id;
-              const mediaRes = await fetch(
-                `https://graph.facebook.com/v22.0/${igId}/media?fields=id,caption,comments{id,text,from{id,username,name},timestamp,comments{id,from{id,username},text}}&limit=5&access_token=${encodeURIComponent(accessToken)}`
+          if (threadsRes.ok) {
+            const threadsData = await threadsRes.json();
+            for (const post of threadsData?.data || []) {
+              const repliesRes = await fetch(
+                `https://graph.threads.net/v1.0/${post.id}/replies?fields=id,text,username,timestamp&access_token=${encodeURIComponent(accessToken)}`
               );
-              if (mediaRes.ok) {
-                const mediaData = await mediaRes.json();
-                posts = mediaData?.data || [];
+              if (repliesRes.ok) {
+                const repliesData = await repliesRes.json();
+                posts.push({
+                  id: post.id,
+                  caption: post.text,
+                  comments: {
+                    data: (repliesData?.data || []).map((r: any) => ({
+                      id: r.id,
+                      text: r.text,
+                      from: { username: r.username, id: r.id },
+                      timestamp: r.timestamp,
+                      comments: { data: [] },
+                    })),
+                  },
+                });
               }
             }
+          } else {
+            const errData = await threadsRes.json().catch(() => ({}));
+            console.warn("[Sync Now] Strategy 4 Threads failed:", errData?.error?.message || threadsRes.status);
+            errors.push(`Threads: ${errData?.error?.message || `HTTP ${threadsRes.status}`}`);
           }
         } catch (e: any) {
-          console.warn("[Sync Now] Strategy 4 network error:", e?.message);
+          console.warn("[Sync Now] Strategy 4 Threads network error:", e?.message);
         }
       }
 

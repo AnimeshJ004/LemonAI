@@ -49,12 +49,13 @@ export default function MetaAdsPage() {
     queryKey: ["meta-campaigns"],
     queryFn: async () => {
       const res = await fetch("/api/meta/campaigns");
-      if (!res.ok) return { campaigns: [] };
+      if (!res.ok) return { campaigns: [], isSandbox: true };
       return res.json();
     },
   });
 
   const campaigns = (campaignsData?.campaigns || []) as any[];
+  const isSandboxMode = campaignsData?.isSandbox ?? true;
   const activeCount = campaigns.filter(
     (c) => c.status?.toUpperCase() === "ACTIVE"
   ).length;
@@ -94,10 +95,10 @@ export default function MetaAdsPage() {
     {
       icon: Megaphone,
       label: "Meta Marketing API",
-      value: "Live v21.0",
-      sub: "Direct Graph API Deployment",
-      color: "text-purple-600",
-      bg: "bg-purple-50 dark:bg-purple-950/30",
+      value: isSandboxMode ? "Sandbox" : "Live v21.0",
+      sub: isSandboxMode ? "Set META_AD_ACCOUNT_ID to go live" : "Direct Graph API Deployment",
+      color: isSandboxMode ? "text-amber-600" : "text-purple-600",
+      bg: isSandboxMode ? "bg-amber-50 dark:bg-amber-950/30" : "bg-purple-50 dark:bg-purple-950/30",
     },
   ];
 
@@ -185,6 +186,39 @@ export default function MetaAdsPage() {
           </Link>
         )}
       </div>
+
+      {/* Sandbox Mode Warning Banner */}
+      {isSandboxMode && (
+        <div className="rounded-xl border border-amber-400/40 bg-amber-50/60 dark:bg-amber-950/20 dark:border-amber-700/40 p-4">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+            <div className="size-8 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center shrink-0">
+              <AlertCircle className="size-4 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Sandbox Mode Active</p>
+                <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-200 dark:bg-amber-800 text-amber-800 dark:text-amber-200">Not Live</span>
+              </div>
+              <p className="text-xs text-amber-800/80 dark:text-amber-300/80 leading-relaxed">
+                Campaign creates are saved to your database but <strong>are not pushed to Meta Ads Manager</strong> yet.
+                To deploy real campaigns to Instagram & Facebook, add the following to your <code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1 rounded">.env.local</code>:
+              </p>
+              <div className="bg-amber-950/10 dark:bg-amber-950/40 rounded-lg p-3 font-mono text-[11px] text-amber-900 dark:text-amber-200 space-y-0.5">
+                <div><span className="opacity-60"># Required for live Meta Ads deployment</span></div>
+                <div>META_AD_ACCOUNT_ID=<span className="opacity-50">act_YOUR_AD_ACCOUNT_ID</span></div>
+                <div><span className="opacity-60"># Already set ✓ META_CLIENT_ID & META_CLIENT_SECRET</span></div>
+              </div>
+              <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                Get your Ad Account ID from{" "}
+                <a href="https://adsmanager.facebook.com" target="_blank" rel="noreferrer" className="underline font-medium hover:opacity-80">
+                  Meta Ads Manager → Account Settings
+                </a>
+                . All existing campaigns in the table are real DB records and will sync once you go live.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stats Row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

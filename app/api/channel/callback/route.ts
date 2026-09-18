@@ -127,7 +127,40 @@ export async function GET(request: NextRequest) {
         console.log(`[OAuth Callback] Successfully connected ${state.channelType}:`, JSON.stringify({
           providerAccountId: profile.providerAccountId,
           handle: profile.handle,
+          availableCount: profile.availableAccounts?.length || 1,
         }));
+
+        // If multiple Instagram accounts were found, store pending selection and redirect to account selection modal
+        if (
+            state.channelType === ChannelTypeEnum.INSTAGRAM &&
+            profile.availableAccounts &&
+            profile.availableAccounts.length > 1
+        ) {
+            const pendingPayload = JSON.stringify({
+                userId: state.userId,
+                channelTypeId: state.channelTypeId,
+                refreshToken: token.refreshToken,
+                expiresAt: token.expiresAt,
+                accounts: profile.availableAccounts,
+                // Store user token so select-account can save the correct token type
+                // (Instagram comment replies require user token, not page token)
+                userAccessToken: token.accessToken,
+            });
+            const encryptedPending = encrypt(pendingPayload);
+            const redirectUrl = buildRedirectUrl(appUrl, redirectTo, {
+                select_account: "instagram",
+                channelTypeId: state.channelTypeId,
+            });
+            redirectUrl.cookies.set("lemon_meta_pending_selection", encryptedPending || "", {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge: 900, // 15 minutes
+                path: "/",
+            });
+            redirectUrl.cookies.delete(pkceCookieName);
+            return redirectUrl;
+        }
 
         const payload = {
             user_id: state.userId,
@@ -135,7 +168,22 @@ export async function GET(request: NextRequest) {
             provider_account_id: profile.providerAccountId ?? null,
             handle: profile.handle ?? null,
             profile_image: profile.profileImage ?? null,
-            access_token: encrypt((profile as any).pageAccessToken || token.accessToken),
+            // Instagram comment replies require the Instagram User Token (instagram_manage_comments scope).
+            // Facebook page posting + messaging requires the Page Access Token.
+            // Store the appropriate token per channel type.
+            access_token: encrypt(
+                state.channelType === ChannelTypeEnum.INSTAGRAM
+                    ? token.accessToken              // ← Instagram user token
+                    : ((profile as any).pageAccessToken || token.accessToken) // ← FB Page token
+            ),
+            // Persist Facebook Page credentials for the Meta Messaging API (DM sending).
+            // For Facebook the Page ID is the providerAccountId itself; for Instagram it is
+            // the Page backing the IG Business Account (resolved during getProfile).
+            page_id:
+                (profile as any).pageId ??
+                (state.channelType === ChannelTypeEnum.FACEBOOK ? profile.providerAccountId : null) ??
+                null,
+            page_access_token: encrypt((profile as any).pageAccessToken || token.accessToken),
             refresh_token: encrypt(token.refreshToken ?? null),
             token_expires_at: token.expiresAt ?? null,
             is_connected: true,

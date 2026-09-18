@@ -63,19 +63,19 @@ export function LeadCard({ lead, index, onClick, onDelete }: LeadCardProps) {
   const getSourceIcon = (source: string) => {
     switch (source) {
       case "instagram":
-        return <span className="size-2 rounded-full bg-pink-500 inline-block" />;
+        return <span className="size-2 rounded-full bg-pink-500 inline-block shrink-0" />;
       case "facebook":
-        return <span className="size-2 rounded-full bg-blue-600 inline-block" />;
+        return <span className="size-2 rounded-full bg-blue-600 inline-block shrink-0" />;
       case "whatsapp":
-        return <MessageSquare className="size-3 text-emerald-500" />;
+        return <MessageSquare className="size-3 text-emerald-500 shrink-0" />;
       case "meta_ads":
-        return <Sparkles className="size-3 text-purple-500" />;
+        return <Sparkles className="size-3 text-purple-500 shrink-0" />;
       case "voice":
       case "inbound_call":
-        return <Phone className="size-3 text-amber-500" />;
+        return <Phone className="size-3 text-amber-500 shrink-0" />;
       case "website":
       default:
-        return <Globe className="size-3 text-sky-500" />;
+        return <Globe className="size-3 text-sky-500 shrink-0" />;
     }
   };
 
@@ -93,7 +93,7 @@ export function LeadCard({ lead, index, onClick, onDelete }: LeadCardProps) {
             ref={provided.innerRef}
             {...provided.draggableProps}
             {...provided.dragHandleProps}
-            className="group mb-2.5 outline-none"
+            className="group mb-2 outline-none select-none"
           >
             <Card
               onClick={() => onClick(lead)}
@@ -102,29 +102,29 @@ export function LeadCard({ lead, index, onClick, onDelete }: LeadCardProps) {
                 snapshot.isDragging && "shadow-xl border-primary ring-2 ring-primary/20 rotate-1 scale-[1.02]"
               )}
             >
-              <CardContent className="p-3.5 space-y-2.5">
+              <CardContent className="p-3 sm:p-3.5 space-y-2 sm:space-y-2.5">
                 {/* Top Row: Source, Score & Action Menu */}
                 <div className="flex items-center justify-between gap-1.5">
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                     <Badge
                       variant="outline"
-                      className="h-5 px-1.5 text-[10px] font-medium capitalize gap-1 bg-muted/40"
+                      className="h-5 px-1.5 text-[10px] font-medium capitalize gap-1 bg-muted/40 shrink-0"
                     >
                       {getSourceIcon(lead.source)}
-                      <span>{lead.source.replace("_", " ")}</span>
+                      <span className="truncate max-w-[80px] sm:max-w-none">{lead.source.replace("_", " ")}</span>
                     </Badge>
                     {isHighIntent && (
-                      <Badge className="h-5 px-1.5 text-[10px] bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30 font-semibold gap-0.5">
+                      <Badge className="h-5 px-1.5 text-[10px] bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30 font-semibold gap-0.5 shrink-0">
                         <Flame className="size-2.5" />
                         Hot
                       </Badge>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 shrink-0">
                     <div
                       className={cn(
-                        "text-[11px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1",
+                        "text-[10px] sm:text-[11px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full border flex items-center gap-0.5 sm:gap-1",
                         scoreBadgeColor
                       )}
                       title={
@@ -143,7 +143,7 @@ export function LeadCard({ lead, index, onClick, onDelete }: LeadCardProps) {
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="size-6 text-muted-foreground hover:text-foreground opacity-70 group-hover:opacity-100 transition-opacity"
+                          className="size-7 sm:size-6 text-muted-foreground hover:text-foreground opacity-100 sm:opacity-70 group-hover:opacity-100 transition-opacity"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <MoreVertical className="size-3.5" />
@@ -155,7 +155,7 @@ export function LeadCard({ lead, index, onClick, onDelete }: LeadCardProps) {
                             e.stopPropagation();
                             onClick(lead);
                           }}
-                          className="gap-2 text-xs"
+                          className="gap-2 text-xs cursor-pointer"
                         >
                           <Edit2 className="size-3.5" />
                           Edit Details
@@ -166,7 +166,7 @@ export function LeadCard({ lead, index, onClick, onDelete }: LeadCardProps) {
                             e.stopPropagation();
                             setShowDeleteDialog(true);
                           }}
-                          className="gap-2 text-xs text-destructive focus:text-destructive"
+                          className="gap-2 text-xs text-destructive focus:text-destructive cursor-pointer"
                         >
                           <Trash2 className="size-3.5" />
                           Delete Lead
@@ -177,7 +177,7 @@ export function LeadCard({ lead, index, onClick, onDelete }: LeadCardProps) {
                 </div>
 
                 {lead.metadata?.bant && (
-                  <div className="flex items-center gap-1 text-[9px] text-muted-foreground font-mono bg-muted/30 px-2 py-0.5 rounded border border-border/40">
+                  <div className="flex items-center gap-1 text-[9px] text-muted-foreground font-mono bg-muted/30 px-2 py-0.5 rounded border border-border/40 overflow-x-auto no-scrollbar">
                     <span>B:{lead.metadata.bant.budgetScore}</span>
                     <span>•</span>
                     <span>A:{lead.metadata.bant.authorityScore}</span>
@@ -190,43 +190,43 @@ export function LeadCard({ lead, index, onClick, onDelete }: LeadCardProps) {
 
                 {/* Lead Name & Company */}
                 <div>
-                  <h4 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors line-clamp-1">
+                  <h4 className="font-semibold text-xs sm:text-sm text-foreground group-hover:text-primary transition-colors line-clamp-1">
                     {lead.name || "Anonymous Prospect"}
                   </h4>
                   {lead.metadata?.company ? (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5 line-clamp-1">
+                    <p className="text-[11px] sm:text-xs text-muted-foreground flex items-center gap-1 mt-0.5 line-clamp-1">
                       <Building2 className="size-3 shrink-0" />
-                      <span>{lead.metadata.company}</span>
+                      <span className="truncate">{lead.metadata.company}</span>
                     </p>
                   ) : lead.email ? (
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">
+                    <p className="text-[11px] sm:text-xs text-muted-foreground truncate mt-0.5">
                       {lead.email}
                     </p>
                   ) : null}
                 </div>
 
                 {/* Deal Value, Booking indicator & Quick Actions */}
-                <div className="flex items-center justify-between pt-2 border-t border-border/50 text-xs">
-                  <div className="flex items-center gap-1.5">
-                    <div className="flex items-center font-semibold text-foreground">
+                <div className="flex items-center justify-between pt-2 border-t border-border/50 text-xs gap-1">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="flex items-center font-semibold text-foreground text-xs sm:text-xs">
                       <DollarSign className="size-3.5 text-muted-foreground -mr-1" />
                       <span>{formattedDeal}</span>
                     </div>
 
                     {lead.metadata?.bookingInfo?.scheduledAt ? (
-                      <div className="flex items-center gap-1 text-[10px] text-purple-600 dark:text-purple-400 font-medium">
+                      <div className="flex items-center gap-0.5 text-[10px] text-purple-600 dark:text-purple-400 font-medium shrink-0">
                         <Calendar className="size-3" />
-                        <span>Booked</span>
+                        <span className="hidden sm:inline">Booked</span>
                       </div>
                     ) : null}
                   </div>
 
                   {/* Explicit Edit & Delete Action Buttons */}
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1 shrink-0">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="h-6 px-2 text-[11px] font-semibold gap-1 hover:bg-primary/10 hover:text-primary hover:border-primary/40"
+                      className="h-7 sm:h-6 px-2 text-[11px] font-semibold gap-1 hover:bg-primary/10 hover:text-primary hover:border-primary/40"
                       onClick={(e) => {
                         e.stopPropagation();
                         onClick(lead);
@@ -240,7 +240,7 @@ export function LeadCard({ lead, index, onClick, onDelete }: LeadCardProps) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="size-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                      className="size-7 sm:size-6 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                       onClick={(e) => {
                         e.stopPropagation();
                         setShowDeleteDialog(true);
@@ -259,19 +259,19 @@ export function LeadCard({ lead, index, onClick, onDelete }: LeadCardProps) {
 
       {/* Delete Confirmation Alert Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
+        <AlertDialogContent className="max-w-[90vw] sm:max-w-lg rounded-xl">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Lead &quot;{lead.name || "Prospect"}&quot;?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogTitle className="text-base sm:text-lg">Delete Lead &quot;{lead.name || "Prospect"}&quot;?</AlertDialogTitle>
+            <AlertDialogDescription className="text-xs sm:text-sm">
               Are you sure you want to delete this prospect from your pipeline? This action will permanently remove the lead card and cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setShowDeleteDialog(false)}>
+          <AlertDialogFooter className="flex-col-reverse sm:flex-row gap-2 sm:gap-0">
+            <AlertDialogCancel onClick={() => setShowDeleteDialog(false)} className="mt-0 text-xs sm:text-sm h-9">
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 text-xs sm:text-sm h-9"
               onClick={() => {
                 setShowDeleteDialog(false);
                 if (onDelete) onDelete(lead);

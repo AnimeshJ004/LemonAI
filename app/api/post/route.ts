@@ -145,9 +145,9 @@ export async function POST(request: NextRequest) {
                 const toCreate = channelTypes.map((ct) => ({
                     user_id: userId,
                     channel_type_id: ct.id,
-                    handle: "@user",
-                    is_connected: true,
-                    is_active: true,
+                    handle: null,
+                    is_connected: false,
+                    is_active: false,
                 }));
                 const { data: seeded } = await insforge.database
                     .from("user_channels")

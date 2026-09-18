@@ -92,14 +92,20 @@ export default function AnalyticsPage() {
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <TrendingUp className="size-4 text-pink-500" /> Organic Social Reach & Engagement
               </CardTitle>
-              {socialReach.isEstimated && (
-                <span className="text-[10px] font-medium text-amber-600 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
-                  Estimated
-                </span>
-              )}
-              <Badge variant="outline" className="text-[10px] text-pink-600 border-pink-300">
-                Meta Insights
-              </Badge>
+              <div className="flex items-center gap-1.5">
+                {socialReach?.isLiveData ? (
+                  <span className="text-[10px] font-medium text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                    <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />Live Data ✓
+                  </span>
+                ) : (
+                  <span title="Connect Instagram/Facebook in Settings → Channels to see real impressions from Meta Graph API" className="text-[10px] font-medium text-amber-600 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800 cursor-help">
+                    Estimated ⓘ
+                  </span>
+                )}
+                <Badge variant="outline" className="text-[10px] text-pink-600 border-pink-300">
+                  Meta Insights
+                </Badge>
+              </div>
             </div>
             <CardDescription className="text-xs">
               Direct telemetry from connected Instagram & Facebook accounts
@@ -144,11 +150,18 @@ export default function AnalyticsPage() {
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
                 <Zap className="size-4 text-blue-500" /> Meta Paid Ads & ROAS
               </CardTitle>
-              <Link href="/meta-ads">
-                <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300 hover:bg-blue-50 cursor-pointer">
-                  Manage Ads →
-                </Badge>
-              </Link>
+              <div className="flex items-center gap-1.5">
+                {adMetrics?.isSandbox && (
+                  <span className="text-[10px] font-medium text-amber-600 bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800">
+                    Sandbox
+                  </span>
+                )}
+                <Link href="/meta-ads">
+                  <Badge variant="outline" className="text-[10px] text-blue-600 border-blue-300 hover:bg-blue-50 cursor-pointer">
+                    Manage Ads →
+                  </Badge>
+                </Link>
+              </div>
             </div>
             <CardDescription className="text-xs">
               AI Advertising campaigns, spend efficiency & revenue attribution
@@ -178,8 +191,11 @@ export default function AnalyticsPage() {
                 </div>
                 <div className="p-3 rounded-xl bg-card border border-border/50">
                   <p className="text-[10px] text-muted-foreground uppercase font-medium">Est. Avg CPC / CTR</p>
-                  <p className="text-xl font-bold mt-0.5 font-mono">{adMetrics.avgCpc} <span className="text-xs text-muted-foreground font-normal">({adMetrics.avgCtr})</span></p>
-                  <p className="text-[10px] text-muted-foreground">Audience calibrated</p>
+                  <p className="text-xl font-bold mt-0.5 font-mono">
+                    {adMetrics.avgCpc ?? "—"}
+                    {adMetrics.avgCtr && <span className="text-xs text-muted-foreground font-normal"> ({adMetrics.avgCtr})</span>}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">{adMetrics.isSandbox ? "Set META_AD_ACCOUNT_ID to track" : "Audience calibrated"}</p>
                 </div>
               </div>
             )}
