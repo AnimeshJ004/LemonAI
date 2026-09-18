@@ -117,12 +117,16 @@ export default function InboxPage() {
       refetchActive();
       refetchConvs();
 
-      if (data?.dispatch?.warning) {
-        toast.warning(data.dispatch.warning);
+      if (data?.dispatch?.dispatched) {
+        if (data?.dispatch?.warning) {
+          toast.success(data.dispatch.warning, { duration: 5000 });
+        } else {
+          toast.success(`Message delivered to ${data.dispatch.channel?.toUpperCase()}!`);
+        }
+      } else if (data?.dispatch?.warning) {
+        toast.warning(data.dispatch.warning, { duration: 7000 });
       } else if (data?.dispatch?.error) {
         toast.error(`Outbound dispatch error: ${data.dispatch.error}`);
-      } else if (data?.dispatch?.dispatched) {
-        toast.success(`Message delivered to ${data.dispatch.channel?.toUpperCase()}!`);
       } else {
         toast.success("Message sent");
       }
@@ -153,12 +157,16 @@ export default function InboxPage() {
       refetchActive();
       refetchConvs();
 
-      if (data?.dispatch?.warning) {
-        toast.warning(data.dispatch.warning);
+      if (data?.dispatch?.dispatched) {
+        if (data?.dispatch?.warning) {
+          toast.success(data.dispatch.warning, { duration: 5000 });
+        } else {
+          toast.success(`AI replied & delivered to ${data.dispatch.channel?.toUpperCase()}!`);
+        }
+      } else if (data?.dispatch?.warning) {
+        toast.warning(data.dispatch.warning, { duration: 7000 });
       } else if (data?.dispatch?.error) {
         toast.error(`AI reply dispatch error: ${data.dispatch.error}`);
-      } else if (data?.dispatch?.dispatched) {
-        toast.success(`AI replied & delivered to ${data.dispatch.channel?.toUpperCase()}!`);
       } else {
         toast.success("AI Sales Assistant replied!");
       }

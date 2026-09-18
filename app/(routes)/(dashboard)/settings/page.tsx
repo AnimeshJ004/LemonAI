@@ -10,6 +10,7 @@ import ChannelsTab from "@/components/settings/channels-tab"
 import { useTheme } from "next-themes"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { ModernLoader } from "@/components/ui/modern-loader"
 
 function SettingsContent() {
   const { user } = useUser()
@@ -135,7 +136,7 @@ function SettingsContent() {
 
 const SettingsPage = () => {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading settings...</div>}>
+    <Suspense fallback={<ModernLoader showSkeleton label="Loading settings" description="Retrieving connected channels & preferences" />}>
       <SettingsContent />
     </Suspense>
   )

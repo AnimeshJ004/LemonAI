@@ -9,6 +9,7 @@ import { CalendarIcon, LayoutList, Plus } from "lucide-react";
 import ListView from "@/components/schedule/list-view";
 import CalendarView from "@/components/schedule/calendar-view";
 import CreatePostDialog from "@/components/schedule/create-post-dialog";
+import { ModernLoader } from "@/components/ui/modern-loader";
 
 type ViewType = "calendar" | "list"
 const SchedulePageContent = () => {
@@ -75,7 +76,7 @@ const SchedulePageContent = () => {
 
 const SchedulePage = () => {
   return (
-    <Suspense fallback={<div>Loading...</div>}>
+    <Suspense fallback={<ModernLoader showSkeleton label="Loading schedule" description="Preparing your calendar & content slots" />}>
       <NuqsAdapter>
         <SchedulePageContent />
       </NuqsAdapter>
