@@ -130,11 +130,11 @@ export async function captureLeadFromComment(params: CaptureLeadParams): Promise
   const upper = String(platform || "").toUpperCase();
   const normalizedPlatform =
     upper === "FACEBOOK" ? "facebook" :
-    upper === "THREADS" ? "threads" :
-    upper === "YOUTUBE" ? "youtube" :
-    upper === "LINKEDIN" ? "linkedin" :
-    upper === "TWITTER" || upper === "X" ? "twitter" :
-    "instagram";
+      upper === "THREADS" ? "threads" :
+        upper === "YOUTUBE" ? "youtube" :
+          upper === "LINKEDIN" ? "linkedin" :
+            upper === "TWITTER" || upper === "X" ? "twitter" :
+              "instagram";
 
   try {
     let leadId: string | null = null;
@@ -406,7 +406,7 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
       if (matchedPosts && matchedPosts[0]?.id && isValidUuid(matchedPosts[0].id)) {
         safePostId = matchedPosts[0].id;
       }
-    } catch {}
+    } catch { }
   }
 
   try {
@@ -564,8 +564,8 @@ Return ONLY the JSON object.`,
           aiResult.intentType === "booking"
             ? `We'd love to connect! 💛`
             : aiResult.intentType === "pricing"
-            ? `Great question — sending details your way! 💛`
-            : `Thanks for reaching out! 🙏`;
+              ? `Great question — sending details your way! 💛`
+              : `Thanks for reaching out! 🙏`;
       }
     } else if (
       lowerComment.includes("love") ||
@@ -587,26 +587,12 @@ Return ONLY the JSON object.`,
     try {
       if (aiResult.shouldSendDM && aiResult.dmMessage && userId) {
         let baseUrl = params.baseUrl;
-        // Never send localhost links to external commenters in Instagram/Facebook DMs
-        const isLocal = (url?: string | null) =>
-          !url ||
-          url.includes("localhost") ||
-          url.includes("127.0.0.1") ||
-          url.includes("0.0.0.0") ||
-          url.includes("[::1]");
-
-        if (isLocal(baseUrl)) {
+        if (!baseUrl) {
           try {
             baseUrl = getAppUrl();
-          } catch {}
+          } catch { }
         }
-
-        const PRODUCTION_VERCEL_URL = "https://lemon-ai-snowy.vercel.app";
-        if (isLocal(baseUrl)) {
-          baseUrl = PRODUCTION_VERCEL_URL;
-        }
-
-        baseUrl = (baseUrl || PRODUCTION_VERCEL_URL).replace(/\/$/, "");
+        baseUrl = (baseUrl || "").replace(/\/$/, "");
         const formType = aiResult.intentType === "booking" ? "booking" : aiResult.intentType === "pricing" ? "pricing" : null;
         if (formType && baseUrl) {
           const formUrl = `${baseUrl}/lead-form?type=${formType}&user=${encodeURIComponent(userId)}&source=${encodeURIComponent(platform.toLowerCase())}&name=${encodeURIComponent(commenterHandle)}`;
@@ -837,7 +823,7 @@ Return ONLY the JSON object.`,
           if (dmResult.errorCode === 190) {
             console.error(
               `[Social Comment Service] 🔑 ACTION REQUIRED: The Meta access token for this ${platform} account is invalid/expired (code=190, subcode=${dmResult.errorSubcode}). ` +
-                "No DM can be sent until the channel is reconnected. Go to Settings → Channels, disconnect the account, and reconnect it to store a fresh Page access token."
+              "No DM can be sent until the channel is reconnected. Go to Settings → Channels, disconnect the account, and reconnect it to store a fresh Page access token."
             );
           }
           // Code 200 == Meta Dev Mode restriction / user not a tester. Not a code bug.

@@ -110,10 +110,7 @@ export async function handleMetaWebhookPost(req: NextRequest) {
     let baseUrl: string | undefined;
     try {
       baseUrl = getAppUrl(req);
-      if (baseUrl && (baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1"))) {
-        baseUrl = "https://lemon-ai-snowy.vercel.app";
-      }
-    } catch {}
+    } catch { }
 
     // Synchronously execute webhook processing with timeout guard.
     // Meta allows up to 5,000ms before timing out; we bound execution to 4,200ms
@@ -246,7 +243,7 @@ async function processWebhookEntriesAsync(entries: any[], baseUrl?: string) {
           if (matchedPost && matchedPost.length > 0 && matchedPost[0]?.user_id) {
             postAuthorUserId = matchedPost[0].user_id;
           }
-        } catch {}
+        } catch { }
       }
 
       const igAccountId = channelRecord.provider_account_id || targetAccountId;
