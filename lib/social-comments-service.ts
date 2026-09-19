@@ -10,6 +10,7 @@ import {
   addMessage,
   recordActivity,
 } from "@/lib/crm-service";
+import { getAppUrl } from "@/lib/app-url";
 
 export type AllowedSentiment = "INQUIRY" | "PRAISE" | "COMPLAINT" | "SPAM" | "NEUTRAL";
 const VALID_SENTIMENTS: AllowedSentiment[] = ["INQUIRY", "PRAISE", "COMPLAINT", "SPAM", "NEUTRAL"];
@@ -81,6 +82,7 @@ export interface ProcessCommentParams {
     text?: string;
     from?: { id?: string; username?: string };
   }>;
+  baseUrl?: string;
 }
 
 export interface ProcessCommentResult {
@@ -567,7 +569,7 @@ Return ONLY the JSON object.`,
     // ─── 6b. Append intent-aware form link to DM message ────────────────────────
     // If AI wants to send a DM, embed the right lead capture form URL based on what the commenter said.
     if (aiResult.shouldSendDM && aiResult.dmMessage && userId) {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
+      const baseUrl = (params.baseUrl || getAppUrl()).replace(/\/$/, "");
       const formType = aiResult.intentType === "booking" ? "booking" : aiResult.intentType === "pricing" ? "pricing" : null;
       if (formType && baseUrl) {
         const formUrl = `${baseUrl}/lead-form?type=${formType}&user=${encodeURIComponent(userId)}&source=${encodeURIComponent(platform.toLowerCase())}&name=${encodeURIComponent(commenterHandle)}`;

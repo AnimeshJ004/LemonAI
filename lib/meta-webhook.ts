@@ -4,6 +4,7 @@ import { callResilientCompletion } from "@/lib/ai-gateway";
 import { validateInputLengths } from "@/lib/validate-inputs";
 import { decrypt } from "@/lib/encryption";
 import { processSingleComment } from "@/lib/social-comments-service";
+import { getAppUrl } from "@/lib/app-url";
 import { socialDMService } from "@/lib/social-dm-service";
 import {
   createLead,
@@ -106,11 +107,13 @@ export async function handleMetaWebhookPost(req: NextRequest) {
       return NextResponse.json({ status: "acknowledged_empty" }, { status: 200 });
     }
 
+    const baseUrl = getAppUrl(req);
+
     // Schedule background asynchronous processing via Next.js `after`
     // This allows returning HTTP 200 immediately to Meta so it never triggers retries
     after(async () => {
       try {
-        await processWebhookEntriesAsync(entries);
+        await processWebhookEntriesAsync(entries, baseUrl);
       } catch (bgErr) {
         console.error("[Meta Webhook Background] Processing error:", bgErr);
       }
@@ -127,7 +130,7 @@ export async function handleMetaWebhookPost(req: NextRequest) {
 /**
  * Asynchronous background worker for processing Meta webhook entries
  */
-async function processWebhookEntriesAsync(entries: any[]) {
+async function processWebhookEntriesAsync(entries: any[], baseUrl?: string) {
   const admin = getInsforgeAdminClient();
 
   for (const entry of entries) {
@@ -140,7 +143,6 @@ async function processWebhookEntriesAsync(entries: any[]) {
     let channelRecord: any = null;
 
     try {
-
       if (targetAccountId) {
         const { data: matched } = await admin.database
           .from("user_channels")
@@ -244,6 +246,7 @@ async function processWebhookEntriesAsync(entries: any[]) {
         igAccountId: targetAccountId,
         channelHandle,
         brand,
+        baseUrl,
       });
     }
 

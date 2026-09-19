@@ -3,6 +3,7 @@ import { auth } from "@clerk/nextjs/server";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { decrypt } from "@/lib/encryption";
 import { processSingleComment } from "@/lib/social-comments-service";
+import { getAppUrl } from "@/lib/app-url";
 
 // Lead synchronization & comment processing
 export const maxDuration = 60;
@@ -26,6 +27,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const baseUrl = getAppUrl(req);
     const admin = getInsforgeAdminClient();
 
     // 1. Fetch user's connected Instagram & Facebook channels
@@ -236,6 +238,7 @@ export async function POST(req: NextRequest) {
             channelHandle,
             brand,
             childReplies,
+            baseUrl,
           });
 
           if (res.success && !res.skipped) {

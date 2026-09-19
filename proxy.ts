@@ -14,7 +14,8 @@ const isPublicRoute = createRouteMatcher([
   "/api/social/webhook(.*)",   // Instagram/Facebook comment webhook (Meta pushes here)
   "/api/social/whatsapp(.*)",  // WhatsApp Cloud API webhook
   "/api/chatbot(.*)",          // Public website chatbot widget
-  "/api/lead-form/(.*)",       // Public embeddable lead capture form
+  "/api/lead-form/(.*)",       // Public embeddable lead capture form APIs
+  "/lead-form(.*)",            // Public lead capture & booking form page (for Instagram/FB leads)
   "/api/inngest(.*)",          // Inngest background job runner
 ]);
 
