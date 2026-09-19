@@ -254,6 +254,7 @@ export const pollPostComments = inngest.createFunction(
                     channelHandle,
                     brand,
                     childReplies,
+                    baseUrl: "https://lemon-ai-snowy.vercel.app",
                   });
 
                   if (processRes.success && !processRes.skipped) {

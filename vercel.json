@@ -6,15 +6,5 @@
     "app/api/**/*": {
       "maxDuration": 60
     }
-  },
-  "crons": [
-    {
-      "path": "/api/social/cron-comments",
-      "schedule": "* * * * *"
-    },
-    {
-      "path": "/api/post/process-due",
-      "schedule": "* * * * *"
-    }
-  ]
+  }
 }

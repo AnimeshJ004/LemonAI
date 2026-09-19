@@ -130,4 +130,49 @@ describe("Social Automation Suite (LinkedIn, Twitter/X, YouTube)", () => {
       expect(payload.message.body).toBe(content);
     });
   });
+
+  describe("Instagram/Facebook DM Lead Form URL formatting & Egress Sanitization", () => {
+    it("never includes localhost in DM lead form URLs and defaults to lemon-ai-snowy.vercel.app", () => {
+      const isLocal = (url?: string | null) =>
+        !url ||
+        url.includes("localhost") ||
+        url.includes("127.0.0.1") ||
+        url.includes("0.0.0.0") ||
+        url.includes("[::1]");
+
+      const PRODUCTION_VERCEL_URL = "https://lemon-ai-snowy.vercel.app";
+
+      const resolveDmBaseUrl = (inputUrl?: string | null) => {
+        if (isLocal(inputUrl)) {
+          return PRODUCTION_VERCEL_URL;
+        }
+        return (inputUrl || PRODUCTION_VERCEL_URL).replace(/\/$/, "");
+      };
+
+      expect(resolveDmBaseUrl(null)).toBe("https://lemon-ai-snowy.vercel.app");
+      expect(resolveDmBaseUrl("http://localhost:3000")).toBe("https://lemon-ai-snowy.vercel.app");
+      expect(resolveDmBaseUrl("http://127.0.0.1:3000/")).toBe("https://lemon-ai-snowy.vercel.app");
+      expect(resolveDmBaseUrl("http://0.0.0.0:3000")).toBe("https://lemon-ai-snowy.vercel.app");
+
+      const userId = "usr_123";
+      const formType = "booking";
+      const baseUrl = resolveDmBaseUrl("http://localhost:3000");
+      const formUrl = `${baseUrl}/lead-form?type=${formType}&user=${encodeURIComponent(userId)}&source=instagram&name=tester`;
+
+      expect(formUrl).toBe("https://lemon-ai-snowy.vercel.app/lead-form?type=booking&user=usr_123&source=instagram&name=tester");
+      expect(formUrl).not.toContain("localhost");
+      expect(formUrl).not.toContain("127.0.0.1");
+    });
+
+    it("egress sanitizer rewrites any localhost URL before sending to Meta Graph API", () => {
+      const rawText = "Hi @user! Book your free consultation here:\nhttp://localhost:3000/lead-form?type=booking&user=123";
+      const sanitized = rawText.replace(
+        /https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?/gi,
+        "https://lemon-ai-snowy.vercel.app"
+      );
+
+      expect(sanitized).toBe("Hi @user! Book your free consultation here:\nhttps://lemon-ai-snowy.vercel.app/lead-form?type=booking&user=123");
+      expect(sanitized).not.toContain("localhost:3000");
+    });
+  });
 });

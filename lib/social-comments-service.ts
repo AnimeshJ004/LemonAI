@@ -586,13 +586,25 @@ Return ONLY the JSON object.`,
     // If AI wants to send a DM, embed the right lead capture form URL based on what the commenter said.
     try {
       if (aiResult.shouldSendDM && aiResult.dmMessage && userId) {
+        const PRODUCTION_VERCEL_URL = "https://lemon-ai-snowy.vercel.app";
+        const isLocal = (url?: string | null) =>
+          !url ||
+          url.includes("localhost") ||
+          url.includes("127.0.0.1") ||
+          url.includes("0.0.0.0") ||
+          url.includes("[::1]");
+
         let baseUrl = params.baseUrl;
-        if (!baseUrl) {
+        if (isLocal(baseUrl)) {
           try {
             baseUrl = getAppUrl();
           } catch { }
         }
-        baseUrl = (baseUrl || "").replace(/\/$/, "");
+        if (isLocal(baseUrl)) {
+          baseUrl = PRODUCTION_VERCEL_URL;
+        }
+        baseUrl = (baseUrl || PRODUCTION_VERCEL_URL).replace(/\/$/, "");
+
         const formType = aiResult.intentType === "booking" ? "booking" : aiResult.intentType === "pricing" ? "pricing" : null;
         if (formType && baseUrl) {
           const formUrl = `${baseUrl}/lead-form?type=${formType}&user=${encodeURIComponent(userId)}&source=${encodeURIComponent(platform.toLowerCase())}&name=${encodeURIComponent(commenterHandle)}`;

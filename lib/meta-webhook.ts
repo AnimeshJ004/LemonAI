@@ -107,9 +107,12 @@ export async function handleMetaWebhookPost(req: NextRequest) {
       return NextResponse.json({ status: "acknowledged_empty" }, { status: 200 });
     }
 
-    let baseUrl: string | undefined;
+    let baseUrl: string = "https://lemon-ai-snowy.vercel.app";
     try {
-      baseUrl = getAppUrl(req);
+      const detected = getAppUrl(req);
+      if (detected && !detected.includes("localhost") && !detected.includes("127.0.0.1")) {
+        baseUrl = detected;
+      }
     } catch { }
 
     // Synchronously execute webhook processing with timeout guard.

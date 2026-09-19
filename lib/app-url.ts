@@ -94,9 +94,17 @@ export function getAppUrl(request?: NextRequest | Request | null): string {
       return normalizeUrl(process.env.RENDER_EXTERNAL_URL);
     }
 
-    // Fallback to environment variable (even if localhost in local dev)
+    // Fallback to environment variable (if set and not localhost in production)
+    if (envAppUrl && !isLocalhost(envAppUrl)) {
+      return normalizeUrl(envAppUrl);
+    }
+
     if (envAppUrl) {
       return normalizeUrl(envAppUrl);
+    }
+
+    if (process.env.NODE_ENV === "production" || process.env.VERCEL) {
+      return "https://lemon-ai-snowy.vercel.app";
     }
 
     return "http://localhost:3000";

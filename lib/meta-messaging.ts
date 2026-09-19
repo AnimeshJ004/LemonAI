@@ -113,10 +113,16 @@ export async function sendMetaGraphMessage(
     return { ok: false, strategy, errorMessage: "Empty message body." };
   }
 
+  // Guaranteed safety net: strictly rewrite any localhost / 127.0.0.1 link to the production Vercel URL
+  const sanitizedText = (text || "").replace(
+    /https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?/gi,
+    "https://lemon-ai-snowy.vercel.app"
+  );
+
   const url = `https://graph.facebook.com/${apiVersion}/${pageId}/messages`;
   const body = {
     recipient,
-    message: { text },
+    message: { text: sanitizedText },
     messaging_type: "RESPONSE",
     access_token: pageToken,
   };

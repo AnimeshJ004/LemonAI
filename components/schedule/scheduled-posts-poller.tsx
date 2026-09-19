@@ -83,10 +83,10 @@ export function ScheduledPostsPoller() {
     const startupTimer = setTimeout(() => {
       checkDuePosts();
       syncLiveComments();
-    }, 4_000);
+    }, 2_000);
 
     const postInterval = setInterval(checkDuePosts, 60_000);
-    const commentInterval = setInterval(syncLiveComments, 30_000);
+    const commentInterval = setInterval(syncLiveComments, 15_000);
 
     return () => {
       clearTimeout(startupTimer);
