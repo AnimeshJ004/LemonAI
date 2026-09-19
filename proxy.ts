@@ -1,6 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
-import { randomUUID } from "crypto";
 
 // Public routes that don't require authentication
 const isPublicRoute = createRouteMatcher([
@@ -37,7 +36,7 @@ export default clerkMiddleware(
     const correlationId =
       incoming && /^[a-zA-Z0-9._-]{8,128}$/.test(incoming)
         ? incoming
-        : randomUUID();
+        : crypto.randomUUID();
 
     // Helper: return NextResponse.next() (or a redirect / json) with the
     // correlation id on both request and response headers.
@@ -55,43 +54,54 @@ export default clerkMiddleware(
     const nextWithHeaders = () =>
       withCorrelation(NextResponse.next({ request: { headers: forwardHeaders } }));
 
-    const { userId } = await auth();
+    try {
+      const { userId } = await auth();
 
-    // 1. Unauthenticated users:
-    if (!userId) {
-      // Allow explicitly public routes (public pages + public API endpoints).
-      if (isPublicRoute(req)) {
+      // 1. Unauthenticated users:
+      if (!userId) {
+        // Allow explicitly public routes (public pages + public API endpoints).
+        if (isPublicRoute(req)) {
+          return nextWithHeaders();
+        }
+
+        // Non-public API routes: reject at the edge with JSON 401 as
+        // defense-in-depth. Individual handlers still enforce auth, but this
+        // guarantees a forgotten in-handler guard cannot leak data.
+        if (isApiRoute(req)) {
+          return withCorrelation(
+            NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+          );
+        }
+
+        // Redirect private dashboard routes to sign-in
+        const signInUrl = new URL("/sign-in", req.url);
+        signInUrl.searchParams.set("redirect_url", req.url);
+        return withCorrelation(NextResponse.redirect(signInUrl));
+      }
+
+      // 2. Authenticated users:
+      // Allow API routes and the onboarding page itself to load without redirect loops
+      if (isApiRoute(req) || isOnboardingRoute(req)) {
         return nextWithHeaders();
       }
 
-      // Non-public API routes: reject at the edge with JSON 401 as
-      // defense-in-depth. Individual handlers still enforce auth, but this
-      // guarantees a forgotten in-handler guard cannot leak data.
-      if (isApiRoute(req)) {
-        return withCorrelation(
-          NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-        );
+      // If authenticated user visits landing page "/", redirect to their workspace
+      if (req.nextUrl.pathname === "/") {
+        const workspaceUrl = new URL("/schedule", req.url);
+        return withCorrelation(NextResponse.redirect(workspaceUrl));
       }
 
-      // Redirect private dashboard routes to sign-in
+      return nextWithHeaders();
+    } catch (err) {
+      console.error("[proxy] Middleware caught exception:", err);
+      // Fail open for public routes so landing, terms, privacy, health never 500
+      if (isPublicRoute(req)) {
+        return nextWithHeaders();
+      }
       const signInUrl = new URL("/sign-in", req.url);
       signInUrl.searchParams.set("redirect_url", req.url);
       return withCorrelation(NextResponse.redirect(signInUrl));
     }
-
-    // 2. Authenticated users:
-    // Allow API routes and the onboarding page itself to load without redirect loops
-    if (isApiRoute(req) || isOnboardingRoute(req)) {
-      return nextWithHeaders();
-    }
-
-    // If authenticated user visits landing page "/", redirect to their workspace
-    if (req.nextUrl.pathname === "/") {
-      const workspaceUrl = new URL("/schedule", req.url);
-      return withCorrelation(NextResponse.redirect(workspaceUrl));
-    }
-
-    return nextWithHeaders();
   },
   {
     clockSkewInMs: 120 * 1000, // 2 minutes clock tolerance to absorb PC time drift and prevent "token-iat-in-the-future"
