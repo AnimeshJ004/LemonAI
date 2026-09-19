@@ -110,6 +110,9 @@ export async function handleMetaWebhookPost(req: NextRequest) {
     let baseUrl: string | undefined;
     try {
       baseUrl = getAppUrl(req);
+      if (baseUrl && (baseUrl.includes("localhost") || baseUrl.includes("127.0.0.1"))) {
+        baseUrl = "https://lemon-ai-snowy.vercel.app";
+      }
     } catch {}
 
     // Synchronously execute webhook processing with timeout guard.

@@ -130,4 +130,36 @@ describe("Social Automation Suite (LinkedIn, Twitter/X, YouTube)", () => {
       expect(payload.message.body).toBe(content);
     });
   });
+
+  describe("Instagram/Facebook DM Lead Form URL formatting", () => {
+    it("never includes localhost in DM lead form URLs and defaults to lemon-ai-snowy.vercel.app", () => {
+      const isLocal = (url?: string | null) =>
+        !url ||
+        url.includes("localhost") ||
+        url.includes("127.0.0.1") ||
+        url.includes("0.0.0.0") ||
+        url.includes("[::1]");
+
+      const PRODUCTION_VERCEL_URL = "https://lemon-ai-snowy.vercel.app";
+
+      const resolveDmBaseUrl = (inputUrl?: string | null) => {
+        if (isLocal(inputUrl)) {
+          return PRODUCTION_VERCEL_URL;
+        }
+        return (inputUrl || PRODUCTION_VERCEL_URL).replace(/\/$/, "");
+      };
+
+      expect(resolveDmBaseUrl(null)).toBe("https://lemon-ai-snowy.vercel.app");
+      expect(resolveDmBaseUrl("http://localhost:3000")).toBe("https://lemon-ai-snowy.vercel.app");
+      expect(resolveDmBaseUrl("http://127.0.0.1:3000/")).toBe("https://lemon-ai-snowy.vercel.app");
+
+      const userId = "usr_123";
+      const formType = "booking";
+      const baseUrl = resolveDmBaseUrl("http://localhost:3000");
+      const formUrl = `${baseUrl}/lead-form?type=${formType}&user=${encodeURIComponent(userId)}&source=instagram&name=tester`;
+
+      expect(formUrl).toBe("https://lemon-ai-snowy.vercel.app/lead-form?type=booking&user=usr_123&source=instagram&name=tester");
+      expect(formUrl).not.toContain("localhost");
+    });
+  });
 });

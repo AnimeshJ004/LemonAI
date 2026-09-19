@@ -587,12 +587,26 @@ Return ONLY the JSON object.`,
     try {
       if (aiResult.shouldSendDM && aiResult.dmMessage && userId) {
         let baseUrl = params.baseUrl;
-        if (!baseUrl) {
+        // Never send localhost links to external commenters in Instagram/Facebook DMs
+        const isLocal = (url?: string | null) =>
+          !url ||
+          url.includes("localhost") ||
+          url.includes("127.0.0.1") ||
+          url.includes("0.0.0.0") ||
+          url.includes("[::1]");
+
+        if (isLocal(baseUrl)) {
           try {
             baseUrl = getAppUrl();
           } catch {}
         }
-        baseUrl = (baseUrl || "").replace(/\/$/, "");
+
+        const PRODUCTION_VERCEL_URL = "https://lemon-ai-snowy.vercel.app";
+        if (isLocal(baseUrl)) {
+          baseUrl = PRODUCTION_VERCEL_URL;
+        }
+
+        baseUrl = (baseUrl || PRODUCTION_VERCEL_URL).replace(/\/$/, "");
         const formType = aiResult.intentType === "booking" ? "booking" : aiResult.intentType === "pricing" ? "pricing" : null;
         if (formType && baseUrl) {
           const formUrl = `${baseUrl}/lead-form?type=${formType}&user=${encodeURIComponent(userId)}&source=${encodeURIComponent(platform.toLowerCase())}&name=${encodeURIComponent(commenterHandle)}`;
