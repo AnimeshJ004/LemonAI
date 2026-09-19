@@ -47,7 +47,7 @@ import Logo from '@/components/logo';
 import { Button } from '@/components/ui/button';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Skeleton } from '@/components/ui/skeleton';
-import { getChannelIcon } from '@/constants/channels';
+import { getChannelIcon, ChannelTypeEnum } from '@/constants/channels';
 import { ChannelType } from '@/types/channel.type';
 import { PlusSignIcon } from '@hugeicons/core-free-icons';
 import { UserButton, useUser } from '@clerk/nextjs';
@@ -121,11 +121,13 @@ const AppSidebar = () => {
     },
   });
 
-  const channels = (channelsData?.channels || []) as ChannelType[];
+  const channels = ((channelsData?.channels || []) as ChannelType[]).filter((channel: ChannelType) =>
+    Object.values(ChannelTypeEnum).includes(channel.type as ChannelTypeEnum)
+  );
   const unconnectedChannels = channels.filter((channel: ChannelType) => !channel.connected);
   const connectedChannels = channels.filter((channel: ChannelType) => channel.connected);
 
-  const totalChannels = 8;
+  const totalChannels = 7;
   const connectedCount = channelsData?.connectedCount || 0;
   const limitedChannels = unconnectedChannels.slice(0, 4);
 

@@ -68,7 +68,11 @@ export async function GET(request: NextRequest) {
             )
         );
 
-        let channels = channelTypes.map(channel_type => {
+        // Filter to only include supported social media publishing channels (excludes non-social integrations like WhatsApp bot / Website bot)
+        const validTypes = Object.values(ChannelTypeEnum) as string[];
+        const socialChannelTypes = (channelTypes || []).filter((ct: any) => validTypes.includes(ct.type));
+
+        let channels = socialChannelTypes.map(channel_type => {
             const userChannel = userChannelMap.get(channel_type.id);
             const hasValidToken = Boolean(
                 userChannel?.access_token && 
@@ -94,7 +98,7 @@ export async function GET(request: NextRequest) {
             };
         });
 
-        const totalChannels = channelTypes.length;
+        const totalChannels = socialChannelTypes.length;
         const connectedCount = channels.filter(channel => channel.connected).length;
 
         if(filter === 'connected') {

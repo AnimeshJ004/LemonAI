@@ -7,7 +7,7 @@ import { useSearchParams } from 'next/navigation'
 import { ChannelType } from '@/types/channel.type';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Skeleton } from '../ui/skeleton';
-import { getChannelIcon } from '@/constants/channels';
+import { getChannelIcon, ChannelTypeEnum } from '@/constants/channels';
 import { HugeiconsIcon } from '@hugeicons/react';
 import { PlusSignIcon } from '@hugeicons/core-free-icons';
 import { cn } from '@/lib/utils';
@@ -35,7 +35,9 @@ function ChannelTabContent() {
             return res.json();
         }
     })
-    const channels = (channelsData?.channels || []) as ChannelType[]
+    const channels = ((channelsData?.channels || []) as ChannelType[]).filter((ch) =>
+        Object.values(ChannelTypeEnum).includes(ch.type as ChannelTypeEnum)
+    )
 
     useEffect(() => {
         const connected = searchParams.get("connected")

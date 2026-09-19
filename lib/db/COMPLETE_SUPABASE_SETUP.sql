@@ -52,14 +52,12 @@ INSERT INTO channel_types (type, name, color, character_limit) VALUES
   ('THREADS',   'Threads',           '#000000', 500),
   ('FACEBOOK',  'Facebook',          '#1877F2', 63206),
   ('BLUESKY',   'Bluesky',           '#1285fe', 300),
-  ('YOUTUBE',   'YouTube',           '#FF0000', 100),
-  ('WHATSAPP',  'WhatsApp Cloud',    '#25D366', 4096),
-  ('CHATBOT',   'Website AI Bot',    '#F59E0B', 2000)
+  ('YOUTUBE',   'YouTube',           '#FF0000', 100)
 ON CONFLICT (type) DO NOTHING;
 
--- Permanently clean up TikTok if present from prior migrations
-DELETE FROM user_channels WHERE channel_type_id IN (SELECT id FROM channel_types WHERE type = 'TIKTOK');
-DELETE FROM channel_types WHERE type = 'TIKTOK';
+-- Permanently clean up non-social or legacy channel types if present
+DELETE FROM user_channels WHERE channel_type_id IN (SELECT id FROM channel_types WHERE type IN ('TIKTOK', 'WHATSAPP', 'CHATBOT'));
+DELETE FROM channel_types WHERE type IN ('TIKTOK', 'WHATSAPP', 'CHATBOT');
 
 -- =============================================================================
 -- 2. USER CHANNELS (Connected social accounts per user)
