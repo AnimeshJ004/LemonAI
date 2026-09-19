@@ -371,15 +371,24 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
 
     if (idempotencyError) {
       // 23505 = unique_violation → another instance already owns this comment.
-      return { success: true, skipped: true, reason: "already_replied_idempotency" };
+      if (
+        idempotencyError.code === "23505" ||
+        idempotencyError.message?.toLowerCase().includes("duplicate") ||
+        idempotencyError.message?.toLowerCase().includes("unique")
+      ) {
+        return { success: true, skipped: true, reason: "already_replied_idempotency" };
+      }
+      console.warn("[Social Comment Service] Idempotency record insert warning:", idempotencyError.message);
     }
   } catch (idempotencyErr: any) {
-    if (idempotencyErr?.code === "23505") {
+    if (
+      idempotencyErr?.code === "23505" ||
+      idempotencyErr?.message?.toLowerCase().includes("duplicate") ||
+      idempotencyErr?.message?.toLowerCase().includes("unique")
+    ) {
       return { success: true, skipped: true, reason: "already_replied_idempotency" };
     }
-    // Any other insert failure: treat as an idempotency conflict to be safe and
-    // avoid the risk of a duplicate reply.
-    return { success: true, skipped: true, reason: "idempotency_claim_failed" };
+    console.warn("[Social Comment Service] Non-fatal idempotency claim notice:", idempotencyErr?.message || idempotencyErr);
   }
 
   let safePostId: string | null = null;
@@ -415,8 +424,15 @@ export async function processSingleComment(params: ProcessCommentParams): Promis
     });
 
     if (claimError) {
-      // If UNIQUE constraint violated, another thread or worker already claimed this comment
-      return { success: true, skipped: true, reason: "concurrency_preclaim_conflict" };
+      if (
+        claimError.code === "23505" ||
+        claimError.message?.toLowerCase().includes("duplicate") ||
+        claimError.message?.toLowerCase().includes("unique")
+      ) {
+        // If UNIQUE constraint violated, another thread or worker already claimed this comment
+        return { success: true, skipped: true, reason: "concurrency_preclaim_conflict" };
+      }
+      console.warn("[Social Comment Service] Pre-claim insert notice:", claimError.message);
     }
 
     // ─── 6. Generate Autonomous AI Reply ──────────────────────────────────────
@@ -706,14 +722,47 @@ Return ONLY the JSON object.`,
           ? { text: aiResult.reply, access_token: accessToken }
           : { message: aiResult.reply, access_token: accessToken };
 
-        const replyRes = await fetch(replyEndpoint, {
+        let replyRes = await fetch(replyEndpoint, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(replyBody),
           signal: AbortSignal.timeout(8000),
         });
 
-        const replyJson = await replyRes.json().catch(() => ({}));
+        let replyJson = await replyRes.json().catch(() => ({}));
+
+        // Token fallback: if code 190 (token expired/invalid), attempt retry with channel page token if available
+        if (!replyRes.ok && replyJson?.error?.code === 190 && userId) {
+          try {
+            const { data: channels } = await admin.database
+              .from("user_channels")
+              .select("access_token, page_access_token")
+              .eq("user_id", userId)
+              .in("channel_types.type", ["INSTAGRAM", "FACEBOOK"])
+              .eq("is_connected", true);
+
+            const altRaw = channels?.[0]?.page_access_token || channels?.[0]?.access_token;
+            if (altRaw) {
+              const altToken = decrypt(altRaw) || altRaw;
+              if (altToken && altToken !== accessToken) {
+                console.log(`[Social Comment Service] Retrying comment reply with alternative channel token...`);
+                const retryBody = isThreads
+                  ? { text: aiResult.reply, access_token: altToken }
+                  : { message: aiResult.reply, access_token: altToken };
+                replyRes = await fetch(replyEndpoint, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify(retryBody),
+                  signal: AbortSignal.timeout(8000),
+                });
+                replyJson = await replyRes.json().catch(() => ({}));
+              }
+            }
+          } catch (retryErr) {
+            console.warn("[Social Comment Service] Token retry lookup error:", retryErr);
+          }
+        }
+
         if (replyRes.ok && replyJson?.id) {
           replySuccess = true;
           replyId = replyJson.id;

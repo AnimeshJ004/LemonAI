@@ -112,17 +112,19 @@ export async function handleMetaWebhookPost(req: NextRequest) {
       baseUrl = getAppUrl(req);
     } catch {}
 
-    // Schedule background asynchronous processing via Next.js `after`
-    // This allows returning HTTP 200 immediately to Meta so it never triggers retries
-    after(async () => {
-      try {
-        await processWebhookEntriesAsync(entries, baseUrl);
-      } catch (bgErr) {
-        console.error("[Meta Webhook Background] Processing error:", bgErr);
-      }
-    });
+    // Synchronously execute webhook processing with timeout guard.
+    // Meta allows up to 5,000ms before timing out; we bound execution to 4,200ms
+    // to guarantee HTTP 200 is returned in time while keeping the serverless
+    // container alive so AI generation, comment replies, and DMs run to completion.
+    try {
+      await Promise.race([
+        processWebhookEntriesAsync(entries, baseUrl),
+        new Promise((resolve) => setTimeout(resolve, 4200)),
+      ]);
+    } catch (procErr) {
+      console.error("[Meta Webhook] Ingestion processing error:", procErr);
+    }
 
-    // Immediate 200 OK to Meta in < 30ms
     return NextResponse.json({ status: "acknowledged" }, { status: 200 });
   } catch (err: any) {
     console.error("[Meta Webhook] Synchronous ingestion error:", err);
@@ -147,10 +149,12 @@ async function processWebhookEntriesAsync(entries: any[], baseUrl?: string) {
 
     try {
       if (targetAccountId) {
+        // Meta webhooks can send entry.id as either the Instagram Business Account ID
+        // OR the associated Facebook Page ID. Query both columns to guarantee a match.
         const { data: matched } = await admin.database
           .from("user_channels")
-          .select("id, user_id, handle, access_token, channel_types!inner(type)")
-          .eq("provider_account_id", targetAccountId)
+          .select("id, user_id, handle, access_token, page_access_token, provider_account_id, page_id, channel_types!inner(type)")
+          .or(`provider_account_id.eq.${targetAccountId},page_id.eq.${targetAccountId}`)
           .in("channel_types.type", ["INSTAGRAM", "FACEBOOK"])
           .eq("is_connected", true)
           .order("updated_at", { ascending: false })
@@ -168,8 +172,14 @@ async function processWebhookEntriesAsync(entries: any[], baseUrl?: string) {
 
       userId = channelRecord.user_id;
       channelHandle = channelRecord.handle;
-      const rawToken = channelRecord.access_token;
-      accessToken = decrypt(rawToken) || rawToken;
+
+      // Prioritize permanent Facebook Page Access Token for Instagram/Facebook comment replies & DMs
+      const rawPageToken = channelRecord.page_access_token;
+      const pageToken = rawPageToken ? (decrypt(rawPageToken) || rawPageToken) : null;
+      const rawUserToken = channelRecord.access_token;
+      const userToken = rawUserToken ? (decrypt(rawUserToken) || rawUserToken) : null;
+
+      accessToken = pageToken || userToken;
 
       if (!accessToken && process.env.META_ADS_ACCESS_TOKEN) {
         accessToken = process.env.META_ADS_ACCESS_TOKEN;
@@ -236,6 +246,8 @@ async function processWebhookEntriesAsync(entries: any[], baseUrl?: string) {
         } catch {}
       }
 
+      const igAccountId = channelRecord.provider_account_id || targetAccountId;
+
       // Process comment with unified, bulletproof deduplication & CRM capture engine
       await processSingleComment({
         userId: postAuthorUserId,
@@ -246,7 +258,7 @@ async function processWebhookEntriesAsync(entries: any[], baseUrl?: string) {
         mediaId,
         platform: detectedPlatform,
         accessToken,
-        igAccountId: targetAccountId,
+        igAccountId,
         channelHandle,
         brand,
         baseUrl,
@@ -279,26 +291,29 @@ Customer message: "${msgText}"`,
 
         const replyText = aiResponse.content || `Hi there! Thanks for reaching out to ${brandName}. How can we best help you today?`;
 
-        // Use targetAccountId (the page/IG business account ID) — NOT 'me',
-        // which is invalid with page access tokens and silently drops DMs.
-        const sendRes = await fetch(`https://graph.facebook.com/v22.0/${targetAccountId}/messages`, {
+        // Use the Facebook Page ID (channelRecord.page_id or targetAccountId) — NOT the Instagram Account ID or 'me',
+        // which is rejected by Meta's messaging endpoint with error #200.
+        const messagingPageId = channelRecord.page_id || targetAccountId;
+        const messagingToken = (channelRecord.page_access_token ? decrypt(channelRecord.page_access_token) || channelRecord.page_access_token : null) || accessToken;
+
+        const sendRes = await fetch(`https://graph.facebook.com/v22.0/${messagingPageId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             recipient: { id: senderId },
             message: { text: replyText },
-            access_token: accessToken,
+            access_token: messagingToken,
           }),
         });
 
         if (!sendRes.ok) {
           const errBody = await sendRes.json().catch(() => ({}));
           console.warn(
-            `[Meta Webhook] DM reply to ${senderId} failed (sender: ${targetAccountId}):`,
+            `[Meta Webhook] DM reply to ${senderId} failed (sender: ${messagingPageId}):`,
             JSON.stringify(errBody)
           );
         } else {
-          console.log(`[Meta Webhook] ✓ DM auto-reply sent to ${senderId} via account ${targetAccountId}`);
+          console.log(`[Meta Webhook] ✓ DM auto-reply sent to ${senderId} via account ${messagingPageId}`);
         }
 
         // Persist DM thread in social_dms table and local fallback
