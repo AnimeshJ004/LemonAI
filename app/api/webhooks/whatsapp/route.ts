@@ -34,9 +34,20 @@ export async function GET(request: NextRequest) {
 
 /**
  * Inbound WhatsApp Messages (POST)
+ *
+ * Rate limited to 200 events/min per source IP. WhatsApp Cloud API can burst
+ * during high traffic.
  */
 export async function POST(request: NextRequest) {
   try {
+    const { enforceRateLimit } = await import("@/lib/rate-limit");
+    const limited = await enforceRateLimit(request, {
+      limit: 200,
+      windowMs: 60_000,
+      namespace: "webhook:whatsapp",
+    });
+    if (limited) return limited;
+
     const body = await request.json().catch(() => ({}));
     const parsedMessages = parseInboundWhatsAppPayload(body);
 

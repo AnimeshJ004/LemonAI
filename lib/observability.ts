@@ -14,6 +14,12 @@
  * downstream sink. Callers never need to remember to scrub — this module does
  * it uniformly. This is the primary defense for GDPR Art. 32 and DPDP Sec. 8
  * "reasonable security safeguards" against inadvertent PII leakage in logs.
+ *
+ * Correlation IDs: every log line includes a `correlationId` when available.
+ * The middleware (`proxy.ts`) generates one per request and injects it as
+ * `x-correlation-id` on the request headers. `resolveCorrelationId()` reads
+ * it back inside route handlers via `next/headers`. This lets you follow a
+ * single request across log lines, Sentry issues, and Inngest events.
  */
 
 import { redactPII, redactString } from "@/lib/pii-redactor";
@@ -25,6 +31,11 @@ export interface ErrorContext {
   scope?: string;
   /** Authenticated user id, if available. */
   userId?: string | null;
+  /**
+   * Request correlation id. If omitted, we try to resolve it from the current
+   * request via `next/headers`. Middleware injects it as `x-correlation-id`.
+   */
+  correlationId?: string | null;
   /** Any additional structured metadata (no secrets). */
   extra?: Record<string, unknown>;
 }
@@ -39,8 +50,6 @@ async function getSentry(): Promise<any | null> {
   if (!process.env.SENTRY_DSN) return null;
 
   try {
-    // Dynamic import via an indirect specifier so TypeScript/webpack do not try
-    // to statically resolve the optional dependency at build time.
     const moduleName = "@sentry/nextjs";
     const importer = new Function("m", "return import(m)") as (m: string) => Promise<any>;
     const mod: any = await importer(moduleName).catch(() => null);
@@ -51,6 +60,24 @@ async function getSentry(): Promise<any | null> {
     sentryClient = null;
   }
   return sentryClient;
+}
+
+/**
+ * Resolves the current request's correlation id.
+ *
+ * Reads from `next/headers` — which is only available inside a request scope
+ * (route handlers, server components, server actions). When called from
+ * outside such a scope (a background job, a module init) it returns `null`.
+ * Never throws.
+ */
+async function resolveCorrelationId(): Promise<string | null> {
+  try {
+    const mod = await import("next/headers");
+    const h = await mod.headers();
+    return h.get("x-correlation-id") ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function serializeError(error: unknown): { message: string; stack?: string } {
@@ -82,12 +109,18 @@ export async function reportError(
   const scope = context.scope || "app";
   const safeExtra = context.extra ? (redactPII(context.extra) as Record<string, unknown>) : undefined;
 
-  // Structured console log (picked up by Vercel/host log drains).
+  // Resolve correlation id from the caller or the current request scope.
+  const correlationId =
+    context.correlationId !== undefined
+      ? context.correlationId
+      : await resolveCorrelationId();
+
   const logPayload = {
     level: severity,
     scope,
     message,
     userId: context.userId ?? undefined,
+    correlationId: correlationId ?? undefined,
     ...(safeExtra || {}),
   };
 
@@ -95,6 +128,11 @@ export async function reportError(
     console.error(`[${scope}]`, JSON.stringify(logPayload), stack || "");
   } else if (severity === "warning") {
     console.warn(`[${scope}]`, JSON.stringify(logPayload));
+  } else if (severity === "debug") {
+    // Debug is chatty — only emit when explicitly enabled.
+    if (process.env.LOG_LEVEL === "debug") {
+      console.debug(`[${scope}]`, JSON.stringify(logPayload));
+    }
   } else {
     console.log(`[${scope}]`, JSON.stringify(logPayload));
   }
@@ -106,30 +144,112 @@ export async function reportError(
         s.setLevel(severity);
         if (context.userId) s.setUser({ id: context.userId });
         s.setTag("scope", scope);
+        if (correlationId) s.setTag("correlation_id", correlationId);
         if (safeExtra) s.setContext("extra", safeExtra);
-        // Only forward a redacted Error object to Sentry so no raw PII ever
-        // leaves the process boundary.
-        const redactedErr = error instanceof Error
-          ? Object.assign(new Error(message), { stack })
-          : new Error(message);
+        const redactedErr =
+          error instanceof Error
+            ? Object.assign(new Error(message), { stack })
+            : new Error(message);
         sentry.captureException(redactedErr);
       });
     } catch {
       // Ignore reporting errors.
     }
   }
+
+  // ── On-call alerting ────────────────────────────────────────────────────
+  // Fire-and-forget: `fatal` severity pages via configured destinations
+  // (Slack / PagerDuty). `error` severity notifies Slack only. See
+  // lib/alerting.ts for the exact matrix. No dependency on Sentry — the
+  // dispatch is unconditional when destinations are configured.
+  if (severity === "fatal" || severity === "error") {
+    try {
+      const { dispatchAlert } = await import("@/lib/alerting");
+      void dispatchAlert({
+        summary: message,
+        severity,
+        scope,
+        correlationId,
+        userId: context.userId ?? null,
+        extra: safeExtra,
+      });
+    } catch {
+      // Alerting is best-effort — never break the request path.
+    }
+  }
 }
 
-/** Structured info-level log helper. */
-export function logInfo(message: string, context: ErrorContext = {}): void {
+/**
+ * Internal helper for the leveled log convenience wrappers. Never throws.
+ * Prefer this over calling `reportError` directly for `info`/`warning`/`debug`
+ * since we don't need Sentry to receive info/debug lines.
+ */
+async function writeLog(
+  level: Severity,
+  message: string,
+  context: ErrorContext = {}
+): Promise<void> {
   const safeExtra = context.extra ? (redactPII(context.extra) as Record<string, unknown>) : undefined;
-  console.log(
-    `[${context.scope || "app"}]`,
-    JSON.stringify({
-      level: "info",
-      message: redactString(message),
-      userId: context.userId ?? undefined,
-      ...(safeExtra || {}),
-    })
-  );
+  const correlationId =
+    context.correlationId !== undefined
+      ? context.correlationId
+      : await resolveCorrelationId();
+
+  const payload = {
+    level,
+    message: redactString(message),
+    userId: context.userId ?? undefined,
+    correlationId: correlationId ?? undefined,
+    ...(safeExtra || {}),
+  };
+  const scope = context.scope || "app";
+
+  if (level === "warning") {
+    console.warn(`[${scope}]`, JSON.stringify(payload));
+  } else if (level === "error" || level === "fatal") {
+    console.error(`[${scope}]`, JSON.stringify(payload));
+  } else if (level === "debug") {
+    if (process.env.LOG_LEVEL === "debug") {
+      console.debug(`[${scope}]`, JSON.stringify(payload));
+    }
+  } else {
+    console.log(`[${scope}]`, JSON.stringify(payload));
+  }
+}
+
+/**
+ * Structured info-level log helper. PII-redacted. Correlation-id-aware.
+ * Preferred over `console.log` in all server code.
+ */
+export function logInfo(message: string, context: ErrorContext = {}): void {
+  void writeLog("info", message, context);
+}
+
+/**
+ * Structured warning-level log helper. PII-redacted. Correlation-id-aware.
+ * Use for recoverable notices (e.g. "token refresh needed", "retryable failure").
+ * Does NOT forward to Sentry — for that use `reportError(..., 'warning')`.
+ */
+export function logWarn(message: string, context: ErrorContext = {}): void {
+  void writeLog("warning", message, context);
+}
+
+/**
+ * Structured debug-level log helper. Only prints when `LOG_LEVEL=debug`.
+ * Safe to leave in production code — completely silent by default.
+ */
+export function logDebug(message: string, context: ErrorContext = {}): void {
+  void writeLog("debug", message, context);
+}
+
+/**
+ * Shorthand for reportError at 'error' severity with the standard scope key.
+ * Provided for symmetry with logInfo/logWarn/logDebug so callers can pick a
+ * consistent verb style.
+ */
+export async function logError(
+  error: unknown,
+  context: ErrorContext = {}
+): Promise<void> {
+  return reportError(error, context, "error");
 }

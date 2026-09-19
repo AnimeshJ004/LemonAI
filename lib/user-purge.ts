@@ -2,6 +2,25 @@ import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { userBrandCache } from "@/lib/brand-helper";
 import { writeAuditEntry, AUDIT_EVENT } from "@/lib/audit-log";
 
+/**
+ * User Data Purge Service
+ *
+ * Cascades a permanent deletion across every user-keyed table plus the
+ * user's storage bucket folder plus the Clerk user record. Called on:
+ *   • `DELETE /api/user/delete-account` (user-initiated erasure)
+ *   • Clerk `user.deleted` webhook (external deletion, e.g. via dashboard)
+ *
+ * GDPR Art. 17 / DPDP Sec. 12 (Right to erasure).
+ *
+ * Design guarantees:
+ *   • Emits an ACCOUNT_DELETION_REQUESTED audit entry BEFORE any deletion, so
+ *     the erasure event survives even after the subject data is gone.
+ *   • Emits an ACCOUNT_DELETION_COMPLETED audit entry AFTER, retained for
+ *     the 6-year legal-defense window (see data_retention_policies).
+ *   • Never throws — every failure is captured in `errors[table]` and the
+ *     caller decides how to surface it.
+ */
+
 export interface PurgeResult {
   userId: string;
   purgedTables: string[];
@@ -9,10 +28,30 @@ export interface PurgeResult {
   errors: Record<string, string>;
 }
 
-/**
- * Permanently purges all user data across the entire database.
- * Enforces GDPR/DPDP "Right to Erasure" when an account is deleted.
- */
+interface StorageFileEntry {
+  name: string;
+}
+
+// Every user-keyed table the purge must cascade. Order is not significant
+// because Supabase deletes are independent per-table.
+const TABLES_TO_PURGE = [
+  "scheduled_posts",
+  "user_channels",
+  "brand_profiles",
+  "leads",
+  "crm_conversations",
+  "meta_campaigns",
+  "competitor_researches",
+  "flywheel_executions",
+  "ai_memory",
+  "ideas",
+  "social_comments",
+  "crm_messages",
+  "crm_activities",
+  "social_dms",
+  "brand_pricing_packages",
+] as const;
+
 export async function purgeAllUserData(userId: string): Promise<PurgeResult> {
   if (!userId || !userId.trim()) {
     return { userId, purgedTables: [], success: false, errors: { init: "Invalid userId" } };
@@ -25,8 +64,7 @@ export async function purgeAllUserData(userId: string): Promise<PurgeResult> {
 
   // Emit an audit entry BEFORE deletion so that the erasure event itself is
   // preserved. The `audit_logs` table is retained for the legal-defense
-  // window (see data_retention_policies) and its user_id column is nulled
-  // out below so the record survives even after the subject is gone.
+  // window (see data_retention_policies).
   await writeAuditEntry({
     userId: cleanUserId,
     event: AUDIT_EVENT.ACCOUNT_DELETION_REQUESTED,
@@ -36,26 +74,7 @@ export async function purgeAllUserData(userId: string): Promise<PurgeResult> {
     metadata: { source: "user-purge" },
   });
 
-  // List of all tables storing user data by user_id column
-  const tablesToPurge = [
-    "scheduled_posts",
-    "user_channels",
-    "brand_profiles",
-    "leads",
-    "crm_conversations",
-    "meta_campaigns",
-    "competitor_researches",
-    "flywheel_executions",
-    "ai_memory",
-    "ideas",
-    "social_comments",
-    "crm_messages",
-    "crm_activities",
-    "social_dms",
-    "brand_pricing_packages",
-  ];
-
-  for (const table of tablesToPurge) {
+  for (const table of TABLES_TO_PURGE) {
     try {
       const { error } = await admin.database
         .from(table)
@@ -63,14 +82,13 @@ export async function purgeAllUserData(userId: string): Promise<PurgeResult> {
         .eq("user_id", cleanUserId);
 
       if (error) {
-        // Log notice if table does not exist or column mismatch
         errors[table] = error.message;
         console.warn(`[User Purge] Notice wiping ${table}:`, error.message);
       } else {
         purgedTables.push(table);
       }
-    } catch (err: any) {
-      errors[table] = err?.message || "Unknown error";
+    } catch (err: unknown) {
+      errors[table] = err instanceof Error ? err.message : "Unknown error";
     }
   }
 
@@ -79,24 +97,29 @@ export async function purgeAllUserData(userId: string): Promise<PurgeResult> {
 
   // Delete the Clerk user account itself
   try {
-    const { clerkClient } = await import('@clerk/nextjs/server');
+    const { clerkClient } = await import("@clerk/nextjs/server");
     const clerk = await clerkClient();
     await clerk.users.deleteUser(cleanUserId);
-    purgedTables.push('clerk_user');
-  } catch (err: any) {
-    errors['clerk_user'] = err?.message || 'Failed to delete Clerk user';
+    purgedTables.push("clerk_user");
+  } catch (err: unknown) {
+    errors["clerk_user"] =
+      err instanceof Error ? err.message : "Failed to delete Clerk user";
   }
 
   // Purge user-owned files in the storage bucket
   try {
-    const { data: storageFiles } = await admin.storage.from('post-images').list(cleanUserId);
-    if (storageFiles && storageFiles.length > 0) {
-      const paths = storageFiles.map((f: any) => `${cleanUserId}/${f.name}`);
-      await admin.storage.from('post-images').remove(paths);
+    const { data: storageFiles } = await admin.storage
+      .from("post-images")
+      .list(cleanUserId);
+    const files = (storageFiles ?? []) as StorageFileEntry[];
+    if (files.length > 0) {
+      const paths = files.map((f) => `${cleanUserId}/${f.name}`);
+      await admin.storage.from("post-images").remove(paths);
     }
-    purgedTables.push('storage_post_images');
-  } catch (err: any) {
-    errors['storage'] = err?.message || 'Storage purge notice';
+    purgedTables.push("storage_post_images");
+  } catch (err: unknown) {
+    errors["storage"] =
+      err instanceof Error ? err.message : "Storage purge notice";
   }
 
   // Final audit entry — written AFTER purge so we can prove completion.

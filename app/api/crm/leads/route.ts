@@ -24,12 +24,65 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search")?.toLowerCase() || "";
     const type = searchParams.get("type");
 
+    // Check for duplicate lead by email or phone
+    if (searchParams.get("check_duplicate") === "true") {
+      const email = searchParams.get("email")?.trim().toLowerCase();
+      const rawPhone = searchParams.get("phone")?.trim();
+      const cleanPhone = rawPhone ? rawPhone.replace(/\D/g, "") : "";
+
+      if (!email && !cleanPhone) {
+        return NextResponse.json({ isDuplicate: false, lead: null });
+      }
+
+      const allLeads = await getLeadsForUser(targetUserId);
+      const duplicate = allLeads.find((l) => {
+        const leadEmail = l.email?.trim().toLowerCase();
+        if (email && leadEmail && leadEmail === email) return true;
+        if (cleanPhone && l.phone) {
+          const leadCleanPhone = l.phone.replace(/\D/g, "");
+          if (leadCleanPhone && leadCleanPhone === cleanPhone) return true;
+        }
+        return false;
+      });
+
+      return NextResponse.json({
+        isDuplicate: Boolean(duplicate),
+        lead: duplicate || null,
+      });
+    }
+
     if (type === "appointments") {
       const appointments = await getAppointmentsForUser(targetUserId);
       return NextResponse.json({ appointments });
     }
 
     let leads = await getLeadsForUser(targetUserId);
+
+    // CSV Export Handler
+    if (searchParams.get("export") === "csv") {
+      const headers = ["Name", "Email", "Phone", "Stage", "Score", "Deal Value", "Source", "Company", "Notes", "Created At"];
+      const escapeCsv = (str: string | null | undefined) => `"${(str || "").replace(/"/g, '""')}"`;
+      const rows = leads.map((l) => [
+        escapeCsv(l.name),
+        escapeCsv(l.email),
+        escapeCsv(l.phone),
+        escapeCsv(l.stage),
+        l.score ?? "",
+        l.deal_value ?? 0,
+        escapeCsv(l.source),
+        escapeCsv(l.metadata?.company),
+        escapeCsv(l.metadata?.notes),
+        escapeCsv(l.created_at),
+      ]);
+      const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+
+      return new NextResponse(csvContent, {
+        headers: {
+          "Content-Type": "text/csv; charset=utf-8",
+          "Content-Disposition": `attachment; filename="lemon_crm_leads_${new Date().toISOString().slice(0, 10)}.csv"`,
+        },
+      });
+    }
 
     if (stage) {
       leads = leads.filter((l) => l.stage === stage);

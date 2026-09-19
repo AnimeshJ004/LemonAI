@@ -124,6 +124,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Fetch user channels or auto-provision default user channels if not existing
+        // eslint-disable-next-line prefer-const -- userChannels is reassigned below in the auto-provision branch
         let { data: userChannels, error: userChannelsError } = await insforge.database
             .from("user_channels")
             .select("id, channel_type_id, is_connected, is_active, channel_types(id, type, name)")

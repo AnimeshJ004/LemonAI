@@ -15,6 +15,11 @@ export const leadFollowupOrchestrator = inngest.createFunction(
   {
     id: "lead-followup-orchestrator",
     name: "Autonomous Lead Follow-Up & Voice Drip",
+    // Only one follow-up sweep at a time. If a run is slow (WhatsApp API
+    // backpressure, voice-call dispatch queue), the next tick waits.
+    concurrency: {
+      limit: 1,
+    },
     triggers: [
       {
         cron: "*/15 * * * *", // Runs every 15 minutes

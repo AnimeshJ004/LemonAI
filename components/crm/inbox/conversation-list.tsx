@@ -12,6 +12,7 @@ import {
   Bot,
   Plus,
   Inbox,
+  Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +39,17 @@ export function ConversationList({
         return <Globe className="size-3.5 text-sky-500 shrink-0" />;
       case "voice":
         return <Phone className="size-3.5 text-amber-500 shrink-0" />;
+      case "linkedin":
+      case "linkedin_dm":
+        return (
+          <svg className="size-3.5 text-[#0A66C2] shrink-0" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.46 10.9v8.37H9.2V10.9H6.46M7.83 6.25c-.91 0-1.64.73-1.64 1.64s.73 1.64 1.64 1.64 1.64-.73 1.64-1.64-.73-1.64-1.64-1.64Z"/>
+          </svg>
+        );
+      case "email":
+        return <Mail className="size-3.5 text-indigo-500 shrink-0" />;
       case "instagram":
+      case "instagram_dm":
         return (
           <svg className="size-3.5 text-pink-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect width="20" height="20" x="2" y="2" rx="5" ry="5" />
@@ -47,6 +58,7 @@ export function ConversationList({
           </svg>
         );
       case "facebook":
+      case "facebook_dm":
         return (
           <svg className="size-3.5 text-blue-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
@@ -113,6 +125,11 @@ export function ConversationList({
                 <div className="flex items-center gap-1.5 font-semibold text-xs text-foreground truncate min-w-0">
                   {getChannelIcon(conv.channel)}
                   <span className="truncate">{leadName}</span>
+                  {Boolean(conv.unread_count && conv.unread_count > 0) && (
+                    <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 text-[9px] font-bold text-white bg-red-600 rounded-full shrink-0 shadow-xs animate-pulse" title={`${conv.unread_count} unread messages`}>
+                      {conv.unread_count}
+                    </span>
+                  )}
                 </div>
                 <span className="text-[10px] text-muted-foreground shrink-0">
                   {new Date(conv.last_message_at).toLocaleTimeString([], {

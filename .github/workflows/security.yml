@@ -1,0 +1,135 @@
+name: Security
+
+# Runs three complementary security jobs:
+#   1. npm audit          — flags known-vulnerable dependencies.
+#   2. Dependency Review  — blocks PRs that introduce high-severity CVEs.
+#   3. CodeQL             — GitHub's static analysis for JavaScript/TypeScript.
+#
+# All three run on every PR to main and once a week on a schedule. Failures
+# in dependency-review and CodeQL block the merge via branch protection (see
+# CONTRIBUTING.md). `npm audit` is allowed to complete with warnings — high
+# CVEs surface as a red X on the PR without blocking, because a false-positive
+# in the transitive tree should not stall shipping.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Every Monday at 06:00 UTC. Weekly cadence catches newly disclosed CVEs.
+    - cron: '0 6 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # npm audit — advisory, non-blocking.
+  # ─────────────────────────────────────────────────────────────────────────
+  npm-audit:
+    name: npm audit (high+)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Run npm audit
+        # Report but do not fail — a transitive-only CVE without an upstream
+        # patch should not block merges. Investigate manually.
+        run: npm audit --audit-level=high || true
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Dependency Review — blocks NEW high-severity CVEs on a PR.
+  # ─────────────────────────────────────────────────────────────────────────
+  dependency-review:
+    name: Dependency Review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # CodeQL — static analysis for JavaScript / TypeScript.
+  # ─────────────────────────────────────────────────────────────────────────
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['javascript-typescript']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Snyk Security Scan — deep vulnerability & license scanning.
+  # ─────────────────────────────────────────────────────────────────────────
+  snyk-scan:
+    name: Snyk Vulnerability Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run Snyk test
+        uses: snyk/actions/node@master
+        continue-on-error: true # Non-blocking if SNYK_TOKEN is not yet set in repo secrets
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # SBOM Generation — generates standard SPDX Software Bill of Materials.
+  # ─────────────────────────────────────────────────────────────────────────
+  sbom:
+    name: Generate SBOM (Software Bill of Materials)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./
+          format: 'spdx-json'
+          output-file: 'sbom.spdx.json'
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lemon-ai-sbom
+          path: sbom.spdx.json

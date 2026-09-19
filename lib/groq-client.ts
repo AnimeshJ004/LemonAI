@@ -152,6 +152,31 @@ export async function callGroqChatCompletion<T = any>(
 
       if (!res.ok) {
         const errText = await res.text().catch(() => "");
+
+        // Resilient recovery for Groq's json_validate_failed:
+        // When Groq's validator throws HTTP 400 because the model returned a valid JSON array
+        // or format variant instead of an object, Groq includes the generated output in failed_generation.
+        try {
+          const parsedErr = JSON.parse(errText);
+          if (
+            parsedErr?.error?.code === "json_validate_failed" &&
+            parsedErr?.error?.failed_generation
+          ) {
+            const rawGen = parsedErr.error.failed_generation;
+            const recoveredData = extractJsonFromText<T>(rawGen);
+            if (recoveredData !== null) {
+              return {
+                success: true,
+                content: rawGen,
+                data: recoveredData,
+                modelUsed: `groq/${modelName}`,
+              };
+            }
+          }
+        } catch {
+          // ignore error parsing failure
+        }
+
         throw new Error(`Groq HTTP ${res.status}: ${errText}`);
       }
 

@@ -42,6 +42,17 @@ export interface OnboardingQuestion {
   icon: React.ElementType;
 }
 
+export const DEFAULT_ONBOARDING_ANSWERS: Record<string, string> = {
+  business_name: "My Brand",
+  profile_type: "🚀 Company / Startup / B2B Services",
+  niche: "Business & Digital Growth",
+  target_audience: "Prospective customers & engaged social community",
+  brand_tone: "⚡ High-Energy & Engaging (Fast-paced, exciting, hook-driven)",
+  main_offer: "Connect with us & discover our solutions",
+  competitors: "",
+  preferred_formats: "🌟 All-in-One Balanced Mix (Reels, Carousels & Posts)",
+};
+
 const QUESTIONS: OnboardingQuestion[] = [
   {
     id: "business_name",
@@ -50,7 +61,7 @@ const QUESTIONS: OnboardingQuestion[] = [
     placeholder: "e.g. Aura Wellness, Apex Media, Lumina Labs, Nova Skincare, Peak Athletics...",
     hint: "Used in signatures, brand hashtags, creator credits, and post mentions",
     type: "text",
-    required: true,
+    required: false,
     icon: Building2,
   },
   {
@@ -67,7 +78,7 @@ const QUESTIONS: OnboardingQuestion[] = [
       "💼 Agency, Freelancer & Consultant",
       "👤 Personal Brand, Coach & Educator",
     ],
-    required: true,
+    required: false,
     icon: Users,
   },
   {
@@ -77,7 +88,7 @@ const QUESTIONS: OnboardingQuestion[] = [
     placeholder: "e.g. Cosmetic Dentistry, High-Ticket Fitness, AI Tools & Tech, Luxury Real Estate, Streetwear Fashion...",
     hint: "AI identifies winning trends, viral hooks, and high-engagement topics for this industry",
     type: "text",
-    required: true,
+    required: false,
     icon: Compass,
   },
   {
@@ -87,7 +98,7 @@ const QUESTIONS: OnboardingQuestion[] = [
     placeholder: "e.g. Local residents wanting teeth whitening, Gen-Z tech enthusiasts, busy corporate executives aged 30-50...",
     hint: "AI tunes copy to trigger pain points, curiosity, and high engagement for this audience",
     type: "textarea",
-    required: true,
+    required: false,
     icon: Target,
   },
   {
@@ -105,7 +116,7 @@ const QUESTIONS: OnboardingQuestion[] = [
       "🎭 Humorous & Witty (Entertaining, memes, clever)",
       "💎 Luxury & Sophisticated (Aspirational, minimal, premium)",
     ],
-    required: true,
+    required: false,
     icon: Megaphone,
   },
   {
@@ -115,7 +126,7 @@ const QUESTIONS: OnboardingQuestion[] = [
     placeholder: "e.g. Book an appointment/consultation, Subscribe to YouTube, Buy product on website, DM for pricing...",
     hint: "AI creates high-converting call-to-actions (CTAs) and natural offers",
     type: "textarea",
-    required: true,
+    required: false,
     icon: Briefcase,
   },
   {
@@ -141,7 +152,7 @@ const QUESTIONS: OnboardingQuestion[] = [
       "📸 Single Image & Feed Posts (Graphic + Captions)",
       "⚡ High-Reach Text & Threads (X / LinkedIn style)",
     ],
-    required: true,
+    required: false,
     icon: Film,
   },
 ];
@@ -177,13 +188,10 @@ export default function OnboardingWizard() {
 
   const handleNext = async () => {
     const trimmed = inputValue.trim();
+    const fallbackVal = DEFAULT_ONBOARDING_ANSWERS[currentQuestion.id] || "";
+    const resolvedAnswer = trimmed || answers[currentQuestion.id] || fallbackVal;
 
-    if (currentQuestion.required && !trimmed) {
-      toast.error("Please provide an answer before continuing");
-      return;
-    }
-
-    const newAnswers = { ...answers, [currentQuestion.id]: trimmed };
+    const newAnswers = { ...answers, [currentQuestion.id]: resolvedAnswer };
     setAnswers(newAnswers);
 
     if (isLastQuestion) {
@@ -202,10 +210,18 @@ export default function OnboardingWizard() {
   };
 
   const handleSkip = async () => {
-    if (currentQuestion.required) return;
+    // If skipping, use existing typed input if present, otherwise smart AI default
+    const existingVal = (inputValue.trim() || answers[currentQuestion.id] || "").trim();
+    const fallbackVal = DEFAULT_ONBOARDING_ANSWERS[currentQuestion.id] || "";
+    const resolvedAnswer = existingVal || fallbackVal;
 
-    const newAnswers = { ...answers, [currentQuestion.id]: "" };
+    const newAnswers = { ...answers, [currentQuestion.id]: resolvedAnswer };
     setAnswers(newAnswers);
+    setInputValue("");
+
+    toast.info(`Skipped step. AI will automatically optimize this with smart defaults 🍋`, {
+      duration: 2000,
+    });
 
     if (isLastQuestion) {
       await handleSubmit(newAnswers);
@@ -382,17 +398,27 @@ export default function OnboardingWizard() {
 
         {/* Question Content Area */}
         <div className="space-y-6 my-auto">
-          {/* Badge & Step Indicator */}
-          <div className="flex items-center gap-2.5">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-200">
-              <CurrentIcon className="size-3 text-amber-700" />
-              Question {currentIndex + 1} of {QUESTIONS.length}
-            </span>
-            {currentQuestion.required ? (
-              <span className="text-xs text-rose-500 font-medium">* Required</span>
-            ) : (
-              <span className="text-xs text-zinc-400 font-medium">Optional (AI auto-discovers if empty)</span>
-            )}
+          {/* Badge & Step Indicator with Quick Skip */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2.5">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-900 border border-amber-200">
+                <CurrentIcon className="size-3 text-amber-700" />
+                Question {currentIndex + 1} of {QUESTIONS.length}
+              </span>
+              <span className="text-xs text-zinc-400 font-medium hidden sm:inline">
+                (Optional — can be skipped anytime)
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSkip}
+              disabled={isSubmitting}
+              className="text-xs font-semibold text-zinc-500 hover:text-amber-600 transition-colors flex items-center gap-1 py-1 px-2.5 rounded-lg hover:bg-amber-50"
+            >
+              <span>Skip question</span>
+              <ArrowRight className="size-3" />
+            </button>
           </div>
 
           {/* Question Title & Subtitle */}
@@ -499,26 +525,25 @@ export default function OnboardingWizard() {
           </div>
 
           <div className="flex items-center gap-3">
-            {!currentQuestion.required && (
-              <button
-                type="button"
-                onClick={handleSkip}
-                disabled={isSubmitting}
-                className="text-xs text-zinc-500 hover:text-zinc-800 font-medium px-2 py-1 transition-colors"
-              >
-                Auto-Discover (Skip)
-              </button>
-            )}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleSkip}
+              disabled={isSubmitting}
+              className="rounded-xl border-zinc-200 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-100 gap-1.5 text-xs sm:text-sm font-semibold h-11 px-4 transition-colors"
+            >
+              Skip question
+              <ArrowRight className="size-3.5" />
+            </Button>
 
             <Button
               type="button"
               onClick={handleNext}
-              disabled={isSubmitting || (currentQuestion.required && !inputValue.trim())}
+              disabled={isSubmitting}
               className={cn(
                 "rounded-xl h-11 px-6 text-sm font-bold gap-2 shadow-md",
                 "bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-zinc-950",
-                "shadow-amber-500/20 transition-all duration-200",
-                "disabled:opacity-40 disabled:cursor-not-allowed"
+                "shadow-amber-500/20 transition-all duration-200"
               )}
             >
               {isSubmitting ? (

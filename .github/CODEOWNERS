@@ -1,0 +1,31 @@
+# CODEOWNERS
+#
+# GitHub uses this file to auto-request review from the listed owners when a
+# PR touches a matching path. Replace the placeholder handle below with real
+# GitHub usernames / team slugs before merging.
+#
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# ── Default owner for everything ───────────────────────────────────────────
+*                                @OWNER-PLACEHOLDER
+
+# ── Security / privacy — require an extra reviewer on sensitive paths ──────
+/lib/encryption.ts               @OWNER-PLACEHOLDER
+/lib/audit-log.ts                @OWNER-PLACEHOLDER
+/lib/consent.ts                  @OWNER-PLACEHOLDER
+/lib/data-retention.ts           @OWNER-PLACEHOLDER
+/lib/pii-redactor.ts             @OWNER-PLACEHOLDER
+/lib/env.ts                      @OWNER-PLACEHOLDER
+/lib/db/**                       @OWNER-PLACEHOLDER
+/proxy.ts                        @OWNER-PLACEHOLDER
+/instrumentation.ts              @OWNER-PLACEHOLDER
+/PRIVACY.md                      @OWNER-PLACEHOLDER
+
+# ── CI / deployment configuration ──────────────────────────────────────────
+/.github/**                      @OWNER-PLACEHOLDER
+/vercel.json                     @OWNER-PLACEHOLDER
+/next.config.ts                  @OWNER-PLACEHOLDER
+
+# ── Auth & payments — extra scrutiny ───────────────────────────────────────
+/app/api/webhooks/clerk/**       @OWNER-PLACEHOLDER
+/app/api/user/**                 @OWNER-PLACEHOLDER

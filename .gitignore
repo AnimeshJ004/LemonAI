@@ -69,3 +69,5 @@ next-env.d.ts
 .data
 .lemon_crm_memory.json
 .lemon_dms_memory.json
+sbom.spdx.json
+

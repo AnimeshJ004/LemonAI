@@ -1,5 +1,57 @@
 import type { NextConfig } from "next";
 
+// Content Security Policy directives tuned for Clerk, Supabase, Groq, Sentry, Upstash, and Cal.com
+const cspDirectives = `
+  default-src 'self';
+  script-src 'self' 'unsafe-inline' 'unsafe-eval' https://clerk.com https://*.clerk.accounts.dev https://challenges.cloudflare.com https://va.vercel-scripts.com;
+  style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+  img-src 'self' blob: data: https://img.clerk.com https://*.supabase.co https://*.insforge.app https://images.unsplash.com https://*.replicate.delivery https://*.fbcdn.net https://*.cdninstagram.com;
+  font-src 'self' https://fonts.gstatic.com data:;
+  connect-src 'self' https://*.clerk.accounts.dev https://clerk.com https://*.supabase.co https://*.insforge.app https://api.groq.com https://*.ingest.sentry.io https://*.upstash.io wss://*.supabase.co https://api.cal.com https://api.vapi.ai https://api.resend.com;
+  frame-src 'self' https://challenges.cloudflare.com https://cal.com https://*.cal.com;
+  worker-src 'self' blob:;
+  object-src 'none';
+  base-uri 'self';
+  form-action 'self';
+  frame-ancestors 'none';
+  upgrade-insecure-requests;
+`.replace(/\s{2,}/g, " ").trim();
+
+const securityHeaders = [
+  {
+    key: "Content-Security-Policy",
+    value: cspDirectives,
+  },
+  {
+    key: "X-DNS-Prefetch-Control",
+    value: "on",
+  },
+  {
+    key: "Strict-Transport-Security",
+    value: "max-age=63072000; includeSubDomains; preload",
+  },
+  {
+    key: "X-Frame-Options",
+    value: "DENY",
+  },
+  {
+    key: "X-Content-Type-Options",
+    value: "nosniff",
+  },
+  {
+    key: "Referrer-Policy",
+    value: "strict-origin-when-cross-origin",
+  },
+  {
+    key: "Permissions-Policy",
+    value: "camera=(), microphone=(self), geolocation=(), browsing-topics=()",
+  },
+  {
+    key: "X-XSS-Protection",
+    value: "1; mode=block",
+  },
+];
+
 const nextConfig: NextConfig = {
   /* config options here */
   /**
@@ -38,12 +90,15 @@ const nextConfig: NextConfig = {
   },
 
   /**
-   * Cache-Control headers for static assets served by Next.js.
-   * Public immutable assets (JS/CSS chunks) get a 1-year CDN cache.
-   * API routes explicitly opt out so they are never accidentally cached at the edge.
+   * Cache-Control headers for static assets and global security headers (CSP, HSTS, X-Frame-Options).
    */
   async headers() {
     return [
+      {
+        // Global security headers on all routes
+        source: "/:path*",
+        headers: securityHeaders,
+      },
       {
         // Next.js static chunk files — fingerprinted filenames, safe to cache forever
         source: "/_next/static/:path*",

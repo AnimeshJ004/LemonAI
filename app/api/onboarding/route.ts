@@ -101,9 +101,7 @@ export async function POST(req: NextRequest) {
       preferred_formats,
     } = body;
 
-    if (!business_name?.trim()) {
-      return NextResponse.json({ error: "Name or business name is required" }, { status: 400 });
-    }
+    const cleanBusinessName = (business_name?.trim()) || "My Brand";
 
     // Embed profile_type & formats cleanly into niche / offer context
     const cleanProfileType = (profile_type || "Business").trim();
@@ -114,7 +112,7 @@ export async function POST(req: NextRequest) {
     // Store in existing schema columns safely
     const payload = {
       user_id: userId,
-      business_name: business_name.trim(),
+      business_name: cleanBusinessName,
       niche: cleanProfileType ? `${cleanNiche} • ${cleanProfileType}` : cleanNiche,
       target_audience: (target_audience || "").trim(),
       brand_tone: brand_tone || "High-Energy & Engaging",

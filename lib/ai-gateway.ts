@@ -1,9 +1,10 @@
 import { callGroqChatCompletion, isGroqConfigured, GROQ_THINKING_MODELS } from "@/lib/groq-client";
 import {
   buildCacheKey,
-  getCachedAIResponse,
+  getCachedAIResponseAsync,
   setCachedAIResponse,
 } from "@/lib/ai-cache";
+import { checkAiSpend } from "@/lib/ai-cost-guard";
 
 /**
  * Resilient AI completion — Groq production models direct.
@@ -12,6 +13,11 @@ import {
  * openai/gpt-oss-120b for deep reasoning, groq/compound, and openai/gpt-oss-20b as fallback.
  * The public signature of `callResilientCompletion` is intentionally unchanged so every
  * existing caller keeps working without edits.
+ *
+ * Cost caps: every call passes through `lib/ai-cost-guard` before hitting
+ * Groq. When the caller supplies a `userId` the spend is attributed; without
+ * one only the global + per-provider caps apply. See lib/ai-cost-guard.ts
+ * for the tuneable env variables.
  *
  * MODEL_WATERFALL is populated from GROQ_THINKING_MODELS.
  */
@@ -25,6 +31,10 @@ export interface ResilientCompletionOptions {
   temperature?: number;
   maxTokens?: number;
   jsonMode?: boolean;
+  /** Optional user attribution — enables per-user cost guard checks. */
+  userId?: string | null;
+  /** Optional weight for cost accounting. Default 1. */
+  costWeight?: number;
 }
 
 export interface ResilientCompletionResult<T = any> {
@@ -74,7 +84,7 @@ export async function callResilientCompletion<T = any>(
     maxTokens: options.maxTokens,
   });
 
-  const cached = getCachedAIResponse<T>(cacheKey);
+  const cached = await getCachedAIResponseAsync<T>(cacheKey);
   if (cached) {
     console.log(`[AI Gateway] Cache HIT (model: ${cached.model})`);
     return {
@@ -97,6 +107,25 @@ export async function callResilientCompletion<T = any>(
       cacheHit: false,
     };
   }
+
+  // ── Cost guard ──────────────────────────────────────────────────────────
+  // Only real (non-cached) calls consume budget. Runs BEFORE the network
+  // request so a runaway loop cannot bankrupt us.
+  const verdict = await checkAiSpend({
+    provider: "groq",
+    userId: options.userId ?? null,
+    weight: options.costWeight ?? 1,
+  });
+  if (!verdict.allowed) {
+    return {
+      success: false,
+      content: "",
+      data: null,
+      modelUsed: `blocked:cost-guard:${verdict.reason}`,
+      cacheHit: false,
+    };
+  }
+  // ─────────────────────────────────────────────────────────────────────────
 
   try {
     const groqRes = await callGroqChatCompletion<T>({

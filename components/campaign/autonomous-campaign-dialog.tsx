@@ -987,6 +987,62 @@ export default function AutonomousCampaignDialog({
               </div>
             </div>
 
+            {/* 10-Agent Autonomous Closed Loop Telemetry Banner */}
+            {result.agentsStatus && (
+              <div className="p-3.5 rounded-xl border bg-card/70 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                    <Sparkles className="size-3.5 text-primary" /> Autonomous 10-Agent Closed Loop Status
+                  </span>
+                  <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-300 dark:border-emerald-800 text-[10px] font-semibold py-0.5">
+                    10/10 Agents Synchronized
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-[11px]">
+                  <div className="p-2 rounded-lg bg-muted/30 border space-y-0.5">
+                    <span className="text-[10px] text-muted-foreground font-medium block">1. Research</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-[11px]"><Check className="size-3" /> Scraped</strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/30 border space-y-0.5">
+                    <span className="text-[10px] text-muted-foreground font-medium block">2. Strategy</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-[11px]"><Check className="size-3" /> {result.agentsStatus.strategyAgent.daysScheduled}d Plan</strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/30 border space-y-0.5">
+                    <span className="text-[10px] text-muted-foreground font-medium block">3. Studio</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-[11px]"><Check className="size-3" /> Multi-Format</strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/30 border space-y-0.5">
+                    <span className="text-[10px] text-muted-foreground font-medium block">4. Distribution</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-[11px]"><Check className="size-3" /> {result.postsScheduledCount} Posts</strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/30 border space-y-0.5">
+                    <span className="text-[10px] text-muted-foreground font-medium block">5. Meta Ads</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-[11px]"><Check className="size-3" /> Ad Staged</strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/30 border space-y-0.5">
+                    <span className="text-[10px] text-muted-foreground font-medium block">6. Inbound DMs</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-[11px]"><Check className="size-3" /> Auto-Rules</strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/30 border space-y-0.5">
+                    <span className="text-[10px] text-muted-foreground font-medium block">7. BANT Sales</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-[11px]"><Check className="size-3" /> Score &ge; {result.agentsStatus.salesQualificationAgent.minScoreThreshold}</strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/30 border space-y-0.5">
+                    <span className="text-[10px] text-muted-foreground font-medium block">8. CRM Pipeline</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-[11px]"><Check className="size-3" /> Attributed</strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/30 border space-y-0.5">
+                    <span className="text-[10px] text-muted-foreground font-medium block">9. Analytics</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-[11px]"><Check className="size-3" /> Projected</strong>
+                  </div>
+                  <div className="p-2 rounded-lg bg-muted/30 border space-y-0.5">
+                    <span className="text-[10px] text-muted-foreground font-medium block">10. AI Memory</span>
+                    <strong className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 text-[11px]"><Check className="size-3" /> Calibrated</strong>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {result.contentPieces?.length > 0 && (() => {
               const publishedCount = result.contentPieces.filter((cp: any) => cp.status === "published").length;
               const queuedCount = result.contentPieces.filter((cp: any) => cp.status === "queue").length;

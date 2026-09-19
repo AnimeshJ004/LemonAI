@@ -23,6 +23,8 @@ import { CarouselVisualPreview } from "@/components/studio/carousel-visual-previ
 const SLIDE_TYPE_COLORS: Record<string, string> = {
   COVER: "bg-primary/10 border-primary/30",
   CONTENT: "",
+  STAT_CALLOUT: "bg-amber-500/10 border-amber-500/30",
+  QUOTE: "bg-purple-500/10 border-purple-500/30",
   CTA: "bg-green-500/5 border-green-500/20",
 };
 
@@ -260,6 +262,18 @@ export default function CarouselStudioPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-1.5">
+                {slide.statNumber && (
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-black text-primary">{slide.statNumber}</span>
+                    {slide.statLabel && <span className="text-xs font-semibold text-muted-foreground">{slide.statLabel}</span>}
+                  </div>
+                )}
+                {slide.quoteText && (
+                  <blockquote className="border-l-2 border-primary/40 pl-3 italic text-sm text-muted-foreground">
+                    "{slide.quoteText}"
+                    {slide.quoteAuthor && <span className="block text-xs font-semibold not-italic text-primary mt-0.5">— {slide.quoteAuthor}</span>}
+                  </blockquote>
+                )}
                 <p className="font-bold text-base">{slide.headline}</p>
                 {slide.subtext && (
                   <p className="text-sm text-muted-foreground">{slide.subtext}</p>

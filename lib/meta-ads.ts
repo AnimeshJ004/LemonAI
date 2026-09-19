@@ -374,3 +374,96 @@ export async function createMetaAd(
     };
   }
 }
+
+// ─── 7. Live Ads Insights (ROAS, CTR, CPC, Spend) ───────────────────────────
+export interface MetaAdsInsightsResult {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  cpc: number;
+  cpm: number;
+  ctr: number;
+  roas: number | null;
+  actions: { action_type: string; value: string }[];
+  isLiveData: boolean;
+  datePreset?: string;
+}
+
+export async function getMetaAdsInsights(
+  adAccountId?: string,
+  accessToken?: string,
+  datePreset: string = "last_30d"
+): Promise<MetaAdsInsightsResult> {
+  const targetAccountId = adAccountId || process.env.META_AD_ACCOUNT_ID;
+  if (isSandboxMode() || !accessToken || !targetAccountId || targetAccountId === SANDBOX_AD_ACCOUNT) {
+    return {
+      spend: 0,
+      impressions: 0,
+      clicks: 0,
+      cpc: 0,
+      cpm: 0,
+      ctr: 0,
+      roas: null,
+      actions: [],
+      isLiveData: false,
+      datePreset,
+    };
+  }
+
+  try {
+    const cleanId = targetAccountId.startsWith("act_") ? targetAccountId : `act_${targetAccountId}`;
+    const endpoint = `/${cleanId}/insights?fields=spend,impressions,clicks,cpc,cpm,ctr,actions,purchase_roas&date_preset=${datePreset}&access_token=${accessToken}`;
+    const json = (await metaFetch(endpoint)) as { data?: any[] };
+    const row = json.data?.[0];
+
+    if (!row) {
+      return {
+        spend: 0,
+        impressions: 0,
+        clicks: 0,
+        cpc: 0,
+        cpm: 0,
+        ctr: 0,
+        roas: null,
+        actions: [],
+        isLiveData: true,
+        datePreset,
+      };
+    }
+
+    const spend = parseFloat(row.spend || "0");
+    const impressions = parseInt(row.impressions || "0", 10);
+    const clicks = parseInt(row.clicks || "0", 10);
+    const cpc = parseFloat(row.cpc || "0");
+    const cpm = parseFloat(row.cpm || "0");
+    const ctr = parseFloat(row.ctr || "0");
+    const roasVal = row.purchase_roas?.[0]?.value ? parseFloat(row.purchase_roas[0].value) : null;
+
+    return {
+      spend,
+      impressions,
+      clicks,
+      cpc,
+      cpm,
+      ctr,
+      roas: roasVal,
+      actions: row.actions || [],
+      isLiveData: true,
+      datePreset,
+    };
+  } catch (err) {
+    console.warn("[Meta Ads] Error fetching live ads insights, falling back:", err);
+    return {
+      spend: 0,
+      impressions: 0,
+      clicks: 0,
+      cpc: 0,
+      cpm: 0,
+      ctr: 0,
+      roas: null,
+      actions: [],
+      isLiveData: false,
+      datePreset,
+    };
+  }
+}

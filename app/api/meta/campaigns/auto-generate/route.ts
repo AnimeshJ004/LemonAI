@@ -75,26 +75,28 @@ For each campaign generate:
 - "dayOffset": number between 1 and ${daysSpan} indicating when this campaign launches
 - "durationDays": number between 5 and 10
 
-Return ONLY a valid JSON array matching this schema without markdown or extra explanation:
-[
-  {
-    "name": "string",
-    "objective": "string",
-    "headline": "string",
-    "primaryText": "string",
-    "callToAction": "string",
-    "visualPrompt": "string",
-    "creativeType": "IMAGE",
-    "targetAgeMin": 22,
-    "targetAgeMax": 55,
-    "dayOffset": 1,
-    "durationDays": 7
-  }
-]`;
+Return ONLY a valid JSON object with a "campaigns" key containing an array matching this schema without markdown or extra explanation:
+{
+  "campaigns": [
+    {
+      "name": "string",
+      "objective": "string",
+      "headline": "string",
+      "primaryText": "string",
+      "callToAction": "string",
+      "visualPrompt": "string",
+      "creativeType": "IMAGE",
+      "targetAgeMin": 22,
+      "targetAgeMax": 55,
+      "dayOffset": 1,
+      "durationDays": 7
+    }
+  ]
+}`;
 
     let generatedList: any[] = [];
     try {
-      const completion = await callResilientCompletion<any[]>({
+      const completion = await callResilientCompletion<any>({
         jsonMode: true,
         messages: [
           { role: "system", content: systemPrompt },
@@ -102,12 +104,15 @@ Return ONLY a valid JSON array matching this schema without markdown or extra ex
         ],
       });
 
-      if (Array.isArray(completion.data)) {
+      if (completion.data?.campaigns && Array.isArray(completion.data.campaigns)) {
+        generatedList = completion.data.campaigns;
+      } else if (Array.isArray(completion.data)) {
         generatedList = completion.data;
       } else {
         const raw = completion.content || "";
         const clean = raw.replace(/```(?:json)?\s*|\s*```/g, "").trim();
-        generatedList = JSON.parse(clean);
+        const parsed = JSON.parse(clean);
+        generatedList = Array.isArray(parsed?.campaigns) ? parsed.campaigns : (Array.isArray(parsed) ? parsed : []);
       }
     } catch (aiErr) {
       console.warn("[Meta Ads Auto-Gen] AI parse fallback:", aiErr);

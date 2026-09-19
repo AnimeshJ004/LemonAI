@@ -1,0 +1,69 @@
+# Dependabot configuration
+# https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+#
+# Two update streams:
+#   1. npm             — weekly grouped PRs. Minor/patch bundled together to
+#                        cut PR noise; major-version bumps come as individual
+#                        PRs so they get a proper review.
+#   2. github-actions  — monthly PRs. The workflow action versions do not
+#                        need weekly churn.
+
+version: 2
+
+updates:
+  # ── npm ────────────────────────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: 'UTC'
+    open-pull-requests-limit: 5
+    versioning-strategy: increase-if-necessary
+    labels:
+      - dependencies
+      - automerge-candidate
+    commit-message:
+      prefix: 'deps'
+      include: 'scope'
+    groups:
+      # Dev tooling PRs bundled together (they rarely need individual review).
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+      # Runtime minor/patch bundled together.
+      runtime-minor-and-patch:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Framework majors go through manual upgrade because they routinely
+      # require code changes; don't let bots merge these.
+      - dependency-name: 'react'
+        update-types: [version-update:semver-major]
+      - dependency-name: 'react-dom'
+        update-types: [version-update:semver-major]
+      - dependency-name: 'next'
+        update-types: [version-update:semver-major]
+      - dependency-name: 'eslint-config-next'
+        update-types: [version-update:semver-major]
+
+  # ── GitHub Actions ─────────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+      day: monday
+      time: '06:00'
+      timezone: 'UTC'
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: 'ci'
+      include: 'scope'

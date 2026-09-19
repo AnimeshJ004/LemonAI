@@ -305,6 +305,296 @@ export async function dispatchCRMOutboundMessage({
       };
     }
 
+    // ─── LINKEDIN DISPATCH ───────────────────────────────────────────────────
+    if (channel === "linkedin" || channel === "linkedin_dm") {
+      const liChannel = connectedChannels.find(
+        (c: any) => c.channel_types?.type === "LINKEDIN" && c.access_token
+      );
+      if (!liChannel?.access_token) {
+        return {
+          dispatched: false,
+          channel,
+          warning: "No active LinkedIn account connected in Settings → Channels.",
+        };
+      }
+
+      const liToken = decrypt(liChannel.access_token);
+      const recipientUrn = lead?.metadata?.linkedinUrn || lead?.metadata?.senderId || lead?.metadata?.urn;
+
+      if (!recipientUrn) {
+        return {
+          dispatched: false,
+          channel,
+          warning: "No LinkedIn recipient URN found for this lead. Add their profile URN in the lead detail dossier.",
+        };
+      }
+
+      try {
+        const liRes = await fetch("https://api.linkedin.com/v2/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${liToken}`,
+            "X-Restli-Protocol-Version": "2.0.0",
+          },
+          body: JSON.stringify({
+            recipients: [recipientUrn.startsWith("urn:li:person:") ? recipientUrn : `urn:li:person:${recipientUrn}`],
+            message: {
+              body: content,
+            },
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+
+        const liData = await liRes.json().catch(() => ({}));
+        if (liRes.ok) {
+          const msgId = liData?.id || `li_${Date.now()}`;
+          await recordActivity({
+            user_id: userId,
+            lead_id: lead?.id,
+            type: "message_sent",
+            title: `LinkedIn message sent by ${senderType === "human_agent" ? "Human Agent" : "AI"}`,
+            description: content,
+            metadata: { messageId: msgId, recipientUrn },
+          });
+          return {
+            dispatched: true,
+            channel,
+            externalMessageId: msgId,
+          };
+        }
+
+        const liError = liData?.message || "LinkedIn API returned an error (Requires LinkedIn MDP Community Management API approval)";
+        return {
+          dispatched: false,
+          channel,
+          warning: `LinkedIn dispatch notice: ${liError}`,
+        };
+      } catch (liErr: any) {
+        return {
+          dispatched: false,
+          channel,
+          error: liErr?.message || "Network error dispatching LinkedIn message",
+        };
+      }
+    }
+
+    // ─── TWITTER / X DISPATCH ────────────────────────────────────────────────
+    if (channel === "twitter" || channel === "twitter_dm" || channel === "x") {
+      const twChannel = connectedChannels.find(
+        (c: any) => ["TWITTER", "X"].includes(c.channel_types?.type) && c.access_token
+      );
+      if (!twChannel?.access_token) {
+        return {
+          dispatched: false,
+          channel,
+          warning: "No active Twitter / X channel connected in Settings → Channels.",
+        };
+      }
+
+      const twToken = decrypt(twChannel.access_token) || twChannel.access_token;
+      const recipientId =
+        lead?.metadata?.twitterId ||
+        lead?.metadata?.senderId ||
+        lead?.metadata?.commenterId ||
+        lead?.metadata?.dm_conversation_id;
+
+      if (!recipientId) {
+        return {
+          dispatched: false,
+          channel,
+          warning: "No Twitter recipient ID or conversation ID found for this lead.",
+        };
+      }
+
+      try {
+        const isConvEndpoint = String(recipientId).includes("-") || String(recipientId).length > 20;
+        const twUrl = isConvEndpoint
+          ? `https://api.twitter.com/2/dm_conversations/${recipientId}/messages`
+          : `https://api.twitter.com/2/dm_conversations/with/${recipientId}/messages`;
+
+        const twRes = await fetch(twUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${twToken}`,
+          },
+          body: JSON.stringify({
+            message: { text: content },
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+
+        const twData = await twRes.json().catch(() => ({}));
+        if (twRes.ok) {
+          const msgId = twData?.data?.id || `tw_${Date.now()}`;
+          await recordActivity({
+            user_id: userId,
+            lead_id: lead?.id,
+            type: "message_sent",
+            title: `Twitter DM sent by ${senderType === "human_agent" ? "Human Agent" : "AI"}`,
+            description: content,
+            metadata: { messageId: msgId, recipientId },
+          });
+          return {
+            dispatched: true,
+            channel,
+            externalMessageId: msgId,
+          };
+        }
+
+        return {
+          dispatched: false,
+          channel,
+          warning: `Twitter DM API notice: ${twData?.detail || JSON.stringify(twData)}`,
+        };
+      } catch (twErr: any) {
+        return {
+          dispatched: false,
+          channel,
+          error: twErr?.message || "Network error dispatching Twitter DM",
+        };
+      }
+    }
+
+    // ─── YOUTUBE COMMENT REPLY DISPATCH ───────────────────────────────────────
+    if (channel === "youtube" || channel === "youtube_comment") {
+      const ytChannel = connectedChannels.find(
+        (c: any) => c.channel_types?.type === "YOUTUBE" && c.access_token
+      );
+      if (!ytChannel?.access_token) {
+        return {
+          dispatched: false,
+          channel,
+          warning: "No active YouTube channel connected in Settings → Channels.",
+        };
+      }
+
+      const ytToken = decrypt(ytChannel.access_token) || ytChannel.access_token;
+      const commentId = lead?.metadata?.commentId || lead?.metadata?.parentId;
+
+      if (!commentId) {
+        return {
+          dispatched: false,
+          channel,
+          warning: "No YouTube comment ID found to reply to for this lead.",
+        };
+      }
+
+      try {
+        const ytRes = await fetch("https://www.googleapis.com/youtube/v3/comments?part=snippet", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${ytToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            snippet: {
+              parentId: commentId,
+              textOriginal: content,
+            },
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+
+        const ytData = await ytRes.json().catch(() => ({}));
+        if (ytRes.ok && ytData?.id) {
+          await recordActivity({
+            user_id: userId,
+            lead_id: lead?.id,
+            type: "message_sent",
+            title: `YouTube comment reply posted by ${senderType === "human_agent" ? "Human Agent" : "AI"}`,
+            description: content,
+            metadata: { commentReplyId: ytData.id, parentCommentId: commentId },
+          });
+          return {
+            dispatched: true,
+            channel,
+            externalMessageId: ytData.id,
+          };
+        }
+
+        return {
+          dispatched: false,
+          channel,
+          warning: `YouTube API notice: ${ytData?.error?.message || JSON.stringify(ytData)}`,
+        };
+      } catch (ytErr: any) {
+        return {
+          dispatched: false,
+          channel,
+          error: ytErr?.message || "Network error dispatching YouTube comment reply",
+        };
+      }
+    }
+
+    // ─── EMAIL DISPATCH ──────────────────────────────────────────────────────
+    if (channel === "email") {
+      if (!lead?.email) {
+        return {
+          dispatched: false,
+          channel,
+          warning: "Lead does not have an email address on file.",
+        };
+      }
+
+      const resendApiKey = process.env.RESEND_API_KEY;
+      if (!resendApiKey) {
+        return {
+          dispatched: false,
+          channel,
+          warning: "RESEND_API_KEY is not configured in .env.local. Add your Resend API key to enable outbound emails from CRM.",
+        };
+      }
+
+      try {
+        const fromEmail = process.env.EMAIL_FROM || "Lemon AI CRM <onboarding@resend.dev>";
+        const emailRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${resendApiKey}`,
+          },
+          body: JSON.stringify({
+            from: fromEmail,
+            to: [lead.email],
+            subject: `Follow-up regarding your inquiry${lead.name ? ` — ${lead.name}` : ""}`,
+            text: content,
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+
+        const emailData = await emailRes.json().catch(() => ({}));
+        if (emailRes.ok && emailData?.id) {
+          await recordActivity({
+            user_id: userId,
+            lead_id: lead?.id,
+            type: "message_sent",
+            title: `Email sent by ${senderType === "human_agent" ? "Human Agent" : "AI"}`,
+            description: content,
+            metadata: { emailId: emailData.id, to: lead.email },
+          });
+          return {
+            dispatched: true,
+            channel,
+            externalMessageId: emailData.id,
+          };
+        }
+
+        return {
+          dispatched: false,
+          channel,
+          error: emailData?.message || "Failed to dispatch email via Resend API",
+        };
+      } catch (mailErr: any) {
+        return {
+          dispatched: false,
+          channel,
+          error: mailErr?.message || "Network error dispatching email",
+        };
+      }
+    }
+
     return {
       dispatched: true,
       channel,

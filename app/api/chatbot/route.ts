@@ -4,6 +4,8 @@ import { callResilientCompletion } from "@/lib/ai-gateway";
 import { validateInputLengths } from "@/lib/validate-inputs";
 import { evaluateBANTLeadScore } from "@/lib/lead-scoring";
 import { userBrandCache } from "@/lib/brand-helper";
+import { logInfo, logWarn, reportError } from "@/lib/observability";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import {
   getLeadsForUser,
   createLead,
@@ -18,29 +20,6 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
 };
-
-// ─── Rate Limiting & Abuse Prevention ───────────────────────────────────────
-interface RateLimitRecord {
-  count: number;
-  resetAt: number;
-}
-const ipRateLimits = new Map<string, RateLimitRecord>();
-const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
-const MAX_REQUESTS_PER_WINDOW = 35;
-
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const record = ipRateLimits.get(ip);
-  if (!record || now > record.resetAt) {
-    ipRateLimits.set(ip, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return false;
-  }
-  if (record.count >= MAX_REQUESTS_PER_WINDOW) {
-    return true;
-  }
-  record.count++;
-  return false;
-}
 
 // ─── Date / Time / Slot / Intent Extraction Helpers ─────────────────────────
 function extractAppointmentDateTime(text: string): { dateText: string | null; isExplicit: boolean } {
@@ -73,18 +52,21 @@ export async function OPTIONS() {
 
 export async function POST(req: NextRequest) {
   try {
-    // 0. Anti-Abuse Rate Limiting Check
-    const clientIp =
-      req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-      req.headers.get("x-real-ip") ||
-      "127.0.0.1";
-
-    if (isRateLimited(clientIp)) {
-      console.warn(`[Chatbot API] Rate limit triggered for IP: ${clientIp}`);
-      return NextResponse.json(
-        { error: "Too many messages sent. Please wait a few minutes before trying again." },
-        { status: 429, headers: CORS_HEADERS }
-      );
+    // ── Anti-abuse rate limiting via the shared Upstash-backed limiter ─────
+    // Public embed widget → tighter budget: 35 msgs / 10 min per client.
+    const limited = await enforceRateLimit(req, {
+      limit: 35,
+      windowMs: 10 * 60_000,
+      namespace: "chatbot",
+    });
+    if (limited) {
+      // Preserve CORS headers on the 429 so the embed widget can read the body.
+      const withCors = new NextResponse(limited.body, {
+        status: limited.status,
+        headers: new Headers(limited.headers),
+      });
+      Object.entries(CORS_HEADERS).forEach(([k, v]) => withCors.headers.set(k, v));
+      return withCors;
     }
 
     const body = await req.json().catch(() => ({}));
@@ -132,7 +114,7 @@ export async function POST(req: NextRequest) {
           .filter(Boolean)
           .join("\n") || "";
     } catch (e) {
-      console.warn("Could not fetch brand profile or memory:", e);
+      logWarn("Could not fetch brand profile or memory:", { scope: "api/chatbot", extra: { detail: e } });
       brand = userBrandCache.get(userId) || null;
     }
 
@@ -218,7 +200,7 @@ STRICT SECURITY INSTRUCTIONS:
         reply = completion.content.trim();
       }
     } catch (aiErr) {
-      console.warn("[Chatbot] AI completion error, engaging fallback:", aiErr);
+      logWarn("[Chatbot] AI completion error, engaging fallback:", { scope: "api/chatbot", extra: { detail: aiErr } });
     }
 
     // 6. Intelligent Fallback Responder (in case AI completion was empty or failed)
@@ -277,7 +259,7 @@ STRICT SECURITY INSTRUCTIONS:
           niche: brand?.niche,
         });
       } catch (bErr) {
-        console.warn("[Chatbot] BANT scoring fallback applied:", bErr);
+        logWarn("[Chatbot] BANT scoring fallback applied:", { scope: "api/chatbot", extra: { detail: bErr } });
         if (bookingDateTime.dateText || isBookingIntent) bant.score = 8;
         if (extractedEmail) bant.score = Math.min(10, bant.score + 2);
       }
@@ -320,7 +302,7 @@ STRICT SECURITY INSTRUCTIONS:
 
         const updated = await updateLead(leadId, updatePayload, userId);
         if (updated) {
-          console.log(`[Chatbot CRM] Lead updated: [redacted] (Stage: ${updated.stage})`);
+          logInfo(String(`[Chatbot CRM] Lead updated: [redacted] (Stage: ${updated.stage})`), { scope: "api/chatbot" });
         }
       } else if (extractedEmail || extractedPhone || hasIntent || bookingDateTime.dateText) {
         // Create new lead
@@ -346,7 +328,7 @@ STRICT SECURITY INSTRUCTIONS:
         });
 
         leadId = newLead.id;
-        console.log(`[Chatbot CRM] New lead created: [redacted] (Stage: ${newLead.stage})`);
+        logInfo(String(`[Chatbot CRM] New lead created: [redacted] (Stage: ${newLead.stage})`), { scope: "api/chatbot" });
       }
 
       // Record Activity in CRM Activities table and local store
@@ -409,10 +391,10 @@ STRICT SECURITY INSTRUCTIONS:
           ]);
         }
       } catch (convErr) {
-        console.warn("CRM conversation logging notice (non-fatal):", convErr);
+        logWarn("CRM conversation logging notice (non-fatal):", { scope: "api/chatbot", extra: { detail: convErr } });
       }
     } catch (crmErr) {
-      console.warn("CRM auto-capture warning (safe fallback):", crmErr);
+      logWarn("CRM auto-capture warning (safe fallback):", { scope: "api/chatbot", extra: { detail: crmErr } });
     }
 
     return NextResponse.json(
@@ -427,7 +409,7 @@ STRICT SECURITY INSTRUCTIONS:
       { headers: CORS_HEADERS }
     );
   } catch (error: any) {
-    console.error("Website bot route error:", error);
+    void reportError(error, { scope: "api/chatbot", extra: { detail: String("Website bot route error:") } });
     return NextResponse.json(
       { error: error?.message || "Internal server error" },
       { status: 500, headers: CORS_HEADERS }

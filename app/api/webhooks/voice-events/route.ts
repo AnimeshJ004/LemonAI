@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { updateLead, VoiceCallLog } from "@/lib/crm-service";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 /**
  * Vapi.ai / Bland.ai Call Events & Webhook Ingestion
+ *
+ * Rate limited to 200 events/min per source IP. Voice event webhooks are
+ * chatty (call.started, call.speech, call.transcript, call.ended, ...).
  */
 export async function POST(request: NextRequest) {
   try {
+    const limited = await enforceRateLimit(request, {
+      limit: 200,
+      windowMs: 60_000,
+      namespace: "webhook:voice",
+    });
+    if (limited) return limited;
+
     // 0. Secret verification if configured
     const voiceSecret = process.env.VOICE_WEBHOOK_SECRET || process.env.VAPI_WEBHOOK_SECRET;
     if (voiceSecret) {

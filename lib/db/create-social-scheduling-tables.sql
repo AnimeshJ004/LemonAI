@@ -26,8 +26,7 @@ insert into channel_types (type, name, color, character_limit) values
   ('THREADS',   'Threads',     '#000000', 500),
   ('FACEBOOK',  'Facebook',    '#1877F2', 63206),
   ('BLUESKY',   'Bluesky',     '#1285fe', 300),
-  ('YOUTUBE',   'YouTube',     '#FF0000', 100),
-  ('TIKTOK',    'Tiktok',      '#000000', 100)
+  ('YOUTUBE',   'YouTube',     '#FF0000', 100)
 on conflict (type) do nothing;
 
 -- 2. USER CHANNELS

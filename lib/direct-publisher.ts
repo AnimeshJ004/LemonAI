@@ -174,7 +174,12 @@ export async function publishPostDirectly(postId: string): Promise<{
         images: post.images,
       });
     } else if (providerType === ChannelTypeEnum.YOUTUBE) {
-      publishedUrl = `https://youtube.com/${userChannel.handle || "channel"}`;
+      publishedUrl = await publishToYoutubeDirect({
+        accessToken: currentAccessToken,
+        content: post.content,
+        images: post.images,
+        channelHandle: userChannel.handle,
+      });
     } else {
       publishedUrl = `https://${String(providerType).toLowerCase()}.com/${userChannel.handle || "user"}/status/${Date.now()}`;
     }
@@ -1143,3 +1148,124 @@ async function publishToThreadsDirect({
 
   throw new Error(`Threads publish failed: timeout waiting for container`);
 }
+
+// ---------------------------------------------------------------------------
+// YouTube Direct Video Publisher (Google YouTube Data API v3 Resumable Upload)
+// ---------------------------------------------------------------------------
+
+async function publishToYoutubeDirect({
+  accessToken,
+  content,
+  images,
+  channelHandle,
+}: {
+  accessToken: string;
+  content: string;
+  images?: ImageObject[];
+  channelHandle?: string | null;
+}): Promise<string> {
+  const videoCandidate = images?.find(
+    (img) =>
+      img.media_type === "video" ||
+      img.url?.toLowerCase().includes(".mp4") ||
+      img.url?.toLowerCase().includes(".mov") ||
+      img.url?.toLowerCase().includes(".webm")
+  );
+
+  // If no video media is attached:
+  // YouTube Data API v3 strictly requires binary video media to create a video.
+  // When no video is attached, fall back gracefully to channel handle or informative URL.
+  if (!videoCandidate || !videoCandidate.url) {
+    logger.warn(
+      "[YouTube Publisher] Notice: No video media attached to post. YouTube Data API requires a video file (.mp4, .mov, .webm)."
+    );
+    const cleanHandle = channelHandle?.replace(/^@/, "").trim();
+    return cleanHandle
+      ? `https://youtube.com/@${cleanHandle}`
+      : `https://youtube.com/channel`;
+  }
+
+  // 1. Download video binary bytes
+  let videoBuffer: Buffer;
+  try {
+    const vidRes = await fetch(videoCandidate.url, {
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!vidRes.ok) {
+      throw new Error(`Failed to fetch video file from URL: ${vidRes.statusText}`);
+    }
+    const arrayBuf = await vidRes.arrayBuffer();
+    videoBuffer = Buffer.from(arrayBuf);
+  } catch (downloadErr: any) {
+    throw new Error(`YouTube video download failed: ${downloadErr?.message || "Could not retrieve media"}`);
+  }
+
+  // 2. Prepare Video Metadata (Snippet & Status)
+  const lines = content.split("\n").map((l) => l.trim()).filter(Boolean);
+  const rawTitle = lines[0] || "New Video";
+  // YouTube max title length is 100 characters
+  const title = rawTitle.slice(0, 95);
+  // Extract hashtags as tags
+  const tags = (content.match(/#[a-zA-Z0-9_]+/g) || [])
+    .map((t) => t.slice(1))
+    .slice(0, 20);
+
+  const snippet = {
+    title,
+    description: content,
+    tags,
+    categoryId: "22", // People & Blogs
+  };
+
+  const status = {
+    privacyStatus: "public",
+    selfDeclaredMadeForKids: false,
+  };
+
+  // 3. Step 1: Initiate Resumable Upload Session
+  const initRes = await fetch(
+    "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json; charset=UTF-8",
+        "X-Upload-Content-Length": String(videoBuffer.length),
+        "X-Upload-Content-Type": "video/mp4",
+      },
+      body: JSON.stringify({ snippet, status }),
+    }
+  );
+
+  if (!initRes.ok) {
+    const errData = await initRes.json().catch(() => ({}));
+    const errMsg = errData?.error?.message || initRes.statusText || "Failed to initiate resumable upload";
+    throw new Error(`YouTube API upload session error: ${errMsg}`);
+  }
+
+  const uploadUrl = initRes.headers.get("location");
+  if (!uploadUrl) {
+    throw new Error("YouTube API Error: No resumable upload location header returned by Google API.");
+  }
+
+  // 4. Step 2: Upload Binary Video Data to Resumable Session URL
+  const uploadRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "video/mp4",
+      "Content-Length": String(videoBuffer.length),
+    },
+    body: new Uint8Array(videoBuffer),
+  });
+
+  const uploadData = await uploadRes.json().catch(() => ({}));
+  if (!uploadRes.ok || !uploadData.id) {
+    const errMsg = uploadData?.error?.message || uploadRes.statusText || "Video upload failed";
+    throw new Error(`YouTube Video Upload Failed: ${errMsg}`);
+  }
+
+  const videoId = uploadData.id;
+  logger.info(`[YouTube Publisher] Video published successfully: ${videoId}`);
+  return `https://www.youtube.com/watch?v=${videoId}`;
+}
+

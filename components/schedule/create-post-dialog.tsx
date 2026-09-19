@@ -53,7 +53,7 @@ function normalizeTimeSlot(timeStr?: string | null): string {
     const trimmed = timeStr.trim();
     const match = trimmed.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
     if (match) {
-        let h = parseInt(match[1], 10);
+        const h = parseInt(match[1], 10);
         const m = match[2] ? parseInt(match[2], 10) : 0;
         let meridiem = match[3] ? match[3].toUpperCase() : (h >= 12 ? "PM" : "AM");
         let displayHour = h;

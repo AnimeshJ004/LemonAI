@@ -234,6 +234,25 @@ export async function generateAdCreativeImage(
   // ─── Priority 1: Replicate FLUX.1 ────────────────────────────────────────
   const replicateToken = process.env.REPLICATE_API_TOKEN;
   if (replicateToken && replicateToken.trim()) {
+    // Cost guard — Replicate is 10x more expensive per call than a text
+    // completion, so charge it heavier. Fails open on Redis outage.
+    const { checkAiSpend } = await import("@/lib/ai-cost-guard");
+    const verdict = await checkAiSpend({
+      provider: "replicate",
+      userId: options.userId ?? null,
+      weight: 10,
+    });
+    if (!verdict.allowed) {
+      return {
+        success: false,
+        imageUrl: null,
+        aspectRatio,
+        prompt: photorealisticPrompt,
+        provider: "REPLICATE_FLUX_1",
+        latencyMs: Date.now() - startTime,
+      };
+    }
+
     try {
       const fluxAspectRatio =
         aspectRatio === "9:16" ? "9:16" :

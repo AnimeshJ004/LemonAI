@@ -126,7 +126,13 @@ export async function captureLeadFromComment(params: CaptureLeadParams): Promise
   const admin = getInsforgeAdminClient();
   const cleanHandle = commenterHandle.replace(/^@/, "").trim();
   const upper = String(platform || "").toUpperCase();
-  const normalizedPlatform = upper === "FACEBOOK" ? "facebook" : upper === "THREADS" ? "threads" : "instagram";
+  const normalizedPlatform =
+    upper === "FACEBOOK" ? "facebook" :
+    upper === "THREADS" ? "threads" :
+    upper === "YOUTUBE" ? "youtube" :
+    upper === "LINKEDIN" ? "linkedin" :
+    upper === "TWITTER" || upper === "X" ? "twitter" :
+    "instagram";
 
   try {
     let leadId: string | null = null;
@@ -573,54 +579,145 @@ Return ONLY the JSON object.`,
     }
 
     // ─── 7. Post Public Reply via Platform API ────────────────────────────────
-    const isThreads = String(platform || "").toUpperCase() === "THREADS";
-    const isFacebook = String(platform || "").toUpperCase() === "FACEBOOK";
-
-    // Each platform uses a different Graph API host + endpoint:
-    //   Threads  → https://graph.threads.net/v1.0/{comment-id}/replies  (POST with text + access_token)
-    //   Facebook → https://graph.facebook.com/v22.0/{comment-id}/comments (Page token)
-    //   Instagram → https://graph.facebook.com/v22.0/{comment-id}/replies (User token)
-    let replyEndpoint: string;
-    if (isThreads) {
-      replyEndpoint = `https://graph.threads.net/v1.0/${commentId}/replies`;
-    } else if (isFacebook) {
-      replyEndpoint = `https://graph.facebook.com/v22.0/${commentId}/comments`;
-    } else {
-      replyEndpoint = `https://graph.facebook.com/v22.0/${commentId}/replies`;
-    }
+    const normPlatform = String(platform || "").toUpperCase();
+    const isThreads = normPlatform === "THREADS";
+    const isFacebook = normPlatform === "FACEBOOK";
+    const isYouTube = normPlatform === "YOUTUBE";
+    const isLinkedIn = normPlatform === "LINKEDIN";
+    const isTwitter = normPlatform === "TWITTER" || normPlatform === "X";
 
     let replySuccess = false;
     let replyId: string | undefined = undefined;
 
-    try {
-      // Threads uses "text" field; Meta (Instagram/Facebook) uses "message" field
-      const replyBody = isThreads
-        ? { text: aiResult.reply, access_token: accessToken }
-        : { message: aiResult.reply, access_token: accessToken };
+    if (isYouTube) {
+      try {
+        const ytRes = await fetch("https://www.googleapis.com/youtube/v3/comments?part=snippet", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            snippet: {
+              parentId: commentId,
+              textOriginal: aiResult.reply,
+            },
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
 
-      const replyRes = await fetch(replyEndpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(replyBody),
-      });
-
-      const replyJson = await replyRes.json().catch(() => ({}));
-      if (replyRes.ok && replyJson?.id) {
-        replySuccess = true;
-        replyId = replyJson.id;
-        const platformLabel = isThreads ? "Threads" : isFacebook ? "Facebook" : "Instagram";
-        console.log(`[Social Comment Service] ✓ Auto-reply posted to comment ${commentId} (${platformLabel}), reply ID: ${replyJson.id}`);
-      } else {
-        const errMsg = replyJson?.error?.message || JSON.stringify(replyJson);
-        console.error(`[Social Comment Service] Meta Graph API returned error for comment ${commentId}:`, errMsg);
-
-        // Check if Meta says the comment already has replies or was deleted
-        if (errMsg.includes("already") || errMsg.includes("duplicate") || replyJson?.error?.code === 100) {
-          replySuccess = false;
+        const ytJson = await ytRes.json().catch(() => ({}));
+        if (ytRes.ok && ytJson?.id) {
+          replySuccess = true;
+          replyId = ytJson.id;
+          console.log(`[Social Comment Service] ✓ Auto-reply posted to YouTube comment ${commentId}, ID: ${ytJson.id}`);
+        } else {
+          console.warn("[Social Comment Service] YouTube comment reply notice:", ytJson?.error?.message || ytJson);
         }
+      } catch (ytErr) {
+        console.warn("[Social Comment Service] Network error dispatching YouTube reply:", ytErr);
       }
-    } catch (postErr) {
-      console.error(`[Social Comment Service] Network error dispatching reply to comment ${commentId}:`, postErr);
+    } else if (isLinkedIn) {
+      try {
+        const authorUrn = igAccountId
+          ? igAccountId.startsWith("urn:li:")
+            ? igAccountId
+            : `urn:li:person:${igAccountId}`
+          : "urn:li:person:me";
+        const shareUrn = mediaId || commentId;
+        const liRes = await fetch(`https://api.linkedin.com/rest/socialActions/${encodeURIComponent(shareUrn)}/comments`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+            "X-Restli-Protocol-Version": "2.0.0",
+            "Linkedin-Version": "202604",
+          },
+          body: JSON.stringify({
+            actor: authorUrn,
+            message: { text: aiResult.reply },
+            parentComment: commentId,
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+
+        const liJson = await liRes.json().catch(() => ({}));
+        if (liRes.ok || liRes.status === 201) {
+          replySuccess = true;
+          replyId = liJson?.id || `li_${Date.now()}`;
+          console.log(`[Social Comment Service] ✓ Auto-reply posted to LinkedIn comment ${commentId}`);
+        } else {
+          console.warn("[Social Comment Service] LinkedIn comment reply notice:", liJson?.message || liJson);
+        }
+      } catch (liErr) {
+        console.warn("[Social Comment Service] Network error dispatching LinkedIn reply:", liErr);
+      }
+    } else if (isTwitter) {
+      try {
+        const twRes = await fetch("https://api.twitter.com/2/tweets", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            text: aiResult.reply,
+            reply: { in_reply_to_tweet_id: commentId },
+          }),
+          signal: AbortSignal.timeout(8000),
+        });
+
+        const twJson = await twRes.json().catch(() => ({}));
+        if (twRes.ok && (twJson?.data?.id || twJson?.id)) {
+          replySuccess = true;
+          replyId = twJson?.data?.id || twJson?.id;
+          console.log(`[Social Comment Service] ✓ Auto-reply posted to Twitter/X tweet ${commentId}, ID: ${replyId}`);
+        } else {
+          console.warn("[Social Comment Service] Twitter comment reply notice:", twJson?.detail || twJson?.errors || twJson);
+        }
+      } catch (twErr) {
+        console.warn("[Social Comment Service] Network error dispatching Twitter reply:", twErr);
+      }
+    } else {
+      // Each Meta/Threads platform uses a different Graph API host + endpoint:
+      let replyEndpoint: string;
+      if (isThreads) {
+        replyEndpoint = `https://graph.threads.net/v1.0/${commentId}/replies`;
+      } else if (isFacebook) {
+        replyEndpoint = `https://graph.facebook.com/v22.0/${commentId}/comments`;
+      } else {
+        replyEndpoint = `https://graph.facebook.com/v22.0/${commentId}/replies`;
+      }
+
+      try {
+        const replyBody = isThreads
+          ? { text: aiResult.reply, access_token: accessToken }
+          : { message: aiResult.reply, access_token: accessToken };
+
+        const replyRes = await fetch(replyEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(replyBody),
+          signal: AbortSignal.timeout(8000),
+        });
+
+        const replyJson = await replyRes.json().catch(() => ({}));
+        if (replyRes.ok && replyJson?.id) {
+          replySuccess = true;
+          replyId = replyJson.id;
+          const platformLabel = isThreads ? "Threads" : isFacebook ? "Facebook" : "Instagram";
+          console.log(`[Social Comment Service] ✓ Auto-reply posted to comment ${commentId} (${platformLabel}), reply ID: ${replyJson.id}`);
+        } else {
+          const errMsg = replyJson?.error?.message || JSON.stringify(replyJson);
+          console.error(`[Social Comment Service] Meta Graph API returned error for comment ${commentId}:`, errMsg);
+
+          if (errMsg.includes("already") || errMsg.includes("duplicate") || replyJson?.error?.code === 100) {
+            replySuccess = false;
+          }
+        }
+      } catch (postErr) {
+        console.error(`[Social Comment Service] Network error dispatching reply to comment ${commentId}:`, postErr);
+      }
     }
 
     // ─── 8. Send Private Direct Message (if purchase intent detected) ───────────
@@ -773,11 +870,11 @@ export async function pollConnectedChannelsComments(maxChannels = 10): Promise<{
   let totalPosts = 0;
 
   try {
-    // 1. Fetch connected Instagram, Facebook, and Threads channels
+    // 1. Fetch connected Instagram, Facebook, Threads, YouTube, and LinkedIn channels
     const { data: channels, error: chanErr } = await admin.database
       .from("user_channels")
       .select("id, user_id, provider_account_id, handle, access_token, channel_types!inner(type)")
-      .in("channel_types.type", ["INSTAGRAM", "FACEBOOK", "THREADS"])
+      .in("channel_types.type", ["INSTAGRAM", "FACEBOOK", "THREADS", "YOUTUBE", "LINKEDIN"])
       .eq("is_connected", true)
       .not("access_token", "is", null)
       .limit(maxChannels);
@@ -799,7 +896,7 @@ export async function pollConnectedChannelsComments(maxChannels = 10): Promise<{
 
       const accountId = channel.provider_account_id;
       const channelType = (channel.channel_types as any)?.type || "INSTAGRAM";
-      if (!accessToken || !accountId) continue;
+      if (!accessToken) continue;
 
       // Fetch Brand Profile for this user
       const { data: brand } = await admin.database
@@ -812,7 +909,94 @@ export async function pollConnectedChannelsComments(maxChannels = 10): Promise<{
       try {
         let posts: any[] = [];
 
-        if (channelType === "THREADS") {
+        if (channelType === "YOUTUBE") {
+          // YouTube Data API v3: fetch recent channel comment threads
+          try {
+            const ytUrl = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet,replies&allThreadsRelatedToChannelId=${accountId}&maxResults=10`;
+            const ytRes = await fetch(ytUrl, {
+              headers: { Authorization: `Bearer ${accessToken}` },
+              signal: AbortSignal.timeout(6000),
+            });
+            if (ytRes.ok) {
+              const ytData = await ytRes.json();
+              const items = ytData?.items || [];
+              posts.push({
+                id: accountId || "yt_channel",
+                caption: "YouTube Channel Videos",
+                comments: {
+                  data: items.map((t: any) => {
+                    const top = t.snippet?.topLevelComment;
+                    const replies = t.replies?.comments || [];
+                    return {
+                      id: top?.id || t.id,
+                      text: top?.snippet?.textOriginal || top?.snippet?.textDisplay,
+                      from: {
+                        username: top?.snippet?.authorDisplayName || "@viewer",
+                        id: top?.snippet?.authorChannelId?.value,
+                      },
+                      timestamp: top?.snippet?.publishedAt,
+                      comments: {
+                        data: replies.map((r: any) => ({
+                          id: r.id,
+                          text: r.snippet?.textOriginal,
+                          from: { username: r.snippet?.authorDisplayName, id: r.snippet?.authorChannelId?.value },
+                        })),
+                      },
+                    };
+                  }),
+                },
+              });
+            }
+          } catch (ytPollErr) {
+            console.warn("[Comment Poller] YouTube polling notice:", ytPollErr);
+          }
+        } else if (channelType === "LINKEDIN") {
+          // LinkedIn: Query published posts for this channel and fetch comments
+          try {
+            const { data: liPosts } = await admin.database
+              .from("scheduled_posts")
+              .select("id, published_url")
+              .eq("user_id", channel.user_id)
+              .not("published_url", "is", null)
+              .order("created_at", { ascending: false })
+              .limit(5);
+
+            for (const lp of liPosts || []) {
+              const match = lp.published_url?.match(/urn:li:(?:share|ugcPost|activity):([0-9a-zA-Z_-]+)/);
+              const urn = match ? match[0] : null;
+              if (!urn) continue;
+
+              const liCommentsUrl = `https://api.linkedin.com/rest/socialActions/${encodeURIComponent(urn)}/comments`;
+              const liRes = await fetch(liCommentsUrl, {
+                headers: {
+                  Authorization: `Bearer ${accessToken}`,
+                  "X-Restli-Protocol-Version": "2.0.0",
+                  "Linkedin-Version": "202604",
+                },
+                signal: AbortSignal.timeout(6000),
+              });
+              if (liRes.ok) {
+                const liData = await liRes.json();
+                const elements = liData?.elements || [];
+                posts.push({
+                  id: urn,
+                  caption: "LinkedIn Post",
+                  comments: {
+                    data: elements.map((el: any) => ({
+                      id: el.id || el.$URN,
+                      text: el.message?.text,
+                      from: { username: el.actor || "@linkedin_user", id: el.actor },
+                      timestamp: el.created?.time ? new Date(el.created.time).toISOString() : new Date().toISOString(),
+                      comments: { data: [] },
+                    })),
+                  },
+                });
+              }
+            }
+          } catch (liPollErr) {
+            console.warn("[Comment Poller] LinkedIn polling notice:", liPollErr);
+          }
+        } else if (channelType === "THREADS") {
           // Threads Graph API: fetch recent posts then their replies
           const threadsUrl = `https://graph.threads.net/v1.0/${accountId}/threads?fields=id,text,timestamp&limit=5&access_token=${encodeURIComponent(accessToken)}`;
           const threadsRes = await fetch(threadsUrl);

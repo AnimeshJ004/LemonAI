@@ -84,24 +84,27 @@ export async function fetchTrendingMetaAds(params: {
         jsonMode: true,
         messages: [{
           role: "user",
-          content: `Generate 6 realistic trending Meta ads for the "${niche}" niche targeting ${country}. Return ONLY valid JSON array:
-[
-  {
-    "id": "ad_1",
-    "advertiserName": "Brand Name",
-    "headline": "Short punchy headline",
-    "primaryText": "Ad body copy (2-3 sentences)",
-    "callToAction": "LEARN_MORE",
-    "estimatedSpendTier": "HIGH",
-    "isActive": true,
-    "platforms": ["instagram", "facebook"],
-    "whyItWorks": "Brief explanation of why this ad format is performing well"
-  }
-]`
+          content: `Generate 6 realistic trending Meta ads for the "${niche}" niche targeting ${country}. Return ONLY a valid JSON object with an "ads" array:
+{
+  "ads": [
+    {
+      "id": "ad_1",
+      "advertiserName": "Brand Name",
+      "headline": "Short punchy headline",
+      "primaryText": "Ad body copy (2-3 sentences)",
+      "callToAction": "LEARN_MORE",
+      "estimatedSpendTier": "HIGH",
+      "isActive": true,
+      "platforms": ["instagram", "facebook"],
+      "whyItWorks": "Brief explanation of why this ad format is performing well"
+    }
+  ]
+}`
         }]
       });
-      if (Array.isArray(completion.data) && completion.data.length > 0) {
-        ads = completion.data;
+      const parsedAds = (completion.data as any)?.ads || completion.data;
+      if (Array.isArray(parsedAds) && parsedAds.length > 0) {
+        ads = parsedAds;
       }
     } catch (err) {
       console.warn("AI generation failed for trending ads:", err);

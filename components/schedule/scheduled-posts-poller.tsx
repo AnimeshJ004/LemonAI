@@ -5,15 +5,32 @@ import { useQueryClient } from "@tanstack/react-query";
 
 /**
  * ScheduledPostsPoller
- * Runs silently in the background of the dashboard to trigger due posts
- * and sync post statuses across Instagram, Facebook, Bluesky, Twitter, etc.
+ *
+ * ⚠ DEPRECATED for production. Vercel Cron now drives `/api/post/process-due`
+ * every minute (see `vercel.json → crons`), and Inngest crons drive comment
+ * polling and DM polling directly. Hammering the API from every open browser
+ * tab creates avoidable serverless invocations, cost, and rate-limit pressure.
+ *
+ * The component is retained as an emergency fallback that can be re-enabled
+ * by setting `NEXT_PUBLIC_ENABLE_CLIENT_POLLER=true`. When the flag is unset
+ * or "false" (the default), the component renders nothing and starts no
+ * intervals — the return type is unchanged so no caller needs to update.
+ *
+ * The React Query cache still invalidates naturally on user-initiated events
+ * (post create, edit, delete, publish-now), so users see fresh state without
+ * the client-side polling.
  */
 export function ScheduledPostsPoller() {
   const queryClient = useQueryClient();
   const isRunningRef = useRef(false);
   const isRunningCommentsRef = useRef(false);
 
+  // Feature flag — default OFF now that Vercel Cron owns scheduling.
+  const enabled = process.env.NEXT_PUBLIC_ENABLE_CLIENT_POLLER === "true";
+
   useEffect(() => {
+    if (!enabled) return;
+
     async function checkDuePosts() {
       if (isRunningRef.current) return;
       isRunningRef.current = true;
@@ -26,23 +43,19 @@ export function ScheduledPostsPoller() {
 
         if (res.ok) {
           const data = await res.json();
-          if (data.successfulCount && data.successfulCount > 0) {
-            if (process.env.NODE_ENV !== "production") {
-              console.log(`[Poller] Published ${data.successfulCount} due post(s). Refreshing UI.`);
-            }
+          if (data.dispatched && data.dispatched > 0) {
             queryClient.invalidateQueries({
               predicate: (q) => q.queryKey[0] === "posts",
             });
           }
         }
-      } catch (err) {
-        // Silent catch in background poller
+      } catch {
+        // Silent — this is a best-effort fallback only.
       } finally {
         isRunningRef.current = false;
       }
     }
 
-    // Check for new Instagram comments to auto-reply immediately
     async function syncLiveComments() {
       if (isRunningCommentsRef.current) return;
       isRunningCommentsRef.current = true;
@@ -52,36 +65,26 @@ export function ScheduledPostsPoller() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
         });
-
         if (res.ok) {
           const data = await res.json();
-          if (data.skipped) {
-            // No Instagram/Facebook accounts connected; quietly do nothing
-            return;
-          }
           if (data.repliedCount && data.repliedCount > 0) {
-            if (process.env.NODE_ENV !== "production") {
-              console.log(`[Auto-Reply Poller] Answered ${data.repliedCount} new comment(s) on Instagram.`);
-            }
             queryClient.invalidateQueries({
               predicate: (q) => q.queryKey[0] === "social-comments",
             });
           }
         }
       } catch {
-        // Silent catch in background poller
+        // Silent
       } finally {
         isRunningCommentsRef.current = false;
       }
     }
 
-    // Stagger initial background sync by 8 seconds so the UI loads instantly without competing for serverless concurrency
     const startupTimer = setTimeout(() => {
       checkDuePosts();
       syncLiveComments();
     }, 8_000);
 
-    // Periodic checks: check due posts every 60s, comments every 45s
     const postInterval = setInterval(checkDuePosts, 60_000);
     const commentInterval = setInterval(syncLiveComments, 45_000);
 
@@ -90,7 +93,7 @@ export function ScheduledPostsPoller() {
       clearInterval(postInterval);
       clearInterval(commentInterval);
     };
-  }, [queryClient]);
+  }, [enabled, queryClient]);
 
   return null;
 }

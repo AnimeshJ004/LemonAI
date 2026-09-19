@@ -190,7 +190,7 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
                 }
 
                 // Silently adapt caption according to the specific social media platform rules
-                let rawContent = item?.content || `Update from ${brandProfile?.business_name || "our team"}: We deliver top quality ${brandProfile?.niche || "solutions"} designed to give you the best results. Contact us today to learn more.`;
+                const rawContent = item?.content || `Update from ${brandProfile?.business_name || "our team"}: We deliver top quality ${brandProfile?.niche || "solutions"} designed to give you the best results. Contact us today to learn more.`;
                 const postContent = adaptCaptionForPlatform(rawContent, targetChannelType, brandProfile);
 
                 let imageObj: { url: string; key: string } | null = null;

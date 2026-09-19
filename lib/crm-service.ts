@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { getInsforgeAdminClient } from "./insforge-server";
+import { logWarn, reportError } from "@/lib/observability";
 
 export type LeadStage =
   | "new"
@@ -17,6 +18,11 @@ export type ChannelSource =
   | "instagram_dm"
   | "facebook"
   | "facebook_dm"
+  | "linkedin"
+  | "linkedin_dm"
+  | "twitter"
+  | "twitter_dm"
+  | "youtube"
   | "voice"
   | "inbound_call"
   | "organic"
@@ -84,6 +90,7 @@ export interface CRMConversation {
   status: "open" | "ai_handling" | "human_takeover" | "resolved";
   is_ai_active: boolean;
   last_message_at: string;
+  last_read_at?: string;
   created_at: string;
   lead?: Lead | null;
   messages?: CRMMessage[];
@@ -148,7 +155,7 @@ async function getConnectedUserIds(userId: string): Promise<string[]> {
       }
     }
   } catch (err: any) {
-    console.warn("Notice resolving connected user IDs:", err?.message);
+    logWarn("Notice resolving connected user IDs:", { scope: "crm-service", extra: { detail: err?.message } });
   }
   return Array.from(userIds);
 }
@@ -166,7 +173,7 @@ export async function getLeadsForUser(userId: string): Promise<Lead[]> {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.warn("Notice reading leads from DB:", error.message);
+      logWarn("Notice reading leads from DB:", { scope: "crm-service", extra: { detail: error.message } });
       return [];
     }
 
@@ -176,7 +183,7 @@ export async function getLeadsForUser(userId: string): Promise<Lead[]> {
       return timeB - timeA;
     });
   } catch (err: any) {
-    console.warn("Notice reading leads from DB:", err?.message);
+    logWarn("Notice reading leads from DB:", { scope: "crm-service", extra: { detail: err?.message } });
     return [];
   }
 }
@@ -194,7 +201,7 @@ export async function getLeadById(leadId: string, userId?: string): Promise<Lead
       return data as Lead;
     }
   } catch (err: any) {
-    console.warn("Notice reading lead by id from DB:", err?.message);
+    logWarn("Notice reading lead by id from DB:", { scope: "crm-service", extra: { detail: err?.message } });
   }
   return null;
 }
@@ -238,12 +245,12 @@ export async function createLead(
       .maybeSingle();
 
     if (error) {
-      console.error("Failed to save lead to DB:", error.message);
+      void reportError(new Error(String("Failed to save lead to DB:")), { scope: "crm-service", extra: { detail: error.message } });
       throw new Error(`Failed to create lead: ${error.message}`);
     }
     return (data as Lead) || newLead;
   } catch (err: any) {
-    console.error("Failed to save lead to DB:", err?.message || err);
+    void reportError(new Error(String("Failed to save lead to DB:")), { scope: "crm-service", extra: { detail: err?.message || err } });
     throw err instanceof Error ? err : new Error("Failed to create lead");
   }
 }
@@ -293,12 +300,12 @@ export async function updateLead(
 
     const { data, error } = await query.select().maybeSingle();
     if (error) {
-      console.warn("Notice updating lead in DB:", error.message);
+      logWarn("Notice updating lead in DB:", { scope: "crm-service", extra: { detail: error.message } });
       return null;
     }
     return (data as Lead) || null;
   } catch (err: any) {
-    console.warn("Notice updating lead in DB:", err?.message);
+    logWarn("Notice updating lead in DB:", { scope: "crm-service", extra: { detail: err?.message } });
     return null;
   }
 }
@@ -325,12 +332,12 @@ export async function deleteLead(leadId: string, userId?: string): Promise<boole
 
     const { error } = await deleteQuery;
     if (error) {
-      console.warn("Notice deleting lead from DB:", error.message);
+      logWarn("Notice deleting lead from DB:", { scope: "crm-service", extra: { detail: error.message } });
       return false;
     }
     return true;
   } catch (err: any) {
-    console.error("Failed to delete lead from DB:", err?.message || err);
+    void reportError(new Error(String("Failed to delete lead from DB:")), { scope: "crm-service", extra: { detail: err?.message || err } });
     return false;
   }
 }
@@ -372,7 +379,7 @@ export async function findOrCreateLeadByContact(params: {
       return existing as Lead;
     }
   } catch (err: any) {
-    console.warn("Notice searching lead by contact in DB:", err?.message);
+    logWarn("Notice searching lead by contact in DB:", { scope: "crm-service", extra: { detail: err?.message } });
   }
 
   return await createLead({
@@ -405,7 +412,7 @@ export async function getConversationsForUser(userId: string): Promise<CRMConver
       .order("last_message_at", { ascending: false });
 
     if (error) {
-      console.warn("Notice: reading conversations from DB:", error.message);
+      logWarn("Notice: reading conversations from DB:", { scope: "crm-service", extra: { detail: error.message } });
       return [];
     }
 
@@ -426,14 +433,23 @@ export async function getConversationsForUser(userId: string): Promise<CRMConver
         msgMap.get(m.conversation_id)!.push(m);
       }
 
-      return convs.map((c: any) => ({
-        ...c,
-        messages: msgMap.get(c.id) || [],
-      })) as CRMConversation[];
+      return convs.map((c: any) => {
+        const cMsgs = msgMap.get(c.id) || [];
+        const lastReadTime = c.last_read_at ? new Date(c.last_read_at).getTime() : 0;
+        const unreadCount = cMsgs.filter(
+          (m) => m.sender_type === "lead" && new Date(m.created_at).getTime() > lastReadTime
+        ).length;
+
+        return {
+          ...c,
+          messages: cMsgs,
+          unread_count: unreadCount,
+        };
+      }) as CRMConversation[];
     }
     return [];
   } catch (err: any) {
-    console.warn("Notice: reading conversations from DB:", err?.message);
+    logWarn("Notice: reading conversations from DB:", { scope: "crm-service", extra: { detail: err?.message } });
     return [];
   }
 }
@@ -469,7 +485,7 @@ export async function getConversationWithMessages(
       };
     }
   } catch (err: any) {
-    console.warn("Notice: reading conv with messages from DB:", err?.message);
+    logWarn("Notice: reading conv with messages from DB:", { scope: "crm-service", extra: { detail: err?.message } });
   }
 
   return { conversation: null, messages: [] };
@@ -503,12 +519,12 @@ export async function createConversation(data: {
       .maybeSingle();
 
     if (error) {
-      console.error("Failed to insert conversation in DB:", error.message);
+      void reportError(new Error(String("Failed to insert conversation in DB:")), { scope: "crm-service", extra: { detail: error.message } });
       throw new Error(`Failed to create conversation: ${error.message}`);
     }
     return (inserted as CRMConversation) || newConv;
   } catch (err: any) {
-    console.error("Failed to insert conversation in DB:", err?.message || err);
+    void reportError(new Error(String("Failed to insert conversation in DB:")), { scope: "crm-service", extra: { detail: err?.message || err } });
     throw err instanceof Error ? err : new Error("Failed to create conversation");
   }
 }
@@ -542,12 +558,12 @@ export async function addMessage(data: {
       .maybeSingle();
 
     if (error) {
-      console.error("Failed to add message in DB:", error.message);
+      void reportError(new Error(String("Failed to add message in DB:")), { scope: "crm-service", extra: { detail: error.message } });
       throw new Error(`Failed to add message: ${error.message}`);
     }
     return (inserted as CRMMessage) || newMsg;
   } catch (err: any) {
-    console.error("Failed to add message in DB:", err?.message || err);
+    void reportError(new Error(String("Failed to add message in DB:")), { scope: "crm-service", extra: { detail: err?.message || err } });
     throw err instanceof Error ? err : new Error("Failed to add message");
   }
 }
@@ -574,13 +590,38 @@ export async function toggleAIActive(
       .maybeSingle();
 
     if (error) {
-      console.warn("Notice: toggling AI in DB:", error.message);
+      logWarn("Notice: toggling AI in DB:", { scope: "crm-service", extra: { detail: error.message } });
       return null;
     }
     return (data as CRMConversation) || null;
   } catch (err: any) {
-    console.warn("Notice: toggling AI in DB:", err?.message);
+    logWarn("Notice: toggling AI in DB:", { scope: "crm-service", extra: { detail: err?.message } });
     return null;
+  }
+}
+
+export async function markConversationAsRead(
+  conversationId: string,
+  userId: string
+): Promise<boolean> {
+  if (!conversationId || !userId) return false;
+  try {
+    const admin = getInsforgeAdminClient();
+    const allowedUserIds = await getConnectedUserIds(userId);
+    const { error } = await admin.database
+      .from("crm_conversations")
+      .update({ last_read_at: new Date().toISOString() })
+      .eq("id", conversationId)
+      .in("user_id", allowedUserIds);
+
+    if (error) {
+      logWarn("Notice: mark conversation as read:", { scope: "crm-service", extra: { detail: error.message } });
+      return false;
+    }
+    return true;
+  } catch (err: any) {
+    logWarn("Notice: mark conversation as read:", { scope: "crm-service", extra: { detail: err?.message } });
+    return false;
   }
 }
 
@@ -614,10 +655,10 @@ export async function recordActivity(params: {
     const admin = getInsforgeAdminClient();
     const { error } = await admin.database.from("crm_activities").insert([activity]);
     if (error) {
-      console.warn("Notice: saving activity to DB:", error.message);
+      logWarn("Notice: saving activity to DB:", { scope: "crm-service", extra: { detail: error.message } });
     }
   } catch (e: any) {
-    console.warn("Notice: saving activity to DB:", e?.message);
+    logWarn("Notice: saving activity to DB:", { scope: "crm-service", extra: { detail: e?.message } });
   }
 
   return activity;
@@ -635,7 +676,7 @@ export async function getActivitiesForUser(userId: string): Promise<CRMActivity[
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.warn("Notice: reading activities from DB:", error.message);
+      logWarn("Notice: reading activities from DB:", { scope: "crm-service", extra: { detail: error.message } });
       return [];
     }
 
@@ -643,7 +684,7 @@ export async function getActivitiesForUser(userId: string): Promise<CRMActivity[
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
   } catch (e: any) {
-    console.warn("Notice: reading activities from DB:", e?.message);
+    logWarn("Notice: reading activities from DB:", { scope: "crm-service", extra: { detail: e?.message } });
     return [];
   }
 }

@@ -1,5 +1,3 @@
-import { createHash } from "crypto";
-
 /**
  * PII Redactor — a defense-in-depth helper that strips personally identifiable
  * information (PII) and secrets from any value before it hits logs, telemetry,
@@ -23,6 +21,10 @@ import { createHash } from "crypto";
  *   redactPII(value)      — deep-redacts any value (string, array, object).
  *   redactString(str)     — redacts a single string.
  *   hashIP(ip)            — one-way SHA-256 prefix; use for audit logs.
+ *
+ * Note: `hashIP` lazy-loads Node's `crypto` module so this file remains
+ * importable from Edge runtime code (instrumentation.ts, middleware). Only
+ * callers on the Node runtime actually invoke `hashIP` in practice.
  */
 
 // ---------------------------------------------------------------------------
@@ -248,8 +250,19 @@ export function hashIP(ip: string | null | undefined, salt = "lemon-ai"): string
   if (!ip || typeof ip !== "string") return null;
   const trimmed = ip.trim();
   if (!trimmed) return null;
-  return createHash("sha256")
-    .update(`${salt}:${trimmed}`)
-    .digest("hex")
-    .slice(0, 16);
+
+  // Lazy-load Node's crypto so this module can be safely imported from Edge
+  // runtime code (middleware, instrumentation.ts) that never calls hashIP.
+  // Callers on the Edge that DO invoke this will simply get `null` back.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const nodeCrypto = require("node:crypto") as typeof import("node:crypto");
+    return nodeCrypto
+      .createHash("sha256")
+      .update(`${salt}:${trimmed}`)
+      .digest("hex")
+      .slice(0, 16);
+  } catch {
+    return null;
+  }
 }

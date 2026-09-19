@@ -42,7 +42,10 @@ import {
   Filter,
   UserPlus,
   ExternalLink,
+  Download,
+  Upload,
 } from "lucide-react";
+import { ImportLeadsDialog } from "@/components/crm/import-leads-dialog";
 import { cn } from "@/lib/utils";
 
 const STAGE_CONFIG: Record<LeadStage, { label: string; color: string; badge: string }> = {
@@ -78,6 +81,7 @@ export function LeadsTable({
 
   // Modals state
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [leadToDelete, setLeadToDelete] = useState<Lead | null>(null);
@@ -104,6 +108,36 @@ export function LeadsTable({
   const handleEdit = (lead: Lead) => {
     setSelectedLead(lead);
     setIsEditOpen(true);
+  };
+
+  const handleExportCSV = () => {
+    if (filtered.length === 0) {
+      toast.error("No leads found to export");
+      return;
+    }
+    const headers = ["Name", "Email", "Phone", "Stage", "Score", "Deal Value", "Source", "Company", "Notes", "Created At"];
+    const escapeCsv = (str: string | null | undefined) => `"${(str || "").replace(/"/g, '""')}"`;
+    const rows = filtered.map((l) => [
+      escapeCsv(l.name),
+      escapeCsv(l.email),
+      escapeCsv(l.phone),
+      escapeCsv(l.stage),
+      l.score ?? "",
+      l.deal_value ?? 0,
+      escapeCsv(l.source),
+      escapeCsv(l.metadata?.company),
+      escapeCsv(l.metadata?.notes),
+      escapeCsv(l.created_at),
+    ]);
+    const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `lemon_crm_leads_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(`Exported ${filtered.length} leads to CSV`);
   };
 
   const confirmDelete = async () => {
@@ -232,6 +266,29 @@ export function LeadsTable({
         </div>
 
         <div className="flex items-center gap-2 self-end sm:self-auto">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCSV}
+            disabled={filtered.length === 0}
+            className="h-9 text-xs gap-1.5"
+            title="Export visible leads to CSV"
+          >
+            <Download className="size-3.5" />
+            <span className="hidden md:inline">Export CSV</span>
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsImportOpen(true)}
+            className="h-9 text-xs gap-1.5"
+            title="Import prospects from CSV spreadsheet"
+          >
+            <Upload className="size-3.5" />
+            <span className="hidden md:inline">Import CSV</span>
+          </Button>
+
           {onRefresh && (
             <Button
               variant="outline"
@@ -521,6 +578,15 @@ export function LeadsTable({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* CSV Import Dialog */}
+      <ImportLeadsDialog
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onImportSuccess={() => {
+          if (onRefresh) onRefresh();
+        }}
+      />
     </div>
   );
 }

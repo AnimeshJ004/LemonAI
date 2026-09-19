@@ -143,7 +143,7 @@ export async function researchMarketTrends(params: TrendResearchParams) {
     preferredTier: "TIER_2_SMART",
     jsonMode: true,
     systemPrompt: `You are an elite Performance Marketing, Viral Content & Algorithm Intelligence Strategist (${currentMonth} ${currentYear}).
-Ground your analysis in actual active social media algorithms (Instagram Reels, YouTube Shorts, TikTok, LinkedIn, X), current 0-3s pattern interrupts, competitor reverse-engineering, and audience psychology.
+Ground your analysis in actual active social media algorithms (Instagram Reels, YouTube Shorts, LinkedIn, X), current 0-3s pattern interrupts, competitor reverse-engineering, and audience psychology.
 Whether this entity is a local business, YouTuber, D2C brand, startup, or freelancer, discover EXACTLY what content goes viral vs what flops in their space.
 
 Return ONLY valid JSON matching this schema:

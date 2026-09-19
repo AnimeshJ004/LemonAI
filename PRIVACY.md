@@ -24,7 +24,7 @@ Every piece of personal data Lemon AI stores, why it exists, and where it lives.
 |---|---|---|---|---|---|
 | **Authentication identity** | Clerk (managed) | Email, name, avatar, sign-in factors | Contract (GDPR Art. 6(1)(b)) | TLS in-transit + Clerk at-rest | Until account deletion |
 | **User profile snapshot** | `brand_profiles`, `ai_memory` | Business name, niche, tone, target audience, address | Contract | TLS + DB at-rest | Until account deletion |
-| **OAuth channel tokens** | `user_channels.access_token`, `.refresh_token`, `.page_access_token` | Provider access tokens for Instagram, Facebook, LinkedIn, X, YouTube, Threads, Bluesky, TikTok | Contract | **AES-256-GCM app-layer** (`lib/encryption.ts`) + DB at-rest | Until channel disconnect or account deletion |
+| **OAuth channel tokens** | `user_channels.access_token`, `.refresh_token`, `.page_access_token` | Provider access tokens for Instagram, Facebook, LinkedIn, X, YouTube, Threads, Bluesky | Contract | **AES-256-GCM app-layer** (`lib/encryption.ts`) + DB at-rest | Until channel disconnect or account deletion |
 | **Social handles** | `user_channels.handle`, `.provider_account_id`, `.profile_image` | Public handle + provider IDs | Contract | TLS + DB at-rest | Until channel disconnect |
 | **Lead PII** | `leads` | Name, email, phone, score, deal value | Legitimate interest (Art. 6(1)(f)) for the tenant's own CRM | TLS + DB at-rest | 2 years post last activity, then purged by retention cron |
 | **Conversation content** | `crm_conversations`, `crm_messages`, `crm_activities`, `social_dms`, `social_comments` | Full message bodies, sender metadata | Legitimate interest | TLS + DB at-rest | 2 years for `crm_messages`, 1 year for `social_comments` |
@@ -119,6 +119,15 @@ Callsite guidance:
   no record exists (backward compatibility for pre-consent-module users).
 - Use `hasExplicitConsent(userId, type)` for GDPR-sensitive operations
   (marketing emails, third-party sharing, AI training) — fails closed.
+
+### 4.1 Cookie Consent & Analytics Tracker Blocker (`lib/consent-tracker-gate.ts`)
+
+In compliance with GDPR Recital 30, ePrivacy Directive 2002/58/EC (Art. 5(3)), and DPDP Sec. 6:
+- **Strict Prior Consent (Fail-Closed)**: Non-essential analytics and marketing cookies/trackers are strictly blocked prior to explicit opt-in.
+- **Dynamic Script Interception**: `installTrackerScriptBlocker()` intercepts `document.createElement('script')` and `navigator.sendBeacon` to block dynamic loading of Google Analytics, Tag Manager, Meta Pixel, PostHog, Clarity, Hotjar, etc., when consent is withheld.
+- **Automatic Tracker Cookie Purge**: When consent is rejected or revoked, `purgeTrackingCookies()` immediately clears all matching tracking identifiers (`_ga`, `_gid`, `_gat`, `_fbp`, `_clck`, `_hj*`, etc.) from `document.cookie`.
+- **Global Opt-Out Flags**: Sets `window['ga-disable-*'] = true` and stubs analytics globals (`window.gtag`, `window.fbq`) to drop tracking payloads.
+- **Safe Telemetry API**: Client calls route through `trackAnalyticsEvent(name, payload)` which verifies `isAnalyticsConsentGranted()` before firing.
 
 ---
 

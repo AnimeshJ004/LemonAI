@@ -12,6 +12,12 @@ export const adOptimizerCron = inngest.createFunction(
   {
     id: "ad-optimizer-cron",
     name: "Autonomous Meta Ads Budget & ROAS Optimizer",
+    // Ad optimization is destructive (budget changes, campaign pauses).
+    // Never allow two runs to interleave — they would fight each other and
+    // could double-apply +20% budget scaling.
+    concurrency: {
+      limit: 1,
+    },
     triggers: [
       {
         cron: "0 */6 * * *", // Runs every 6 hours

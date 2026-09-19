@@ -69,6 +69,31 @@ export const publishScheduledPost = inngest.createFunction(
     {
         id:"publish-scheduled-post",
         name:"Publish Scheduled Post",
+        // ── Back-pressure controls ──────────────────────────────────────────
+        // Prevents the fan-out from overwhelming social APIs (Instagram, Meta,
+        // LinkedIn, X all enforce per-app rate limits) and from monopolizing
+        // Vercel function slots when a single tenant queues hundreds of posts.
+        concurrency: [
+            {
+                // Global cap: never more than 10 posts publishing simultaneously
+                // across the whole tenant base. Prevents provider rate-limit hits.
+                limit: 10,
+            },
+            {
+                // Per-user fairness: any single user can only have 3 posts
+                // publishing concurrently. Stops one tenant from starving others.
+                scope: "fn",
+                key: "event.data.userId",
+                limit: 3,
+            },
+        ],
+        // Smooth burst spikes: no more than 30 publishes per minute overall.
+        // Combined with the concurrency limits above, this yields a stable
+        // steady-state throughput that stays well under provider rate limits.
+        throttle: {
+            limit: 30,
+            period: "1m",
+        },
         // NOTE: idempotency intentionally removed — the DB-level status lock (queue → publishing)
         // prevents double-publishing. idempotency was blocking the every-minute cron from
         // re-delivering events for posts whose prior sleepUntil had timed out.

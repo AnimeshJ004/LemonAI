@@ -35,6 +35,7 @@ import {
   MoreVertical,
   Edit2,
   Trash2,
+  Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -219,6 +220,23 @@ export function LeadCard({ lead, index, onClick, onDelete }: LeadCardProps) {
                         <span className="hidden sm:inline">Booked</span>
                       </div>
                     ) : null}
+
+                    {lead.metadata?.followUpReminder?.date && (
+                      <div
+                        className="flex items-center gap-1 text-[10px] text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-medium shrink-0"
+                        title={`Follow-up reminder: ${new Date(lead.metadata.followUpReminder.date).toLocaleString()} ${
+                          lead.metadata.followUpReminder.note ? `— "${lead.metadata.followUpReminder.note}"` : ""
+                        }`}
+                      >
+                        <Bell className="size-2.5 shrink-0 animate-pulse text-amber-500" />
+                        <span className="truncate max-w-[70px]">
+                          {new Date(lead.metadata.followUpReminder.date).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                          })}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
                   {/* Explicit Edit & Delete Action Buttons */}

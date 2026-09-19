@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { updateLead, Lead } from "@/lib/crm-service";
+import { enforceRateLimit } from "@/lib/rate-limit";
 
 export const maxDuration = 30;
 
@@ -8,9 +9,19 @@ export const maxDuration = 30;
  * Cal.com Webhook Handler
  * Receives BOOKING_CREATED, BOOKING_RESCHEDULED, and BOOKING_CANCELLED events.
  * Automatically updates lead pipeline stage to 'booked'.
+ *
+ * Rate limited to 60 events/min per source IP via the shared Upstash-backed
+ * limiter.
  */
 export async function POST(req: NextRequest) {
   try {
+    const limited = await enforceRateLimit(req, {
+      limit: 60,
+      windowMs: 60_000,
+      namespace: "webhook:calcom",
+    });
+    if (limited) return limited;
+
     const body = await req.json().catch(() => ({}));
     const event = body?.triggerEvent || body?.event || "BOOKING_CREATED";
     const payload = body?.payload || body;

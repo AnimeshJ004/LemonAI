@@ -1,14 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { purgeAllUserData } from "@/lib/user-purge";
+import { enforceRateLimit } from "@/lib/rate-limit";
 import crypto from "crypto";
 
 /**
  * Clerk Webhook Handler
  * Specifically listens for `user.deleted` to completely erase user data
  * across all database tables (GDPR / DPDP compliance).
+ *
+ * Rate limited to 60 events/min per source IP. Clerk generally does not
+ * burst, but the limiter shields against replay-storm abuse if the signing
+ * secret is ever leaked.
  */
 export async function POST(req: NextRequest) {
   try {
+    const limited = await enforceRateLimit(req, {
+      limit: 60,
+      windowMs: 60_000,
+      namespace: "webhook:clerk",
+    });
+    if (limited) return limited;
+
     const rawBody = await req.text();
     const headers = req.headers;
 

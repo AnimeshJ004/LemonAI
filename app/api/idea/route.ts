@@ -7,7 +7,7 @@ export async function GET() {
         const { insforge, userId } = await getInsforgeServerClient();
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-        let [ideasRes, groupsRes] = await Promise.all([
+        const [ideasRes, groupsRes] = await Promise.all([
             insforge.database
                 .from("ideas")
                 .select("*")

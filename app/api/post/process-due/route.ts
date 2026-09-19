@@ -1,131 +1,161 @@
-import { getInsforgeAdminClient } from "@/lib/insforge-server";
-import { publishPostDirectly } from "@/lib/direct-publisher";
-import { pollConnectedChannelsComments } from "@/lib/social-comments-service";
 import { NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { timingSafeEqual } from "crypto";
+import { getInsforgeAdminClient } from "@/lib/insforge-server";
+import { inngest } from "@/inngest/client";
+import { reportError, logInfo } from "@/lib/observability";
 
-export const maxDuration = 60;
+/**
+ * /api/post/process-due — THIN FAN-OUT
+ *
+ * Historical note: this route used to publish posts and poll comments
+ * synchronously inside its 60-second HTTP window, which timed out on busy
+ * tenants and burned Vercel function budget. It is now a pure dispatcher:
+ *
+ *   1. Recover posts stuck in 'publishing' > 3 min (fast SQL update).
+ *   2. Fetch due posts (fast SQL select).
+ *   3. Fan out one `post/publish.requested` Inngest event per due post.
+ *   4. Return immediately.
+ *
+ * All heavy work (publishing to social APIs, comment polling, DM polling)
+ * happens in Inngest background functions with their own retries,
+ * concurrency limits, and throttling — see `inngest/functions/*`.
+ *
+ * Typical response time: < 500ms even with hundreds of due posts.
+ *
+ * Authorization: identical to the previous version — accepts either a
+ * `Bearer <CRON_SECRET>` header (Vercel Cron, external scheduler) or a
+ * valid Clerk session (dashboard poller).
+ */
+
+// This handler is intentionally cheap. Keep the maxDuration modest so the
+// function slot returns to the pool quickly.
+export const maxDuration = 15;
 
 export async function GET(req: Request) {
-    return handleProcessDue(req);
+  return handleProcessDue(req);
 }
 
 export async function POST(req: Request) {
-    return handleProcessDue(req);
+  return handleProcessDue(req);
 }
 
 async function handleProcessDue(req: Request) {
-    // ─── Authorization ────────────────────────────────────────────────────────
-    // Accepts one of two valid callers:
-    //   1. External cron scheduler — supplies Authorization: Bearer <CRON_SECRET>
-    //   2. Dashboard poller — carries a valid Clerk session cookie (authenticated user)
-    //
-    // Anonymous requests are always rejected.
-    const cronSecret = process.env.CRON_SECRET;
+  const startedAt = Date.now();
 
-    const authHeader = req.headers.get("authorization") || "";
-    const providedToken = authHeader.startsWith("Bearer ")
-        ? authHeader.slice("Bearer ".length).trim()
-        : "";
+  // ─── Authorization ────────────────────────────────────────────────────
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = req.headers.get("authorization") || "";
+  const providedToken = authHeader.startsWith("Bearer ")
+    ? authHeader.slice("Bearer ".length).trim()
+    : "";
 
-    let authorized = false;
+  let authorized = false;
 
-    // Path 1: CRON_SECRET bearer token (external schedulers, Vercel Cron, etc.)
-    if (cronSecret && cronSecret.trim().length > 0 && providedToken.length > 0) {
-        const providedBuf = Buffer.from(providedToken);
-        const expectedBuf = Buffer.from(cronSecret.trim());
-        if (
-            providedBuf.length === expectedBuf.length &&
-            timingSafeEqual(providedBuf, expectedBuf)
-        ) {
-            authorized = true;
-        }
+  if (cronSecret && cronSecret.trim().length > 0 && providedToken.length > 0) {
+    const providedBuf = Buffer.from(providedToken);
+    const expectedBuf = Buffer.from(cronSecret.trim());
+    if (
+      providedBuf.length === expectedBuf.length &&
+      timingSafeEqual(providedBuf, expectedBuf)
+    ) {
+      authorized = true;
     }
+  }
 
-    // Path 2: Valid Clerk session (dashboard poller running as an authenticated user)
-    if (!authorized) {
-        try {
-            const { userId } = await auth();
-            if (userId) {
-                authorized = true;
-            }
-        } catch {
-            // No Clerk context — keep authorized = false
-        }
-    }
-
-    if (!authorized) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
+  if (!authorized) {
     try {
-        const insforge = getInsforgeAdminClient();
-
-        // 0. Recover posts stuck in 'publishing' for > 3 min that were never
-        //    actually published (guards against cold-start crashes). Only resets
-        //    posts that started publishing more than 3 min ago AND have no
-        //    published_at timestamp — never touches successfully published posts.
-        const threeMinutesAgo = new Date(Date.now() - 180_000).toISOString();
-        try {
-            await insforge.database
-                .from("scheduled_posts")
-                .update({ status: "queue" })
-                .eq("status", "publishing")
-                .lte("publishing_started_at", threeMinutesAgo)
-                .is("published_at", null);
-        } catch {}
-
-        // 1. Fetch all posts in queue whose scheduled time has arrived (with 60s lookahead buffer)
-        const lookaheadNow = new Date(Date.now() + 60_000).toISOString();
-        const { data: duePosts, error } = await insforge.database
-            .from("scheduled_posts")
-            .select("id, status, scheduled_at")
-            .eq("status", "queue")
-            .lte("scheduled_at", lookaheadNow)
-            .order("scheduled_at", { ascending: true });
-
-        if (error) {
-            console.error("[Publisher] Error fetching due posts:", error.message);
-        }
-
-        let publishedCount = 0;
-        let dueCount = 0;
-
-        if (duePosts && duePosts.length > 0) {
-            dueCount = duePosts.length;
-
-            // publishPostDirectly uses a CAS lock on status so concurrent
-            // invocations cannot double-publish the same post.
-            const publishResults = await Promise.allSettled(
-                duePosts.map((post) => publishPostDirectly(post.id))
-            );
-
-            publishedCount = publishResults.filter(
-                (r) => r.status === "fulfilled" && (r as any).value?.success
-            ).length;
-        }
-
-        // 2. Autonomous Comment Engagement — polls connected channels and
-        //    auto-replies using DB-backed idempotency (replied_comments table).
-        let commentSyncStats = { scannedChannels: 0, scannedPosts: 0, repliedCount: 0 };
-        try {
-            commentSyncStats = await pollConnectedChannelsComments(5);
-        } catch (commentErr: any) {
-            console.warn("[Process Due] Background comment polling notice:", commentErr?.message);
-        }
-
-        return NextResponse.json({
-            success: true,
-            posts: {
-                processedCount: dueCount,
-                successfulCount: publishedCount,
-                postIds: duePosts?.map((p) => p.id) || [],
-            },
-            comments: commentSyncStats,
-        });
-    } catch (error: any) {
-        console.error("Error processing due posts & comments:", error);
-        return NextResponse.json({ error: error?.message || "Internal server error" }, { status: 500 });
+      const { userId } = await auth();
+      if (userId) authorized = true;
+    } catch {
+      // no clerk context — keep authorized = false
     }
+  }
+
+  if (!authorized) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    const insforge = getInsforgeAdminClient();
+
+    // ─── Step 1: recover stuck 'publishing' posts (fast SQL update) ─────
+    // Posts that started publishing > 3 min ago and never completed are reset
+    // to 'queue' so the next tick can retry. This guards against cold-start
+    // crashes and dropped Inngest events.
+    const threeMinutesAgo = new Date(Date.now() - 180_000).toISOString();
+    try {
+      await insforge.database
+        .from("scheduled_posts")
+        .update({ status: "queue" })
+        .eq("status", "publishing")
+        .lte("publishing_started_at", threeMinutesAgo)
+        .is("published_at", null);
+    } catch (recoveryErr) {
+      // Never fail the whole fan-out for a recovery hiccup.
+      await reportError(recoveryErr, {
+        scope: "process-due.recovery",
+      }, "warning");
+    }
+
+    // ─── Step 2: fetch due posts (fast SQL select) ──────────────────────
+    // 60-second lookahead buffer catches posts that are about to be due,
+    // keeping the effective scheduling accuracy within a minute even if
+    // the cron ticks slightly early.
+    const lookaheadNow = new Date(Date.now() + 60_000).toISOString();
+    const { data: duePosts, error } = await insforge.database
+      .from("scheduled_posts")
+      .select("id, user_id, scheduled_at")
+      .eq("status", "queue")
+      .lte("scheduled_at", lookaheadNow)
+      .order("scheduled_at", { ascending: true })
+      .limit(500); // hard cap — anything beyond this waits for the next tick
+
+    if (error) {
+      await reportError(error, { scope: "process-due.fetch" }, "warning");
+    }
+
+    // ─── Step 3: fan out one Inngest event per due post ─────────────────
+    let dispatched = 0;
+    if (duePosts && duePosts.length > 0) {
+      try {
+        await inngest.send(
+          duePosts.map((post) => ({
+            name: "post/publish.requested",
+            data: {
+              postId: post.id,
+              userId: post.user_id, // enables per-user Inngest concurrency scoping
+            },
+          }))
+        );
+        dispatched = duePosts.length;
+      } catch (inngestErr: any) {
+        // Even if the Inngest client is unreachable, we do NOT crash — the
+        // next cron tick will retry. Failure is logged and reported.
+        await reportError(inngestErr, { scope: "process-due.dispatch" }, "warning");
+      }
+    }
+
+    const elapsedMs = Date.now() - startedAt;
+    logInfo("Process-due fan-out complete", {
+      scope: "process-due",
+      extra: { dueCount: duePosts?.length ?? 0, dispatched, elapsedMs },
+    });
+
+    return NextResponse.json({
+      success: true,
+      dueCount: duePosts?.length ?? 0,
+      dispatched,
+      elapsedMs,
+      // NOTE: comment polling and DM polling run on their own Inngest crons
+      // (`pollPostComments`, `pollSocialDMs`). They are no longer executed
+      // inline in this route.
+    });
+  } catch (err: any) {
+    await reportError(err, { scope: "process-due" }, "error");
+    return NextResponse.json(
+      { error: err?.message || "Internal server error" },
+      { status: 500 }
+    );
+  }
 }

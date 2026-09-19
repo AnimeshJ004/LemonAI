@@ -6,7 +6,7 @@ import {
 } from "@/lib/groq-client";
 import {
   buildCacheKey,
-  getCachedAIResponse,
+  getCachedAIResponseAsync,
   setCachedAIResponse,
 } from "@/lib/ai-cache";
 
@@ -170,7 +170,7 @@ export async function routeAICall<T = any>(req: AICallRequest): Promise<AICallRe
     maxTokens: req.maxTokens,
   });
 
-  const cached = getCachedAIResponse<T>(cacheKey);
+  const cached = await getCachedAIResponseAsync<T>(cacheKey);
   if (cached) {
     const latencyMs = Date.now() - startTime;
     console.log(`[AI Router] Cache HIT for task ${req.task} (model: ${cached.model}, latency: ${latencyMs}ms)`);

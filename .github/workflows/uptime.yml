@@ -1,0 +1,82 @@
+name: Uptime probe
+
+# Free, zero-dependency uptime monitor.
+#
+# Runs every 15 minutes (GitHub Actions cron minimum granularity for public
+# repos is 5 min; 15 min keeps free-tier minutes under control) and
+# `curl`s the /api/health endpoint. If the response status is not in the
+# 200-299 range, the workflow fails, and GitHub sends an email to the repo
+# admin. For richer routing (Slack/PagerDuty) the app's own alerting
+# pipeline (`lib/alerting.ts`) is the primary channel — this workflow is
+# the external belt-and-suspenders.
+#
+# Configure:
+#   Repo → Settings → Secrets and variables → Actions → Variables
+#     APP_PROBE_URL = https://<your-domain>/api/health
+#
+# Or (if you want to keep the URL private) use a repository Secret with the
+# same name. Both are read; Secret takes precedence.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+concurrency:
+  group: uptime-probe
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: /api/health
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Resolve target URL
+        id: url
+        env:
+          SECRET_URL: ${{ secrets.APP_PROBE_URL }}
+          VAR_URL: ${{ vars.APP_PROBE_URL }}
+        run: |
+          URL="${SECRET_URL:-$VAR_URL}"
+          if [ -z "$URL" ]; then
+            echo "::warning::APP_PROBE_URL is not configured. Set it in Settings → Secrets/Variables."
+            echo "url=" >> "$GITHUB_OUTPUT"
+          else
+            echo "url=$URL" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Probe /api/health
+        if: steps.url.outputs.url != ''
+        env:
+          URL: ${{ steps.url.outputs.url }}
+        run: |
+          set -euo pipefail
+          echo "GET $URL"
+          # Retry up to 3 times with a 5-second gap to smooth transient
+          # network blips.
+          for attempt in 1 2 3; do
+            HTTP_STATUS=$(curl --silent --show-error --output /tmp/body \
+              --write-out '%{http_code}' \
+              --max-time 15 \
+              --retry 0 \
+              -H "User-Agent: LemonAI-Uptime-Probe/1.0" \
+              -H "X-Correlation-Id: uptime-$(date +%s)-$attempt" \
+              "$URL" || echo "000")
+
+            if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 300 ]; then
+              echo "OK — HTTP $HTTP_STATUS on attempt $attempt"
+              cat /tmp/body
+              exit 0
+            fi
+
+            echo "attempt $attempt: HTTP $HTTP_STATUS"
+            sleep 5
+          done
+
+          echo "::error::/api/health returned non-2xx after 3 attempts (last: $HTTP_STATUS)"
+          cat /tmp/body || true
+          exit 1

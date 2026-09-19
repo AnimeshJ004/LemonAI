@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
                 .select("*")
                 .order("created_at", { ascending: true });
 
-            channelTypes = (typesRes.data ?? []).filter((ct: any) => ct.type !== 'TIKTOK');
+            channelTypes = typesRes.data ?? [];
             if (channelTypes.length === 0) {
                 const defaultChannelTypes = [
                     { type: 'TWITTER', name: 'Twitter / X', color: '#000000', character_limit: 280 },
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
                     .insert(defaultChannelTypes)
                     .select();
                 if (seedRes.data && seedRes.data.length > 0) {
-                    channelTypes = seedRes.data.filter((ct: any) => ct.type !== 'TIKTOK');
+                    channelTypes = seedRes.data;
                 }
             }
             cachedChannelTypes = channelTypes;

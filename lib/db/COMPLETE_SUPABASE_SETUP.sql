@@ -53,10 +53,13 @@ INSERT INTO channel_types (type, name, color, character_limit) VALUES
   ('FACEBOOK',  'Facebook',          '#1877F2', 63206),
   ('BLUESKY',   'Bluesky',           '#1285fe', 300),
   ('YOUTUBE',   'YouTube',           '#FF0000', 100),
-  ('TIKTOK',    'Tiktok',            '#000000', 100),
   ('WHATSAPP',  'WhatsApp Cloud',    '#25D366', 4096),
   ('CHATBOT',   'Website AI Bot',    '#F59E0B', 2000)
 ON CONFLICT (type) DO NOTHING;
+
+-- Permanently clean up TikTok if present from prior migrations
+DELETE FROM user_channels WHERE channel_type_id IN (SELECT id FROM channel_types WHERE type = 'TIKTOK');
+DELETE FROM channel_types WHERE type = 'TIKTOK';
 
 -- =============================================================================
 -- 2. USER CHANNELS (Connected social accounts per user)
@@ -204,8 +207,11 @@ CREATE TABLE IF NOT EXISTS crm_conversations (
   status           text DEFAULT 'open',        -- open, resolved, snoozed
   is_ai_active     boolean DEFAULT true,       -- toggles human handover
   last_message_at  timestamptz DEFAULT now(),
+  last_read_at     timestamptz DEFAULT now(),
   created_at       timestamptz DEFAULT now()
 );
+
+ALTER TABLE crm_conversations ADD COLUMN IF NOT EXISTS last_read_at timestamptz DEFAULT now();
 
 ALTER TABLE crm_conversations ENABLE ROW LEVEL SECURITY;
 
@@ -571,6 +577,153 @@ CREATE POLICY "Service Role Manage" ON storage.objects
   WITH CHECK (bucket_id = 'lemon');
 
 -- =============================================================================
+-- 16. COMMENT REPLY IDEMPOTENCY & PUBLISHING LOCK (Migration 11)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS replied_comments (
+  comment_id   text        NOT NULL,
+  user_id      text        NOT NULL,
+  replied_at   timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (comment_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_replied_comments_user_id
+  ON replied_comments (user_id);
+
+CREATE INDEX IF NOT EXISTS idx_replied_comments_replied_at
+  ON replied_comments (replied_at);
+
+ALTER TABLE scheduled_posts
+  ADD COLUMN IF NOT EXISTS publishing_started_at timestamptz;
+
+-- =============================================================================
+-- 17. PRIVACY & AUDIT COMPLIANCE TABLES (Migration 12)
+-- =============================================================================
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        TEXT,
+  actor_type     TEXT        NOT NULL
+                 CHECK (actor_type IN ('user', 'system', 'admin', 'anonymous', 'webhook')),
+  actor_user_id  TEXT,
+  event          TEXT        NOT NULL,
+  resource_type  TEXT,
+  resource_id    TEXT,
+  metadata       JSONB       DEFAULT '{}',
+  ip_hash        TEXT,
+  user_agent     TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS audit_logs_select_own ON audit_logs;
+CREATE POLICY audit_logs_select_own ON audit_logs
+  FOR SELECT USING (user_id = requesting_user_id());
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_user_created
+  ON audit_logs (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_event_created
+  ON audit_logs (event, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_resource
+  ON audit_logs (resource_type, resource_id);
+
+CREATE TABLE IF NOT EXISTS consent_records (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       TEXT        NOT NULL,
+  consent_type  TEXT        NOT NULL
+                CHECK (consent_type IN (
+                  'terms_of_service',
+                  'privacy_policy',
+                  'marketing_emails',
+                  'analytics_cookies',
+                  'ai_training',
+                  'data_processing',
+                  'third_party_sharing'
+                )),
+  granted       BOOLEAN     NOT NULL,
+  version       TEXT        NOT NULL DEFAULT '1.0',
+  ip_hash       TEXT,
+  user_agent    TEXT,
+  metadata      JSONB       DEFAULT '{}',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE consent_records ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS consent_records_select_own ON consent_records;
+CREATE POLICY consent_records_select_own ON consent_records
+  FOR SELECT USING (user_id = requesting_user_id());
+
+DROP POLICY IF EXISTS consent_records_insert_own ON consent_records;
+CREATE POLICY consent_records_insert_own ON consent_records
+  FOR INSERT WITH CHECK (user_id = requesting_user_id());
+
+CREATE INDEX IF NOT EXISTS idx_consent_user_type_created
+  ON consent_records (user_id, consent_type, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS dsr_requests (
+  id                 UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id            TEXT        NOT NULL,
+  request_type       TEXT        NOT NULL
+                     CHECK (request_type IN (
+                       'access',
+                       'deletion',
+                       'portability',
+                       'rectification',
+                       'restriction',
+                       'objection'
+                     )),
+  status             TEXT        NOT NULL DEFAULT 'pending'
+                     CHECK (status IN ('pending', 'processing', 'completed', 'rejected')),
+  fulfilled_at       TIMESTAMPTZ,
+  rejection_reason   TEXT,
+  metadata           JSONB       DEFAULT '{}',
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE dsr_requests ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS dsr_requests_select_own ON dsr_requests;
+CREATE POLICY dsr_requests_select_own ON dsr_requests
+  FOR SELECT USING (user_id = requesting_user_id());
+
+DROP POLICY IF EXISTS dsr_requests_insert_own ON dsr_requests;
+CREATE POLICY dsr_requests_insert_own ON dsr_requests
+  FOR INSERT WITH CHECK (user_id = requesting_user_id());
+
+CREATE INDEX IF NOT EXISTS idx_dsr_user_created
+  ON dsr_requests (user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dsr_status
+  ON dsr_requests (status, created_at);
+
+CREATE TABLE IF NOT EXISTS data_retention_policies (
+  id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  table_name     TEXT        NOT NULL UNIQUE,
+  timestamp_col  TEXT        NOT NULL DEFAULT 'created_at',
+  retention_days INTEGER     NOT NULL CHECK (retention_days > 0),
+  description    TEXT,
+  active         BOOLEAN     NOT NULL DEFAULT true,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE data_retention_policies ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS idx_retention_active
+  ON data_retention_policies (active, table_name);
+
+INSERT INTO data_retention_policies (table_name, timestamp_col, retention_days, description)
+VALUES
+  ('audit_logs',          'created_at', 2190, 'Legal defense + regulator audit window (6 yrs).'),
+  ('replied_comments',    'replied_at',   30, 'Comment reply dedup — safe to prune monthly.'),
+  ('crm_messages',        'created_at',  730, 'Abandoned inbound conversations (2 yrs).'),
+  ('social_comments',     'created_at',  365, 'Public comments log (1 yr).'),
+  ('flywheel_executions', 'created_at',  365, 'Flywheel run history (1 yr).'),
+  ('ai_memory',           'created_at',  730, 'AI conversational memory (2 yrs).'),
+  ('dsr_requests',        'created_at', 2190, 'Regulatory evidence retention (6 yrs).')
+ON CONFLICT (table_name) DO NOTHING;
+
+-- =============================================================================
 -- SETUP COMPLETE!
 -- Your Supabase database is now 100% configured for LemonAI.
 -- =============================================================================
+

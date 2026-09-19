@@ -59,6 +59,19 @@ export default function InboxPage() {
     }
   }, [conversations, selectedConvId]);
 
+  // Mark conversation as read whenever selectedConvId changes
+  useEffect(() => {
+    if (selectedConvId) {
+      fetch("/api/crm/conversations/mark-read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversation_id: selectedConvId }),
+      }).then(() => {
+        queryClient.invalidateQueries({ queryKey: ["crm-conversations"] });
+      }).catch(() => {});
+    }
+  }, [selectedConvId, queryClient]);
+
   // Fetch detailed messages for selected conversation
   const { data: activeDetail, refetch: refetchActive } = useQuery({
     queryKey: ["crm-conversation-detail", selectedConvId],

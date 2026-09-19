@@ -52,6 +52,14 @@ export async function GET(req: NextRequest) {
 // POST: Incoming WhatsApp messages (both Meta Cloud API and Dashboard Simulator)
 export async function POST(req: NextRequest) {
   try {
+    const { enforceRateLimit } = await import("@/lib/rate-limit");
+    const limited = await enforceRateLimit(req, {
+      limit: 200,
+      windowMs: 60_000,
+      namespace: "social:whatsapp",
+    });
+    if (limited) return limited;
+
     const body = await req.json().catch(() => ({}));
     const admin = getInsforgeAdminClient();
 

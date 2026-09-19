@@ -12,6 +12,12 @@ export const pollPostComments = inngest.createFunction(
   {
     id: "poll-post-comments",
     name: "Poll & Auto-Reply to Post Comments",
+    // Only one comment poll runs at a time. If a poll takes longer than the
+    // cron interval (e.g. Meta rate-limits us), the next tick waits rather
+    // than compounds the load.
+    concurrency: {
+      limit: 1,
+    },
     triggers: [
       {
         cron: "* * * * *", // Polling backup runs every 1 minute for near-instant fallback
@@ -58,10 +64,132 @@ export const pollPostComments = inngest.createFunction(
           if (!accessToken) continue;
 
           const normalizedChannel = String(channelType || "").toUpperCase();
+
+          // Fetch Brand Profile for this user
+          const { data: brand } = await admin.database
+            .from("brand_profiles")
+            .select("business_name, niche, brand_tone, main_offer")
+            .eq("user_id", post.user_id)
+            .maybeSingle();
+
+          // ─── A. YouTube Video Comments ──────────────────────────────────────
+          if (normalizedChannel === "YOUTUBE") {
+            const ytMatch = post.published_url?.match(/(?:v=|\/shorts\/|\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+            const videoId = ytMatch?.[1];
+
+            if (videoId) {
+              try {
+                const ytUrl = `https://www.googleapis.com/youtube/v3/commentThreads?part=snippet,replies&videoId=${videoId}&maxResults=15`;
+                const ytRes = await fetch(ytUrl, {
+                  headers: { Authorization: `Bearer ${accessToken}` },
+                  signal: AbortSignal.timeout(6000),
+                });
+
+                if (ytRes.ok) {
+                  const ytJson = await ytRes.json();
+                  const items = ytJson?.items || [];
+                  for (const thread of items) {
+                    const top = thread.snippet?.topLevelComment;
+                    const commentId = top?.id || thread.id;
+                    const commentText = top?.snippet?.textOriginal || top?.snippet?.textDisplay;
+                    const commenterHandle = top?.snippet?.authorDisplayName || "@viewer";
+                    const commenterId = top?.snippet?.authorChannelId?.value;
+                    const childReplies = (thread.replies?.comments || []).map((r: any) => ({
+                      id: r.id,
+                      text: r.snippet?.textOriginal,
+                      from: { id: r.snippet?.authorChannelId?.value, username: r.snippet?.authorDisplayName },
+                    }));
+
+                    if (!commentId || !commentText) continue;
+
+                    const processRes = await processSingleComment({
+                      userId: post.user_id,
+                      commentId,
+                      commentText,
+                      commenterHandle,
+                      commenterId,
+                      mediaId: videoId,
+                      scheduledPostId: post.id,
+                      platform: "YOUTUBE",
+                      accessToken,
+                      igAccountId,
+                      channelHandle,
+                      brand,
+                      childReplies,
+                    });
+
+                    if (processRes.success && !processRes.skipped) {
+                      postReplies++;
+                    }
+                  }
+                }
+              } catch (ytErr) {
+                console.warn(`[Comment Poller] Error polling YouTube video ${videoId}:`, ytErr);
+              }
+            }
+            continue;
+          }
+
+          // ─── B. LinkedIn Post Comments ──────────────────────────────────────
+          if (normalizedChannel === "LINKEDIN") {
+            const liMatch = post.published_url?.match(/urn:li:(?:share|ugcPost|activity):([0-9a-zA-Z_-]+)/);
+            const urn = liMatch ? liMatch[0] : null;
+
+            if (urn) {
+              try {
+                const liUrl = `https://api.linkedin.com/rest/socialActions/${encodeURIComponent(urn)}/comments`;
+                const liRes = await fetch(liUrl, {
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    "X-Restli-Protocol-Version": "2.0.0",
+                    "Linkedin-Version": "202604",
+                  },
+                  signal: AbortSignal.timeout(6000),
+                });
+
+                if (liRes.ok) {
+                  const liJson = await liRes.json();
+                  const elements = liJson?.elements || [];
+                  for (const el of elements) {
+                    const commentId = el.id || el.$URN;
+                    const commentText = el.message?.text;
+                    const commenterHandle = el.actor || "@linkedin_user";
+
+                    if (!commentId || !commentText) continue;
+
+                    const processRes = await processSingleComment({
+                      userId: post.user_id,
+                      commentId,
+                      commentText,
+                      commenterHandle,
+                      commenterId: el.actor,
+                      mediaId: urn,
+                      scheduledPostId: post.id,
+                      platform: "LINKEDIN",
+                      accessToken,
+                      igAccountId,
+                      channelHandle,
+                      brand,
+                      childReplies: [],
+                    });
+
+                    if (processRes.success && !processRes.skipped) {
+                      postReplies++;
+                    }
+                  }
+                }
+              } catch (liErr) {
+                console.warn(`[Comment Poller] Error polling LinkedIn post ${urn}:`, liErr);
+              }
+            }
+            continue;
+          }
+
           if (normalizedChannel !== "INSTAGRAM" && normalizedChannel !== "FACEBOOK") {
             continue;
           }
 
+          // ─── C. Instagram & Facebook Comments ───────────────────────────────
           // Extract Media ID or shortcode from published URL
           const mediaIdMatch = post.published_url?.match(/\/(?:p|posts|status|reel)\/([^\/\?]+)/);
           const rawMediaId = mediaIdMatch?.[1];
@@ -102,13 +230,6 @@ export const pollPostComments = inngest.createFunction(
               if (res.ok) {
                 const json = await res.json();
                 const comments = json?.data || [];
-
-                // Fetch Brand Profile for this user
-                const { data: brand } = await admin.database
-                  .from("brand_profiles")
-                  .select("business_name, niche, brand_tone, main_offer")
-                  .eq("user_id", post.user_id)
-                  .maybeSingle();
 
                 for (const item of comments) {
                   const commentId = item.id;

@@ -38,6 +38,8 @@ import {
   User,
   DollarSign,
   Flame,
+  Bell,
+  Clock,
 } from "lucide-react";
 
 interface LeadDetailDialogProps {
@@ -65,6 +67,8 @@ export function LeadDetailDialog({
   const [dealValue, setDealValue] = useState<string>("0");
   const [score, setScore] = useState<string>("5");
   const [notes, setNotes] = useState<string>("");
+  const [followUpDate, setFollowUpDate] = useState<string>("");
+  const [followUpNote, setFollowUpNote] = useState<string>("");
 
   // Loading states
   const [isSaving, setIsSaving] = useState(false);
@@ -85,6 +89,8 @@ export function LeadDetailDialog({
       setDealValue(String(lead.deal_value ?? 0));
       setScore(String(lead.score ?? 5));
       setNotes(lead.metadata?.notes || "");
+      setFollowUpDate(lead.metadata?.followUpReminder?.date || "");
+      setFollowUpNote(lead.metadata?.followUpReminder?.note || "");
       setShowDeleteConfirm(false);
     }
   }, [lead, isOpen]);
@@ -142,6 +148,17 @@ export function LeadDetailDialog({
           score: finalScore,
           deal_value: Number(dealValue) || 0,
           notes: notes.trim(),
+          metadata: {
+            ...(lead.metadata || {}),
+            company: company.trim(),
+            notes: notes.trim(),
+            followUpReminder: followUpDate
+              ? {
+                  date: followUpDate,
+                  note: followUpNote.trim(),
+                }
+              : null,
+          },
         }),
       });
 
@@ -537,6 +554,53 @@ export function LeadDetailDialog({
               </div>
             </div>
           )}
+
+          {/* Section: Follow-up Reminder */}
+          <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
+                <Bell className="size-4" />
+                <span>Schedule Follow-up Reminder</span>
+              </div>
+              {followUpDate && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setFollowUpDate("");
+                    setFollowUpNote("");
+                    toast.info("Follow-up reminder cleared. Click 'Save Changes' to persist.");
+                  }}
+                  className="h-6 px-2 text-[10px] text-muted-foreground hover:text-destructive"
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <Label className="text-[11px] text-muted-foreground">Reminder Date & Time</Label>
+                <Input
+                  type="datetime-local"
+                  value={followUpDate}
+                  onChange={(e) => setFollowUpDate(e.target.value)}
+                  className="h-8 text-xs bg-background/80"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-[11px] text-muted-foreground">Action / Reason</Label>
+                <Input
+                  type="text"
+                  placeholder="e.g. Call back regarding pricing"
+                  value={followUpNote}
+                  onChange={(e) => setFollowUpNote(e.target.value)}
+                  className="h-8 text-xs bg-background/80"
+                />
+              </div>
+            </div>
+          </div>
 
           {/* Section 5: Internal Notes */}
           <div className="space-y-1.5">

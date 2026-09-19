@@ -1,0 +1,45 @@
+# Lemon AI pre-commit hook
+#
+# Runs on every `git commit`. Fast checks only — the heavier gates (type check,
+# tests, full build) run in CI (`.github/workflows/ci.yml`).
+#
+# Steps:
+#   1. lint-staged — ESLint --fix on the files being committed.
+#   2. Secret sniff — refuse to commit strings that look like live provider
+#      API keys (OpenAI, Groq, Stripe, AWS, GitHub, Slack, Google, Clerk
+#      webhooks). This is a defense-in-depth net: developers must never
+#      accidentally paste a live secret into a source file.
+#
+# Bypass with `git commit --no-verify` ONLY when you know why you need to.
+
+set -e
+
+# ── 1. lint-staged (fast, staged-file scope) ─────────────────────────────
+npx lint-staged
+
+# ── 2. Secret sniff ──────────────────────────────────────────────────────
+# Grep staged additions for well-known live-key prefixes. Excludes
+# .env.example and known documentation files (they contain placeholders).
+STAGED_ADDITIONS=$(git diff --cached --diff-filter=AM --unified=0 -- \
+    ':(exclude)*.example' ':(exclude)*.md' ':(exclude).husky/*' \
+    | grep '^+' | grep -v '^+++' || true)
+
+if [ -n "$STAGED_ADDITIONS" ]; then
+  MATCHES=$(printf '%s\n' "$STAGED_ADDITIONS" | grep -Eo \
+    'sk-[A-Za-z0-9_-]{20,}|gsk_[A-Za-z0-9_-]{20,}|sk_(live|test)_[A-Za-z0-9]{16,}|pk_(live|test)_[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|ghs_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abpors]-[A-Za-z0-9-]{10,}|whsec_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}' \
+    || true)
+  if [ -n "$MATCHES" ]; then
+    echo ""
+    echo "❌  Blocked by pre-commit secret sniffer."
+    echo ""
+    echo "    One or more staged additions look like a LIVE provider API key."
+    echo "    Move the value to your local .env.local (which is gitignored)"
+    echo "    and reference it via process.env or lib/env.ts."
+    echo ""
+    echo "    If this is a false positive, bypass with:  git commit --no-verify"
+    echo ""
+    exit 1
+  fi
+fi
+
+exit 0

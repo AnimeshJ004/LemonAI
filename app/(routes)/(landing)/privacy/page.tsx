@@ -9,7 +9,12 @@ export const metadata = {
 };
 
 const PRIVACY_CONTACT =
-  process.env.NEXT_PUBLIC_PRIVACY_CONTACT_EMAIL || "privacy@lemon-ai.example";
+  process.env.NEXT_PUBLIC_PRIVACY_CONTACT_EMAIL?.trim() ||
+  "privacy@example.invalid";
+const PRIVACY_CONTACT_IS_PLACEHOLDER =
+  !process.env.NEXT_PUBLIC_PRIVACY_CONTACT_EMAIL ||
+  process.env.NEXT_PUBLIC_PRIVACY_CONTACT_EMAIL.trim().endsWith(".invalid") ||
+  process.env.NEXT_PUBLIC_PRIVACY_CONTACT_EMAIL.trim().endsWith(".example");
 
 export default function PrivacyPage() {
   return (
@@ -192,7 +197,7 @@ export default function PrivacyPage() {
               Clerk (auth), Supabase / Insforge (database + storage), Vercel
               (hosting), Inngest (background jobs), Groq (LLM inference), and
               the social platforms you connect (Meta, LinkedIn, X, YouTube,
-              Bluesky, Threads, TikTok). We only share the minimum data each
+              Bluesky, Threads). We only share the minimum data each
               vendor needs to perform its function.
             </p>
           </section>
@@ -211,6 +216,16 @@ export default function PrivacyPage() {
               </a>
               . We respond within 30 days as required by GDPR Art. 12(3).
             </p>
+            {PRIVACY_CONTACT_IS_PLACEHOLDER && process.env.NODE_ENV !== "production" && (
+              <p className="mt-3 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                <strong>Configuration warning:</strong>{" "}
+                <code>NEXT_PUBLIC_PRIVACY_CONTACT_EMAIL</code> is unset or still
+                points at a placeholder domain. Set it to a monitored mailbox
+                (e.g. <code>privacy@your-company.com</code>) in your deployment
+                environment before going live — GDPR Art. 12(3) requires a
+                working contact route.
+              </p>
+            )}
           </section>
 
           <section className="rounded-2xl border border-border/60 bg-card p-6">

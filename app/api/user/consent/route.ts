@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
+import { z } from "zod";
 import {
   CONSENT_TYPES,
   ConsentType,
   listUserConsents,
   recordConsent,
 } from "@/lib/consent";
+import { ConsentType as ConsentTypeSchema, parseBody } from "@/lib/zod-helpers";
 import { reportError } from "@/lib/observability";
 
 /**
@@ -15,9 +17,16 @@ import { reportError } from "@/lib/observability";
  *     { consents: { [consentType]: { granted, version, createdAt } | null } }
  *
  * POST /api/user/consent
- *   Body: { consentType: string, granted: boolean, version?: string, metadata?: object }
- *   Records a grant or revoke event. Always creates a new immutable row.
+ *   Body: { consentType: ConsentType, granted: boolean, version?: string, metadata?: object }
+ *   Validated by `ConsentPostSchema` below. Always creates a new immutable row.
  */
+
+const ConsentPostSchema = z.object({
+  consentType: ConsentTypeSchema,
+  granted: z.boolean(),
+  version: z.string().trim().min(1).max(32).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
+});
 
 export async function GET() {
   const { userId } = await auth();
@@ -27,8 +36,6 @@ export async function GET() {
 
   try {
     const consents = await listUserConsents(userId);
-    // Materialize a shape that always contains every known consent type so the
-    // client doesn't have to normalize.
     const byType: Record<
       string,
       { granted: boolean; version: string; createdAt: string } | null
@@ -56,48 +63,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: any;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  const rawType = String(body?.consentType || "");
-  if (!(CONSENT_TYPES as readonly string[]).includes(rawType)) {
-    return NextResponse.json(
-      {
-        error: `Unknown consentType. Allowed values: ${CONSENT_TYPES.join(", ")}`,
-      },
-      { status: 400 }
-    );
-  }
-
-  if (typeof body?.granted !== "boolean") {
-    return NextResponse.json(
-      { error: "'granted' must be a boolean" },
-      { status: 400 }
-    );
-  }
+  // Zod validation — returns a 400 with per-field errors if the body is
+  // malformed. `data` is fully typed on the happy path.
+  const { data, errorResponse } = await parseBody(req, ConsentPostSchema);
+  if (errorResponse) return errorResponse;
 
   try {
     const record = await recordConsent({
       userId,
-      consentType: rawType as ConsentType,
-      granted: body.granted,
-      version: typeof body.version === "string" ? body.version : "1.0",
+      consentType: data!.consentType as ConsentType,
+      granted: data!.granted,
+      version: data!.version ?? "1.0",
       ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null,
       userAgent: req.headers.get("user-agent") ?? null,
-      metadata: typeof body.metadata === "object" && body.metadata !== null
-        ? body.metadata
-        : undefined,
+      metadata: data!.metadata,
     });
 
     if (!record) {
-      return NextResponse.json(
-        { error: "Failed to record consent" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to record consent" }, { status: 500 });
     }
 
     return NextResponse.json(

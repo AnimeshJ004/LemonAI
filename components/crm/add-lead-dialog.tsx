@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { UserPlus, Loader2 } from "lucide-react";
+import { UserPlus, Loader2, AlertTriangle } from "lucide-react";
 import type { Lead, LeadStage } from "@/lib/crm-service";
 
 interface AddLeadDialogProps {
@@ -46,6 +46,8 @@ export function AddLeadDialog({
   const [score, setScore] = useState("7");
   const [notes, setNewNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState<Lead | null>(null);
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
 
   // Sync default stage when dialog opens or prop changes
   React.useEffect(() => {
@@ -64,6 +66,39 @@ export function AddLeadDialog({
     setStage(defaultStage);
     setScore("7");
     setNewNotes("");
+    setDuplicateWarning(null);
+  };
+
+  const checkDuplicate = async (checkEmail?: string, checkPhone?: string) => {
+    const e = (checkEmail !== undefined ? checkEmail : email).trim();
+    const p = (checkPhone !== undefined ? checkPhone : phone).trim();
+    if (!e && !p) {
+      setDuplicateWarning(null);
+      return;
+    }
+
+    setIsCheckingDuplicate(true);
+    try {
+      const params = new URLSearchParams({
+        check_duplicate: "true",
+      });
+      if (e) params.set("email", e);
+      if (p) params.set("phone", p);
+
+      const res = await fetch(`/api/crm/leads?${params.toString()}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.isDuplicate && data.lead) {
+          setDuplicateWarning(data.lead);
+        } else {
+          setDuplicateWarning(null);
+        }
+      }
+    } catch {
+      // Non-blocking duplicate check
+    } finally {
+      setIsCheckingDuplicate(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -136,7 +171,11 @@ export function AddLeadDialog({
               <Input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (duplicateWarning) setDuplicateWarning(null);
+                }}
+                onBlur={() => checkDuplicate()}
                 placeholder="jordan@company.com"
                 className="text-xs h-9"
               />
@@ -145,12 +184,29 @@ export function AddLeadDialog({
               <Label className="text-xs font-semibold">Phone Number</Label>
               <Input
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(e) => {
+                  setPhone(e.target.value);
+                  if (duplicateWarning) setDuplicateWarning(null);
+                }}
+                onBlur={() => checkDuplicate()}
                 placeholder="+1 (555) 019-2834"
                 className="text-xs h-9"
               />
             </div>
           </div>
+
+          {/* Duplicate Lead Alert */}
+          {duplicateWarning && (
+            <div className="p-3 rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-xs space-y-1">
+              <div className="flex items-center gap-1.5 font-semibold">
+                <AlertTriangle className="size-4 text-amber-600 shrink-0" />
+                <span>Existing Lead Detected</span>
+              </div>
+              <p className="text-[11px] leading-normal">
+                A contact named <strong>&quot;{duplicateWarning.name || "Prospect"}&quot;</strong> already exists in stage &quot;<span className="capitalize">{duplicateWarning.stage.replace("_", " ")}</span>&quot; with this email/phone. You may still save if this is a separate deal.
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">

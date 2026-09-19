@@ -15,7 +15,7 @@ export interface DMMessage {
 export interface DMConversation {
   id: string;
   user_id: string;
-  platform: "INSTAGRAM" | "FACEBOOK" | "WHATSAPP";
+  platform: "INSTAGRAM" | "FACEBOOK" | "WHATSAPP" | "TWITTER" | "LINKEDIN";
   conversation_id: string;
   sender_id: string;
   sender_name: string;
@@ -138,21 +138,21 @@ export const socialDMService = {
     }
     const admin = getInsforgeAdminClient();
 
-    // Find connected Meta channels for this user only
+    // Find connected channels for this user only
     const { data: channels } = await admin.database
       .from("user_channels")
       .select("*, channel_types(*)")
       .eq("user_id", userId);
 
-    const metaChannels = (channels || []).filter((c: any) =>
-      ["INSTAGRAM", "FACEBOOK"].includes(c.channel_types?.type) &&
+    const targetChannels = (channels || []).filter((c: any) =>
+      ["INSTAGRAM", "FACEBOOK", "TWITTER", "LINKEDIN"].includes(c.channel_types?.type) &&
       (c.is_connected || c.access_token)
     );
 
-    if (metaChannels.length === 0) {
+    if (targetChannels.length === 0) {
       return {
         synced: 0,
-        message: "No Instagram or Facebook channels connected. Go to Settings → Channels to connect your account.",
+        message: "No Instagram, Facebook, Twitter, or LinkedIn channels connected. Go to Settings → Channels to connect your account.",
         source: "none",
       };
     }
@@ -160,48 +160,133 @@ export const socialDMService = {
     let liveSyncedCount = 0;
     let hadPermissionIssue = false;
 
-    for (const ch of metaChannels) {
-      if (!ch.access_token || !ch.provider_account_id) continue;
-      const token = decrypt(ch.access_token);
+    for (const ch of targetChannels) {
+      if (!ch.access_token) continue;
+      const token = decrypt(ch.access_token) || ch.access_token;
       if (!token) continue;
 
       const platform = ch.channel_types?.type;
       const accountId = ch.provider_account_id;
 
       try {
-        const res = await fetch(
-          `https://graph.facebook.com/v22.0/${accountId}/conversations?fields=id,participants,messages{message,from,created_time}&access_token=${token}&limit=20`,
-          { signal: AbortSignal.timeout(6000) }
-        );
+        if (platform === "TWITTER") {
+          const res = await fetch(
+            "https://api.twitter.com/2/dm_events?dm_event.fields=id,text,sender_id,created_at,dm_conversation_id&max_results=20",
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              signal: AbortSignal.timeout(6000),
+            }
+          );
 
-        if (res.ok) {
-          const convData = await res.json();
-          const conversations = convData?.data || [];
-
-          for (const conv of conversations) {
-            const messages = conv.messages?.data || [];
-            const lastMsg = messages[0];
-            if (!lastMsg) continue;
-
-            const participants = conv.participants?.data || [];
-            const sender = participants.find((p: any) => p.id !== accountId);
-
-            await this.upsertDM({
-              user_id: userId,
-              platform: platform as any,
-              conversation_id: conv.id,
-              sender_id: sender?.id || conv.id,
-              sender_name: sender?.name || `Customer (${conv.id.slice(-4)})`,
-              last_message: lastMsg.message || "[Media message]",
-              last_message_at: lastMsg.created_time || new Date().toISOString(),
-              messages_count: messages.length,
-              raw_messages: messages,
-              is_read: false,
-            });
-            liveSyncedCount++;
+          if (res.ok) {
+            const twData = await res.json();
+            const events = twData?.data || [];
+            for (const ev of events) {
+              if (ev.sender_id === accountId) continue;
+              const convId = ev.dm_conversation_id || `tw_${ev.sender_id}`;
+              await this.upsertDM({
+                user_id: userId,
+                platform: "TWITTER",
+                conversation_id: convId,
+                sender_id: ev.sender_id,
+                sender_name: `Twitter User (@${ev.sender_id})`,
+                last_message: ev.text || "[Twitter Media]",
+                last_message_at: ev.created_at || new Date().toISOString(),
+                messages_count: 1,
+                raw_messages: [
+                  {
+                    id: ev.id,
+                    message: ev.text || "",
+                    from: { id: ev.sender_id },
+                    created_time: ev.created_at || new Date().toISOString(),
+                  },
+                ],
+                is_read: false,
+              });
+              liveSyncedCount++;
+            }
+          } else {
+            hadPermissionIssue = true;
           }
-        } else {
-          hadPermissionIssue = true;
+        } else if (platform === "LINKEDIN") {
+          const res = await fetch("https://api.linkedin.com/v2/messages", {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "X-Restli-Protocol-Version": "2.0.0",
+            },
+            signal: AbortSignal.timeout(6000),
+          });
+
+          if (res.ok) {
+            const liData = await res.json();
+            const elements = liData?.elements || [];
+            for (const el of elements) {
+              const senderUrn = el.sender || el.actor || "";
+              if (senderUrn === accountId || (accountId && senderUrn.includes(accountId))) continue;
+              const convId = el.conversation || `li_${senderUrn.replace(/[^a-zA-Z0-9]/g, "_")}`;
+              await this.upsertDM({
+                user_id: userId,
+                platform: "LINKEDIN",
+                conversation_id: convId,
+                sender_id: senderUrn,
+                sender_name: "LinkedIn Connection",
+                last_message: el.message?.body || el.text || "[LinkedIn Message]",
+                last_message_at: el.created ? new Date(el.created).toISOString() : new Date().toISOString(),
+                messages_count: 1,
+                raw_messages: [
+                  {
+                    id: el.id,
+                    message: el.message?.body || el.text || "",
+                    from: { id: senderUrn },
+                    created_time: el.created ? new Date(el.created).toISOString() : new Date().toISOString(),
+                  },
+                ],
+                is_read: false,
+              });
+              liveSyncedCount++;
+            }
+          } else {
+            hadPermissionIssue = true;
+          }
+        } else if (accountId) {
+          // Instagram & Facebook Graph API
+          const res = await fetch(
+            `https://graph.facebook.com/v22.0/${accountId}/conversations?fields=id,participants,messages{message,from,created_time}&access_token=${token}&limit=20`,
+            { signal: AbortSignal.timeout(6000) }
+          );
+
+          if (res.ok) {
+            const convData = await res.json();
+            const conversations = convData?.data || [];
+
+            for (const conv of conversations) {
+              const messages = conv.messages?.data || [];
+              const lastMsg = messages[0];
+              if (!lastMsg) continue;
+
+              const participants = conv.participants?.data || [];
+              const sender = participants.find((p: any) => p.id !== accountId);
+
+              await this.upsertDM({
+                user_id: userId,
+                platform: platform as any,
+                conversation_id: conv.id,
+                sender_id: sender?.id || conv.id,
+                sender_name: sender?.name || `Customer (${conv.id.slice(-4)})`,
+                last_message: lastMsg.message || "[Media message]",
+                last_message_at: lastMsg.created_time || new Date().toISOString(),
+                messages_count: messages.length,
+                raw_messages: messages,
+                is_read: false,
+              });
+              liveSyncedCount++;
+            }
+          } else {
+            hadPermissionIssue = true;
+          }
         }
       } catch {
         hadPermissionIssue = true;
@@ -211,7 +296,7 @@ export const socialDMService = {
     if (liveSyncedCount > 0) {
       return {
         synced: liveSyncedCount,
-        message: `Successfully synced ${liveSyncedCount} live DM conversation(s) from your Meta accounts!`,
+        message: `Successfully synced ${liveSyncedCount} live DM conversation(s) across your connected social channels!`,
         source: "live",
       };
     }
@@ -219,8 +304,8 @@ export const socialDMService = {
     return {
       synced: 0,
       message: hadPermissionIssue
-        ? "No new conversations synced. Your Meta account may not have granted messaging permissions yet, or there are no recent DMs."
-        : "No new conversations found on your connected Meta accounts.",
+        ? "No new conversations synced. Connected social account may need permission approval or has no recent DMs."
+        : "No new conversations found on your connected channels.",
       source: "none",
     };
   },
@@ -277,32 +362,90 @@ export const socialDMService = {
       }
     }
 
-    // Send to Meta API via the unified sender (resolves the correct Page ID +
-    // Page token; works for separate and shared IG/FB account setups).
+    const admin = getInsforgeAdminClient();
     let sentLive = false;
+    const normPlatform = String(platform || "").toUpperCase();
 
-    try {
-      const dmResult = await sendPrivateDM({
-        userId,
-        platform,
-        commenterId: recipientId,
-        accessToken: null,
-        dmMessage: replyText!,
-      });
-      sentLive = dmResult.ok;
-      if (!dmResult.ok) {
-        console.warn(
-          `[DM Service] replyDM send failed (strategy=${dmResult.strategy}, code=${dmResult.errorCode}): ${dmResult.errorMessage}`
-        );
+    if (normPlatform === "TWITTER") {
+      try {
+        const { data: twChan } = await admin.database
+          .from("user_channels")
+          .select("access_token, provider_account_id, channel_types!inner(type)")
+          .eq("user_id", userId)
+          .eq("channel_types.type", "TWITTER")
+          .eq("is_connected", true)
+          .maybeSingle();
+
+        const token = twChan?.access_token ? decrypt(twChan.access_token) || twChan.access_token : null;
+        if (token) {
+          const res = await fetch(`https://api.twitter.com/2/dm_conversations/with/${recipientId}/messages`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ message: { text: replyText } }),
+            signal: AbortSignal.timeout(8000),
+          });
+          sentLive = res.ok;
+        }
+      } catch (twErr) {
+        console.warn("[DM Service] Twitter replyDM exception:", twErr);
       }
-    } catch (dmErr) {
-      console.warn("[DM Service] replyDM send exception:", dmErr);
+    } else if (normPlatform === "LINKEDIN") {
+      try {
+        const { data: liChan } = await admin.database
+          .from("user_channels")
+          .select("access_token, provider_account_id, channel_types!inner(type)")
+          .eq("user_id", userId)
+          .eq("channel_types.type", "LINKEDIN")
+          .eq("is_connected", true)
+          .maybeSingle();
+
+        const token = liChan?.access_token ? decrypt(liChan.access_token) || liChan.access_token : null;
+        if (token) {
+          const res = await fetch("https://api.linkedin.com/v2/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+              "X-Restli-Protocol-Version": "2.0.0",
+            },
+            body: JSON.stringify({
+              recipients: [recipientId.startsWith("urn:li:person:") ? recipientId : `urn:li:person:${recipientId}`],
+              message: { body: replyText },
+            }),
+            signal: AbortSignal.timeout(8000),
+          });
+          sentLive = res.ok;
+        }
+      } catch (liErr) {
+        console.warn("[DM Service] LinkedIn replyDM exception:", liErr);
+      }
+    } else {
+      // Send to Meta API via the unified sender
+      try {
+        const dmResult = await sendPrivateDM({
+          userId,
+          platform,
+          commenterId: recipientId,
+          accessToken: null,
+          dmMessage: replyText!,
+        });
+        sentLive = dmResult.ok;
+        if (!dmResult.ok) {
+          console.warn(
+            `[DM Service] replyDM send failed (strategy=${dmResult.strategy}, code=${dmResult.errorCode}): ${dmResult.errorMessage}`
+          );
+        }
+      } catch (dmErr) {
+        console.warn("[DM Service] replyDM send exception:", dmErr);
+      }
     }
 
     const now = new Date().toISOString();
 
     // Load existing conversation to append the outgoing message
-    const admin = getInsforgeAdminClient();
     let existing: DMConversation | null = null;
     try {
       const { data } = await admin.database

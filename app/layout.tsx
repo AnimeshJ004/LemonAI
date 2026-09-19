@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
 import { QueryProvider } from "@/components/query-provider";
 import { Toaster } from "@/components/ui/sonner";
+import CookieConsentBanner from "@/components/cookie-consent-banner";
 
 export const metadata: Metadata = {
   title: "Lemon.ai | Social Media Scheduling",
@@ -42,6 +43,7 @@ export default function RootLayout({
               </TooltipProvider>
 
               <Toaster  richColors/>
+              <CookieConsentBanner />
             </ThemeProvider>
 
           </QueryProvider>
