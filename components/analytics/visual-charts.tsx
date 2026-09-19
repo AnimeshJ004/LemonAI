@@ -546,14 +546,15 @@ export function LeadSourceDonutChart({
   const activeSources = sources.filter((s) => s.count > 0);
   const totalCount = activeSources.reduce((acc, s) => acc + s.count, 0) || 1;
 
+  const slices: Array<(typeof activeSources)[number] & { strokeDasharray: string; strokeDashoffset: number }> = [];
   let accumulatedPercent = 0;
-  const slices = activeSources.map((s) => {
+  for (const s of activeSources) {
     const percent = s.count / totalCount;
     const strokeDasharray = `${circumference * percent} ${circumference * (1 - percent)}`;
     const strokeDashoffset = -circumference * accumulatedPercent;
     accumulatedPercent += percent;
-    return { ...s, strokeDasharray, strokeDashoffset };
-  });
+    slices.push({ ...s, strokeDasharray, strokeDashoffset });
+  }
 
   return (
     <Card className="border shadow-sm">

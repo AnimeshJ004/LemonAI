@@ -27,7 +27,7 @@ export default function MetaAdsPage() {
   const [viewMode, setViewMode] = useState<"list" | "create">("list");
   const [activeTab, setActiveTab] = useState<"campaigns" | "audiences">("campaigns");
   const [showAdsDrawer, setShowAdsDrawer] = useState(false);
-  const [modelledAd, setModelledAd] = useState<any>(null);
+  const [_modelledAd, setModelledAd] = useState<any>(null);
 
   // Check Meta connection status
   const { data: channelsData } = useQuery({

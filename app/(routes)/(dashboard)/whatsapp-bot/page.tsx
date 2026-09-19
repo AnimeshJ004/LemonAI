@@ -23,7 +23,6 @@ import {
   Clock,
   ArrowRight,
   Database,
-  Smartphone,
   CheckCheck,
   ShieldCheck,
   Save,

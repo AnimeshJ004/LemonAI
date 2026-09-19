@@ -905,7 +905,7 @@ export default function AICallingPage() {
                 </div>
 
                 <p className="text-xs text-muted-foreground pt-1 italic">
-                  "{selectedCall.bant.summary}"
+                  &ldquo;{selectedCall.bant.summary}&rdquo;
                 </p>
               </div>
 

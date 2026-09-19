@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useAuth, UserButton } from "@clerk/nextjs";
-import { ArrowRight, Check, ChevronDown } from "lucide-react";
+import { ArrowRight, Check } from "lucide-react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import Logo from "@/components/logo";
 import { Button } from "@/components/ui/button";

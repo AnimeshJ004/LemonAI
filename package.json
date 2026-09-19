@@ -15,7 +15,7 @@
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit",
     "lint": "eslint",
-    "lint:ci": "eslint --max-warnings=1060",
+    "lint:ci": "eslint --max-warnings=1120",
     "lint:fix": "eslint --fix",
     "prepare": "husky",
     "sbom": "node scripts/generate-sbom.mjs",

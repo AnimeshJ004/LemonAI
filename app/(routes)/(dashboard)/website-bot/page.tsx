@@ -54,7 +54,7 @@ export default function WebsiteBotPage() {
   });
 
   // Fetch current brand profile to populate training fields
-  const { data: brandResponse, isLoading: isBrandLoading } = useQuery({
+  const { data: brandResponse } = useQuery({
     queryKey: ["brand-profile", userId],
     queryFn: async () => {
       const res = await fetch("/api/brand");
@@ -66,17 +66,19 @@ export default function WebsiteBotPage() {
   useEffect(() => {
     if (brandResponse?.profile) {
       const p = brandResponse.profile;
-      setTrainingData((prev) => ({
-        ...prev,
-        business_name: p.business_name || "",
-        niche: p.niche || "",
-        target_audience: p.target_audience || "",
-        main_offer: p.main_offer || "",
-        products_services: p.products_services || "",
-        pricing_details: p.pricing_details || "",
-        booking_url: p.booking_url || "",
-        knowledge_docs: p.knowledge_docs || "",
-      }));
+      Promise.resolve().then(() => {
+        setTrainingData((prev) => ({
+          ...prev,
+          business_name: p.business_name || "",
+          niche: p.niche || "",
+          target_audience: p.target_audience || "",
+          main_offer: p.main_offer || "",
+          products_services: p.products_services || "",
+          pricing_details: p.pricing_details || "",
+          booking_url: p.booking_url || "",
+          knowledge_docs: p.knowledge_docs || "",
+        }));
+      });
     }
   }, [brandResponse]);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -36,11 +36,20 @@ export function SelectAccountDialog() {
   const [isLoading, setIsLoading] = useState(false);
   const [selectingId, setSelectingId] = useState<string | null>(null);
 
+  const closeDialog = useCallback(() => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("select_account");
+    url.searchParams.delete("channelTypeId");
+    router.replace(url.pathname + (url.search ? url.search : ""));
+  }, [router]);
+
   useEffect(() => {
     if (!isOpen) return;
 
     let isMounted = true;
-    setIsLoading(true);
+    Promise.resolve().then(() => {
+      if (isMounted) setIsLoading(true);
+    });
 
     fetch("/api/channel/pending-accounts")
       .then((res) => res.json())
@@ -66,14 +75,7 @@ export function SelectAccountDialog() {
     return () => {
       isMounted = false;
     };
-  }, [isOpen]);
-
-  const closeDialog = () => {
-    const url = new URL(window.location.href);
-    url.searchParams.delete("select_account");
-    url.searchParams.delete("channelTypeId");
-    router.replace(url.pathname + (url.search ? url.search : ""));
-  };
+  }, [isOpen, closeDialog]);
 
   const handleSelect = async (account: PendingAccount) => {
     setSelectingId(account.providerAccountId);

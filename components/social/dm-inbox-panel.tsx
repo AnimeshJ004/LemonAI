@@ -15,7 +15,6 @@ import {
   Send,
   Bot,
   CheckCheck,
-  User,
   Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -33,6 +32,12 @@ interface DM {
   is_read: boolean;
   messages_count: number;
   raw_messages?: any[];
+}
+
+function PlatformIcon({ platform }: { platform: string }) {
+  if (platform === "INSTAGRAM") return <span className="text-[#E4405F]">📸</span>;
+  if (platform === "FACEBOOK") return <span className="text-[#1877F2]">📘</span>;
+  return <MessageSquare className="size-3.5" />;
 }
 
 export function DMInboxPanel() {
@@ -115,12 +120,6 @@ export function DMInboxPanel() {
     !searchTerm || d.sender_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     d.last_message.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const PlatformIcon = ({ platform }: { platform: string }) => {
-    if (platform === "INSTAGRAM") return <span className="text-[#E4405F]">📸</span>;
-    if (platform === "FACEBOOK") return <span className="text-[#1877F2]">📘</span>;
-    return <MessageSquare className="size-3.5" />;
-  };
 
   return (
     <div className="flex h-[calc(100vh-200px)] min-h-[500px] border border-border/60 rounded-2xl overflow-hidden bg-card">

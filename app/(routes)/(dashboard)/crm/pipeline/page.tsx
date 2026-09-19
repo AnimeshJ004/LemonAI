@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { KanbanBoard } from "@/components/crm/pipeline/kanban-board";
 import { LeadsTable } from "@/components/crm/leads-table";
 import { AddLeadDialog } from "@/components/crm/add-lead-dialog";
@@ -25,7 +25,6 @@ import {
   CalendarCheck,
   RefreshCw,
   Filter,
-  UserPlus,
   Kanban,
   Table as TableIcon,
 } from "lucide-react";

@@ -20,13 +20,10 @@ import { Progress } from "@/components/ui/progress";
 import {
   BookOpen,
   Sparkles,
-  Clock,
   Copy,
   Check,
-  FileText,
   Calendar,
   Search,
-  Globe,
   CheckCircle2,
   AlertCircle,
   Download,
@@ -36,7 +33,6 @@ import {
   Code,
   HelpCircle,
   ArrowRight,
-  TrendingUp,
 } from "lucide-react";
 import ScheduleFromResearchDialog from "@/components/competition/schedule-from-research-dialog";
 

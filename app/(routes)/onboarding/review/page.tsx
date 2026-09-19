@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
+import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -19,8 +20,6 @@ import {
   Edit3,
   Loader2,
   ArrowRight,
-  Send,
-  Eye,
   Hash,
   Target,
   ChevronLeft,
@@ -31,14 +30,12 @@ import {
   Camera,
   Music,
   MessageSquare,
-  Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 interface ViralPostDraft {
   id: string;
@@ -88,6 +85,7 @@ interface ViralResearchData {
 }
 
 export default function OnboardingReviewPage() {
+  const router = useRouter();
   const [research, setResearch] = useState<ViralResearchData | null>(null);
   const [posts, setPosts] = useState<ViralPostDraft[]>([]);
   const [profile, setProfile] = useState<any>(null);
@@ -108,7 +106,6 @@ export default function OnboardingReviewPage() {
   const {
     mutate: generatePipeline,
     isPending: isGenerating,
-    error: pipelineError,
   } = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/ai/viral-pipeline", {
@@ -153,7 +150,7 @@ export default function OnboardingReviewPage() {
     onSuccess: (data) => {
       toast.success(data.message || "All approved posts are now scheduled!");
       setTimeout(() => {
-        window.location.href = "/schedule";
+        router.push("/schedule");
       }, 1200);
     },
     onError: (err: any) => {
@@ -400,7 +397,7 @@ export default function OnboardingReviewPage() {
                           </span>
                         </div>
                         <p className="text-xs font-semibold text-zinc-800 italic">
-                          "{post.hook || post.title}"
+                          &ldquo;{post.hook || post.title}&rdquo;
                         </p>
                       </div>
 
@@ -625,7 +622,7 @@ export default function OnboardingReviewPage() {
                           <Copy className="size-3 text-zinc-400" />
                         )}
                       </div>
-                      <p className="text-xs font-bold text-zinc-900">"{h.hook}"</p>
+                      <p className="text-xs font-bold text-zinc-900">&ldquo;{h.hook}&rdquo;</p>
                       <p className="text-[11px] text-zinc-500 italic">{h.whyItWorks}</p>
                     </div>
                   ))}

@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clapperboard, Sparkles, Clock, Copy, Check, Calendar, Video, Play, Download, Loader2, Film } from "lucide-react";
+import { Clapperboard, Sparkles, Clock, Copy, Check, Calendar, Video, Download, Loader2, Film } from "lucide-react";
 import ScheduleFromResearchDialog from "@/components/competition/schedule-from-research-dialog";
 
 export default function ReelsStudioPage() {

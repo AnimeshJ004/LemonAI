@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Bot, MessageSquare, Zap, CheckCircle, Send, RefreshCw, Sparkles, ShieldAlert, Heart, HelpCircle, Inbox, Clock, Wifi, WifiOff, AlertTriangle } from "lucide-react";
+import { Bot, MessageSquare, Zap, CheckCircle, Send, RefreshCw, Sparkles, Heart, Inbox, Clock, Wifi, AlertTriangle } from "lucide-react";
 
 export default function SocialAutomationPage() {
   const [testComment, setTestComment] = useState({ text: "", platform: "INSTAGRAM" });
@@ -65,7 +65,7 @@ export default function SocialAutomationPage() {
       } else {
         toast.info("No recent posts found to scan. Publish some posts first!");
       }
-    } catch (e) {
+    } catch {
       toast.error("Network error syncing comments. Please try again.");
     } finally {
       // Race condition fix: refetch THEN clear loading state
@@ -238,7 +238,7 @@ export default function SocialAutomationPage() {
                 className="text-xs h-7"
                 onClick={() => setTestComment({ text: preset.text, platform: preset.platform })}
               >
-                "{preset.text.substring(0, 32)}..."
+                &ldquo;{preset.text.substring(0, 32)}...&rdquo;
               </Button>
             ))}
           </div>
@@ -361,7 +361,7 @@ export default function SocialAutomationPage() {
                         · {comment.platform}
                       </span>
                       <span className="text-[11px] text-muted-foreground">
-                        · {new Date(comment.created_at || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        · {comment.created_at ? new Date(comment.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"}
                       </span>
                     </div>
                     <Badge variant="outline" className={`text-[10px] font-semibold ${sentimentColors[comment.sentiment] || ""}`}>
@@ -370,7 +370,7 @@ export default function SocialAutomationPage() {
                   </div>
 
                   <p className="text-xs text-foreground/90 bg-muted/20 p-2 rounded">
-                    "{comment.comment_text}"
+                    &ldquo;{comment.comment_text}&rdquo;
                   </p>
 
                   <div className="flex items-start gap-2 pt-0.5">

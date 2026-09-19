@@ -15,13 +15,10 @@ import {
   Sparkles,
   CheckCircle,
   Layers,
-  ArrowDownRight,
   ExternalLink,
   Flame,
   ShieldCheck,
   Calendar,
-  Share2,
-  PieChart as PieChartIcon,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -48,9 +45,7 @@ export default function AnalyticsPage() {
   const funnel: any[] = data?.funnel || [];
   const topContent: any[] = data?.topContent || [];
   const leadsByStage: any[] = data?.leadsByStage || [];
-  const leadsBySource: any[] = data?.leadsBySource || [];
   const leadSourcesDistribution: any[] = data?.leadSourcesDistribution || [];
-  const platformStatus: any[] = data?.platformStatus || [];
   const platformComparison: any[] = data?.platformComparison || [];
   const aiRecs: string[] = data?.aiRecommendations || [];
   const socialReach = data?.socialReach || {};

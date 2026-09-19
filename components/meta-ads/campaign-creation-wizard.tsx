@@ -23,9 +23,6 @@ import {
   Rocket,
   ChevronRight,
   ChevronLeft,
-  Building2,
-  Dumbbell,
-  ShoppingBag,
   Zap,
   Check,
   ExternalLink,
@@ -89,9 +86,7 @@ export function CampaignCreationWizard() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isDeploying, setIsDeploying] = useState(false);
   const [deployResult, setDeployResult] = useState<DeployResult | null>(null);
-  const [adAccounts, setAdAccounts] = useState<{ id: string; name: string }[]>([]);
-
-  const [data, setData] = useState<WizardData>({
+  const [data, setData] = useState<WizardData>(() => ({
     businessName: "",
     niche: "",
     targetAudience: "",
@@ -107,14 +102,12 @@ export function CampaignCreationWizard() {
     adImageUrl: "",
     callToAction: "LEARN_MORE",
     competitorInsight: "", // Optional competitor URL or ad description for differentiated copy
-  });
+  }));
 
   const set = useCallback(<K extends keyof WizardData>(key: K, val: WizardData[K]) => {
     setData((prev) => ({ ...prev, [key]: val }));
   }, []);
 
-  const [hasLoadedProfile, setHasLoadedProfile] = useState(false);
-  const [showManualInputs, setShowManualInputs] = useState(false);
   const [showAdsDrawer, setShowAdsDrawer] = useState(false);
 
   // Fetch ad accounts and brand profile on mount
@@ -123,7 +116,6 @@ export function CampaignCreationWizard() {
       .then((r) => r.json())
       .then((d) => {
         if (d.accounts?.length > 0) {
-          setAdAccounts(d.accounts);
           set("adAccountId", d.accounts[0].id);
         }
       })
@@ -141,7 +133,6 @@ export function CampaignCreationWizard() {
             targetAudience: d.profile.target_audience || prev.targetAudience,
             adHeadline: d.profile.main_offer ? d.profile.main_offer : `Special Offer from ${d.profile.business_name}`,
           }));
-          setHasLoadedProfile(true);
         }
       })
       .catch(() => {});
