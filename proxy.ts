@@ -16,6 +16,7 @@ const isPublicRoute = createRouteMatcher([
   "/api/chatbot(.*)",          // Public website chatbot widget
   "/api/lead-form/(.*)",       // Public embeddable lead capture form APIs
   "/lead-form(.*)",            // Public lead capture & booking form page (for Instagram/FB leads)
+  "/api/social/cron-comments(.*)", // Autonomous 1-minute fallback cron for comment auto-replies
   "/api/inngest(.*)",          // Inngest background job runner
 ]);
 

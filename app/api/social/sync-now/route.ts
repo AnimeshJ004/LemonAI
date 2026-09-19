@@ -27,13 +27,20 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const baseUrl = getAppUrl(req);
+    let baseUrl: string = "https://lemon-ai-snowy.vercel.app";
+    try {
+      const detected = getAppUrl(req);
+      if (detected && !detected.includes("localhost") && !detected.includes("127.0.0.1")) {
+        baseUrl = detected;
+      }
+    } catch {}
+
     const admin = getInsforgeAdminClient();
 
     // 1. Fetch user's connected Instagram & Facebook channels
     const { data: channels } = await admin.database
       .from("user_channels")
-      .select("id, provider_account_id, handle, access_token, channel_types!inner(type)")
+      .select("id, provider_account_id, page_id, handle, access_token, page_access_token, channel_types!inner(type)")
       .eq("user_id", userId)
       .in("channel_types.type", ["INSTAGRAM", "FACEBOOK", "THREADS"])
       .eq("is_connected", true)
@@ -62,9 +69,12 @@ export async function POST(req: NextRequest) {
     const errors: string[] = [];
 
     for (const channel of channels) {
-      if (!channel.access_token) continue;
+      const rawPageToken = channel.page_access_token;
+      const pageToken = rawPageToken ? (decrypt(rawPageToken) || rawPageToken) : null;
+      const rawUserToken = channel.access_token;
+      const userToken = rawUserToken ? (decrypt(rawUserToken) || rawUserToken) : null;
 
-      const accessToken = decrypt(channel.access_token) || channel.access_token;
+      const accessToken = pageToken || userToken;
       const accountId = channel.provider_account_id;
       const channelType = (channel.channel_types as any)?.type || "INSTAGRAM";
       const channelHandle = channel.handle?.replace(/^@/, "") || "";

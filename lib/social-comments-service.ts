@@ -934,10 +934,9 @@ export async function pollConnectedChannelsComments(maxChannels = 10): Promise<{
     // 1. Fetch connected Instagram, Facebook, Threads, YouTube, and LinkedIn channels
     const { data: channels, error: chanErr } = await admin.database
       .from("user_channels")
-      .select("id, user_id, provider_account_id, handle, access_token, channel_types!inner(type)")
+      .select("id, user_id, provider_account_id, page_id, handle, access_token, page_access_token, channel_types!inner(type)")
       .in("channel_types.type", ["INSTAGRAM", "FACEBOOK", "THREADS", "YOUTUBE", "LINKEDIN"])
       .eq("is_connected", true)
-      .not("access_token", "is", null)
       .limit(maxChannels);
 
     if (chanErr || !channels || channels.length === 0) {
@@ -945,16 +944,12 @@ export async function pollConnectedChannelsComments(maxChannels = 10): Promise<{
     }
 
     for (const channel of channels) {
-      const rawToken = channel.access_token;
-      if (!rawToken) continue;
+      const rawPageToken = channel.page_access_token;
+      const pageToken = rawPageToken ? (decrypt(rawPageToken) || rawPageToken) : null;
+      const rawUserToken = channel.access_token;
+      const userToken = rawUserToken ? (decrypt(rawUserToken) || rawUserToken) : null;
 
-      let accessToken: string | null = null;
-      try {
-        accessToken = decrypt(rawToken) || rawToken;
-      } catch {
-        accessToken = rawToken;
-      }
-
+      const accessToken = pageToken || userToken;
       const accountId = channel.provider_account_id;
       const channelType = (channel.channel_types as any)?.type || "INSTAGRAM";
       if (!accessToken) continue;
@@ -1137,6 +1132,7 @@ export async function pollConnectedChannelsComments(maxChannels = 10): Promise<{
               channelHandle: channel.handle,
               brand,
               childReplies,
+              baseUrl: "https://lemon-ai-snowy.vercel.app",
             });
 
             if (res.success && !res.skipped) {

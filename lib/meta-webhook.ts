@@ -64,8 +64,8 @@ export async function handleMetaWebhookPost(req: NextRequest) {
     const rawBody = await req.text();
 
     // ─── 0. Cryptographic Signature Verification (X-Hub-Signature-256) ───
-    const appSecret = process.env.META_APP_SECRET || process.env.META_CLIENT_SECRET;
-    const signature = req.headers.get("x-hub-signature-256");
+    const appSecret = (process.env.META_APP_SECRET || process.env.META_CLIENT_SECRET || "").trim();
+    const signature = (req.headers.get("x-hub-signature-256") || "").trim();
     const isProduction = process.env.NODE_ENV === "production";
 
     if (isProduction) {

@@ -25,8 +25,8 @@ export function ScheduledPostsPoller() {
   const isRunningRef = useRef(false);
   const isRunningCommentsRef = useRef(false);
 
-  // Feature flag — default OFF now that Vercel Cron owns scheduling.
-  const enabled = process.env.NEXT_PUBLIC_ENABLE_CLIENT_POLLER === "true";
+  // Default ON to ensure near-instant (30s) comment synchronization while user is on dashboard
+  const enabled = process.env.NEXT_PUBLIC_ENABLE_CLIENT_POLLER !== "false";
 
   useEffect(() => {
     if (!enabled) return;
@@ -83,10 +83,10 @@ export function ScheduledPostsPoller() {
     const startupTimer = setTimeout(() => {
       checkDuePosts();
       syncLiveComments();
-    }, 8_000);
+    }, 4_000);
 
     const postInterval = setInterval(checkDuePosts, 60_000);
-    const commentInterval = setInterval(syncLiveComments, 45_000);
+    const commentInterval = setInterval(syncLiveComments, 30_000);
 
     return () => {
       clearTimeout(startupTimer);
