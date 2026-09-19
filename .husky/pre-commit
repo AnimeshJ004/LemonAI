@@ -21,7 +21,7 @@ npx lint-staged
 # Grep staged additions for well-known live-key prefixes. Excludes
 # .env.example and known documentation files (they contain placeholders).
 STAGED_ADDITIONS=$(git diff --cached --diff-filter=AM --unified=0 -- \
-    ':(exclude)*.example' ':(exclude)*.md' ':(exclude).husky/*' \
+    ':(exclude)*.example' ':(exclude)*.md' ':(exclude).husky/*' ':(exclude).github/workflows/*' \
     | grep '^+' | grep -v '^+++' || true)
 
 if [ -n "$STAGED_ADDITIONS" ]; then

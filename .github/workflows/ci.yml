@@ -31,7 +31,7 @@ jobs:
       # lib/env.ts. None of these are live secrets. Real production values
       # live in Vercel Environment Variables, not here.
       APP_ENV: test
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ZHVtbXkuY2xlcmsuYWNjb3VudHMuZGV2JA
       CLERK_SECRET_KEY: sk_test_ci_placeholder
       NEXT_PUBLIC_SUPABASE_URL: https://demo.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: anon_ci_placeholder
@@ -85,7 +85,7 @@ jobs:
 
     env:
       APP_ENV: test
-      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ci_placeholder
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ZHVtbXkuY2xlcmsuYWNjb3VudHMuZGV2JA
       CLERK_SECRET_KEY: sk_test_ci_placeholder
       NEXT_PUBLIC_SUPABASE_URL: https://demo.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: anon_ci_placeholder
