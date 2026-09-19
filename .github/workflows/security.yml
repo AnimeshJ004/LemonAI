@@ -129,7 +129,7 @@ jobs:
           format: 'spdx-json'
           output-file: 'sbom.spdx.json'
       - name: Upload SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lemon-ai-sbom
           path: sbom.spdx.json
