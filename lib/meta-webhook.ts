@@ -107,7 +107,10 @@ export async function handleMetaWebhookPost(req: NextRequest) {
       return NextResponse.json({ status: "acknowledged_empty" }, { status: 200 });
     }
 
-    const baseUrl = getAppUrl(req);
+    let baseUrl: string | undefined;
+    try {
+      baseUrl = getAppUrl(req);
+    } catch {}
 
     // Schedule background asynchronous processing via Next.js `after`
     // This allows returning HTTP 200 immediately to Meta so it never triggers retries

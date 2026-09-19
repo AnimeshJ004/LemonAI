@@ -11,11 +11,16 @@ function isLocalhost(urlOrHost?: string | null): boolean {
 }
 
 function normalizeUrl(url: string): string {
-  const trimmed = url.trim().replace(/\/$/, "");
-  if (!/^https?:\/\//i.test(trimmed)) {
-    return `https://${trimmed}`;
+  try {
+    const trimmed = (url || "").trim().replace(/\/$/, "");
+    if (!trimmed) return "http://localhost:3000";
+    if (!/^https?:\/\//i.test(trimmed)) {
+      return `https://${trimmed}`;
+    }
+    return trimmed;
+  } catch {
+    return url || "http://localhost:3000";
   }
-  return trimmed;
 }
 
 /**
@@ -28,70 +33,74 @@ function normalizeUrl(url: string): string {
  * 5. Default http://localhost:3000
  */
 export function getAppUrl(request?: NextRequest | Request | null): string {
-  if (request) {
-    // 1. Check for standard proxy headers (Vercel, Cloudflare, AWS, etc.)
-    const forwardedHost = request.headers.get("x-forwarded-host");
-    const forwardedProto = request.headers.get("x-forwarded-proto") || "https";
-    if (forwardedHost) {
-      const primaryHost = forwardedHost.split(",")[0].trim();
-      if (primaryHost) {
-        return normalizeUrl(`${forwardedProto}://${primaryHost}`);
+  try {
+    if (request) {
+      // 1. Check for standard proxy headers (Vercel, Cloudflare, AWS, etc.)
+      const forwardedHost = request.headers?.get?.("x-forwarded-host");
+      const forwardedProto = request.headers?.get?.("x-forwarded-proto") || "https";
+      if (forwardedHost) {
+        const primaryHost = forwardedHost.split(",")[0].trim();
+        if (primaryHost) {
+          return normalizeUrl(`${forwardedProto}://${primaryHost}`);
+        }
+      }
+
+      // 2. Check standard host header
+      const host = request.headers?.get?.("host");
+      if (host) {
+        const isLocal = isLocalhost(host);
+        const proto = isLocal ? "http" : (request.headers?.get?.("x-forwarded-proto") || "https");
+        return normalizeUrl(`${proto}://${host}`);
+      }
+
+      // 3. Fallback to request.nextUrl.origin or request.url
+      if (request && "nextUrl" in request && (request as any).nextUrl?.origin && (request as any).nextUrl.origin !== "null") {
+        return normalizeUrl((request as any).nextUrl.origin);
+      }
+      if (request?.url) {
+        try {
+          const parsed = new URL(request.url);
+          if (parsed.origin && parsed.origin !== "null") {
+            return normalizeUrl(parsed.origin);
+          }
+        } catch {}
       }
     }
 
-    // 2. Check standard host header
-    const host = request.headers.get("host");
-    if (host) {
-      const isLocal = isLocalhost(host);
-      const proto = isLocal ? "http" : (request.headers.get("x-forwarded-proto") || "https");
-      return normalizeUrl(`${proto}://${host}`);
+    // Check NEXT_PUBLIC_APP_URL or APP_URL if they contain a REAL production domain (not localhost)
+    const envAppUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "").trim();
+    if (envAppUrl && !isLocalhost(envAppUrl)) {
+      return normalizeUrl(envAppUrl);
     }
 
-    // 3. Fallback to request.nextUrl.origin or request.url
-    if ("nextUrl" in request && request.nextUrl?.origin && request.nextUrl.origin !== "null") {
-      return normalizeUrl(request.nextUrl.origin);
+    // Automatic platform deployment URLs (Vercel, Railway, Render, etc.)
+    // On Vercel, VERCEL_PROJECT_PRODUCTION_URL is the canonical production domain (e.g. app.example.com or lemonai.vercel.app)
+    if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
+      return normalizeUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL);
     }
-    if (request.url) {
-      try {
-        const parsed = new URL(request.url);
-        if (parsed.origin && parsed.origin !== "null") {
-          return normalizeUrl(parsed.origin);
-        }
-      } catch {}
+    if (process.env.VERCEL_URL) {
+      return normalizeUrl(process.env.VERCEL_URL);
     }
-  }
+    if (process.env.NEXT_PUBLIC_VERCEL_URL) {
+      return normalizeUrl(process.env.NEXT_PUBLIC_VERCEL_URL);
+    }
+    if (process.env.VERCEL_BRANCH_URL) {
+      return normalizeUrl(process.env.VERCEL_BRANCH_URL);
+    }
+    if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+      return normalizeUrl(process.env.RAILWAY_PUBLIC_DOMAIN);
+    }
+    if (process.env.RENDER_EXTERNAL_URL) {
+      return normalizeUrl(process.env.RENDER_EXTERNAL_URL);
+    }
 
-  // Check NEXT_PUBLIC_APP_URL or APP_URL if they contain a REAL production domain (not localhost)
-  const envAppUrl = (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || "").trim();
-  if (envAppUrl && !isLocalhost(envAppUrl)) {
-    return normalizeUrl(envAppUrl);
-  }
+    // Fallback to environment variable (even if localhost in local dev)
+    if (envAppUrl) {
+      return normalizeUrl(envAppUrl);
+    }
 
-  // Automatic platform deployment URLs (Vercel, Railway, Render, etc.)
-  // On Vercel, VERCEL_PROJECT_PRODUCTION_URL is the canonical production domain (e.g. app.example.com or lemonai.vercel.app)
-  if (process.env.VERCEL_PROJECT_PRODUCTION_URL) {
-    return normalizeUrl(process.env.VERCEL_PROJECT_PRODUCTION_URL);
+    return "http://localhost:3000";
+  } catch {
+    return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
   }
-  if (process.env.VERCEL_URL) {
-    return normalizeUrl(process.env.VERCEL_URL);
-  }
-  if (process.env.NEXT_PUBLIC_VERCEL_URL) {
-    return normalizeUrl(process.env.NEXT_PUBLIC_VERCEL_URL);
-  }
-  if (process.env.VERCEL_BRANCH_URL) {
-    return normalizeUrl(process.env.VERCEL_BRANCH_URL);
-  }
-  if (process.env.RAILWAY_PUBLIC_DOMAIN) {
-    return normalizeUrl(process.env.RAILWAY_PUBLIC_DOMAIN);
-  }
-  if (process.env.RENDER_EXTERNAL_URL) {
-    return normalizeUrl(process.env.RENDER_EXTERNAL_URL);
-  }
-
-  // Fallback to environment variable (even if localhost in local dev)
-  if (envAppUrl) {
-    return normalizeUrl(envAppUrl);
-  }
-
-  return "http://localhost:3000";
 }

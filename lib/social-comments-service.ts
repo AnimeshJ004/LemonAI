@@ -568,16 +568,26 @@ Return ONLY the JSON object.`,
 
     // ─── 6b. Append intent-aware form link to DM message ────────────────────────
     // If AI wants to send a DM, embed the right lead capture form URL based on what the commenter said.
-    if (aiResult.shouldSendDM && aiResult.dmMessage && userId) {
-      const baseUrl = (params.baseUrl || getAppUrl()).replace(/\/$/, "");
-      const formType = aiResult.intentType === "booking" ? "booking" : aiResult.intentType === "pricing" ? "pricing" : null;
-      if (formType && baseUrl) {
-        const formUrl = `${baseUrl}/lead-form?type=${formType}&user=${encodeURIComponent(userId)}&source=${encodeURIComponent(platform.toLowerCase())}&name=${encodeURIComponent(commenterHandle)}`;
-        const formCta = formType === "booking"
-          ? `\n\n📅 Book your free consultation here:\n${formUrl}`
-          : `\n\n📋 Share your requirements & get a custom quote:\n${formUrl}`;
-        aiResult.dmMessage = aiResult.dmMessage.trim() + formCta;
+    try {
+      if (aiResult.shouldSendDM && aiResult.dmMessage && userId) {
+        let baseUrl = params.baseUrl;
+        if (!baseUrl) {
+          try {
+            baseUrl = getAppUrl();
+          } catch {}
+        }
+        baseUrl = (baseUrl || "").replace(/\/$/, "");
+        const formType = aiResult.intentType === "booking" ? "booking" : aiResult.intentType === "pricing" ? "pricing" : null;
+        if (formType && baseUrl) {
+          const formUrl = `${baseUrl}/lead-form?type=${formType}&user=${encodeURIComponent(userId)}&source=${encodeURIComponent(platform.toLowerCase())}&name=${encodeURIComponent(commenterHandle)}`;
+          const formCta = formType === "booking"
+            ? `\n\n📅 Book your free consultation here:\n${formUrl}`
+            : `\n\n📋 Share your requirements & get a custom quote:\n${formUrl}`;
+          aiResult.dmMessage = aiResult.dmMessage.trim() + formCta;
+        }
       }
+    } catch (linkErr) {
+      console.warn("[Social Comment Service] Form link attachment non-fatal notice:", linkErr);
     }
 
     // ─── 7. Post Public Reply via Platform API ────────────────────────────────
