@@ -17,19 +17,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className="h-full antialiased font-sans"
+    <ClerkProvider
+      publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      signInUrl="/sign-in"
+      signUpUrl="/sign-up"
+      signInFallbackRedirectUrl="/"
+      signUpFallbackRedirectUrl="/onboarding"
     >
-      <body className="min-h-full flex flex-col font-sans">
-        <ClerkProvider
-          publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-          signInUrl="/sign-in"
-          signUpUrl="/sign-up"
-          signInFallbackRedirectUrl="/"
-          signUpFallbackRedirectUrl="/onboarding"
-        >
+      <html
+        lang="en"
+        suppressHydrationWarning
+        className="h-full antialiased font-sans"
+      >
+        <body className="min-h-full flex flex-col font-sans" suppressHydrationWarning>
           <QueryProvider>
             <ThemeProvider
               attribute="class"
@@ -41,13 +41,11 @@ export default function RootLayout({
                 {children}
               </TooltipProvider>
 
-              <Toaster  richColors/>
+              <Toaster richColors />
             </ThemeProvider>
-
           </QueryProvider>
-
-        </ClerkProvider>
-      </body>
-    </html>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }

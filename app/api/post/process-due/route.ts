@@ -26,7 +26,7 @@ async function handleProcessDue() {
                 .update({ status: "queue" })
                 .eq("status", "publishing")
                 .lte("scheduled_at", threeMinutesAgo);
-        } catch {}
+        } catch { }
 
         // 1. Fetch all posts in queue whose scheduled time has arrived (with 60s lookahead buffer)
         const lookaheadNow = new Date(Date.now() + 60_000).toISOString();
@@ -61,7 +61,7 @@ async function handleProcessDue() {
                         data: { postId: post.id }
                     }))
                 );
-            } catch {}
+            } catch { }
 
             publishedCount = publishResults.filter(
                 (r) => r.status === "fulfilled" && (r as any).value?.success

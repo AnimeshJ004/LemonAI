@@ -103,16 +103,16 @@ export default function MetaAdsPage() {
   ];
 
   return (
-    <div className="py-6 space-y-6">
+    <div className="py-4 sm:py-6 space-y-5 sm:space-y-6 w-full min-w-0">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-xl bg-gradient-to-br from-[#1877F2]/20 to-[#E4405F]/10 border border-[#1877F2]/20 flex items-center justify-center">
+          <div className="size-10 rounded-xl bg-gradient-to-br from-[#1877F2]/20 to-[#E4405F]/10 border border-[#1877F2]/20 flex items-center justify-center shrink-0">
             <Megaphone className="size-5 text-[#1877F2]" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-foreground">Meta Ads Manager</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-lg sm:text-xl font-bold text-foreground">Meta Ads Manager</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 md:line-clamp-none">
               Autonomous AI advertising campaigns for Instagram & Facebook
             </p>
           </div>

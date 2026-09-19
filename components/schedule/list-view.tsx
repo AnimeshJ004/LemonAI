@@ -259,22 +259,32 @@ const ListView = ({
     <>
       <div className="flex flex-col h-full min-h-0 pt-1">
         {/* ── Tab bar ── */}
-        <div className="flex items-center justify-between border-b px-4 sm:px-6 shrink-0 pb-2">
-          <Tabs value={activeTab || "draft"} onValueChange={(val) => setActiveTab(val)}>
-            <TabsList variant="line" className="space-x-4">
-              <TabsTrigger value="draft">Draft {renderTotalBadge(totalDrafts)}</TabsTrigger>
-              <TabsTrigger value="queue">Queue {renderTotalBadge(totalQueue)}</TabsTrigger>
-              <TabsTrigger value="published">Published {renderTotalBadge(totalPublished)}</TabsTrigger>
-              <TabsTrigger value="failed">Failed {renderTotalBadge(totalFailed)}</TabsTrigger>
+        <div className="flex flex-wrap items-center justify-between gap-2.5 border-b px-2 sm:px-6 shrink-0 pb-2">
+          <Tabs value={activeTab || "draft"} onValueChange={(val) => setActiveTab(val)} className="overflow-x-auto">
+            <TabsList variant="line" className="space-x-2 sm:space-x-4">
+              <TabsTrigger value="draft" className="min-h-[38px] px-2.5 sm:px-3 text-xs sm:text-sm">
+                Draft {renderTotalBadge(totalDrafts)}
+              </TabsTrigger>
+              <TabsTrigger value="queue" className="min-h-[38px] px-2.5 sm:px-3 text-xs sm:text-sm">
+                Queue {renderTotalBadge(totalQueue)}
+              </TabsTrigger>
+              <TabsTrigger value="published" className="min-h-[38px] px-2.5 sm:px-3 text-xs sm:text-sm">
+                Published {renderTotalBadge(totalPublished)}
+              </TabsTrigger>
+              <TabsTrigger value="failed" className="min-h-[38px] px-2.5 sm:px-3 text-xs sm:text-sm">
+                Failed {renderTotalBadge(totalFailed)}
+              </TabsTrigger>
             </TabsList>
           </Tabs>
-          <ScheduleToolbar
-            viewType="list"
-            channelIds={channelIds}
-            toggleChannel={toggleChannel}
-            selectedStatus={activeTab}
-            setSelectedStatus={setActiveTab}
-          />
+          <div className="shrink-0">
+            <ScheduleToolbar
+              viewType="list"
+              channelIds={channelIds}
+              toggleChannel={toggleChannel}
+              selectedStatus={activeTab}
+              setSelectedStatus={setActiveTab}
+            />
+          </div>
         </div>
 
         {/* ── Post List ── */}
@@ -389,7 +399,7 @@ const ListView = ({
                                     </div>
                                   )}
 
-                                  <p className="whitespace-pre-wrap text-sm leading-6 line-clamp-4">
+                                  <p className="whitespace-pre-wrap text-sm leading-6 line-clamp-2 md:line-clamp-none">
                                     {post.content}
                                   </p>
                                 </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Copy, LayoutGrid } from "lucide-react";
+import { ChevronDown, Copy, LayoutGrid, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -70,16 +70,26 @@ const ScheduleToolbar = ({
               {statusOptions.map((option) => (
                 <button
                   key={option.id}
+                  type="button"
                   className={cn(
-                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted transition-colors",
+                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted transition-colors cursor-pointer text-left",
                     selectedStatus === option.id && "bg-muted font-medium"
                   )}
                   onClick={() => setSelectedStatus(option.id)}
                 >
-                  <Checkbox
-                    checked={selectedStatus === option.id}
-                    className="pointer-events-none"
-                  />
+                  <div
+                    aria-hidden="true"
+                    className={cn(
+                      "flex size-4 shrink-0 items-center justify-center rounded-[4px] border transition-colors",
+                      selectedStatus === option.id
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input"
+                    )}
+                  >
+                    {selectedStatus === option.id && (
+                      <Check className="size-3 stroke-[3]" />
+                    )}
+                  </div>
                   <span>{option.label}</span>
                 </button>
               ))}

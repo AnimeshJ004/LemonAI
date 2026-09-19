@@ -12,6 +12,8 @@ import CreatePostDialog from "@/components/schedule/create-post-dialog";
 import { ModernLoader } from "@/components/ui/modern-loader";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
+import { cn } from "@/lib/utils";
+
 type ViewType = "calendar" | "list"
 
 const SchedulePageContent = () => {
@@ -25,14 +27,19 @@ const SchedulePageContent = () => {
 
   return (
     <div className="flex flex-col h-full w-full min-w-0">
-      <header className="flex flex-wrap items-center justify-between gap-3 px-2 sm:px-4 pt-1 pb-3 border-b border-border/40 shrink-0">
+      <header className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 px-1 sm:px-4 pt-1 pb-3 border-b border-border/40 shrink-0">
         <div className="flex items-center gap-2">
-          {/* Mobile Sidebar Toggle Button */}
-          <SidebarTrigger className="md:hidden" />
-          <h1 className="text-lg sm:text-xl font-semibold text-foreground">All Channels</h1>
+          {/* Mobile Sidebar Toggle Button with 44px tap target */}
+          <SidebarTrigger className="md:hidden min-h-[44px] min-w-[44px] size-11 flex items-center justify-center -ml-2 rounded-lg hover:bg-muted text-foreground transition-colors" />
+          <div>
+            <h1 className="text-base sm:text-xl font-bold text-foreground">Schedule Workspace</h1>
+            <p className="text-[11px] sm:text-xs text-muted-foreground line-clamp-1 md:line-clamp-none">
+              Plan, draft, and schedule posts across all connected channels
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-2 shrink-0">
           <ToggleGroup
             type="single"
             value={activeView}
@@ -44,25 +51,28 @@ const SchedulePageContent = () => {
             }}
             className="border rounded-lg p-0.5 bg-muted/30"
           >
-            <ToggleGroupItem value="list" className="gap-1.5 px-2.5 h-8">
+            <ToggleGroupItem value="list" className="gap-1.5 px-3 min-h-[40px] sm:min-h-[36px] h-9 sm:h-8">
               <LayoutList className="size-4" />
               <span className="text-xs font-medium">List</span>
             </ToggleGroupItem>
-            <ToggleGroupItem value="calendar" className="gap-1.5 px-2.5 h-8">
+            <ToggleGroupItem value="calendar" className="gap-1.5 px-3 min-h-[40px] sm:min-h-[36px] h-9 sm:h-8">
               <CalendarIcon className="size-4" />
               <span className="text-xs font-medium">Calendar</span>
             </ToggleGroupItem>
           </ToggleGroup>
-          <Button onClick={() => setCreatePostModalOpen(true)} className="gap-1.5 font-semibold text-xs sm:text-sm h-8 px-3 shrink-0">
+          <Button
+            onClick={() => setCreatePostModalOpen(true)}
+            className="gap-1.5 font-semibold text-xs sm:text-sm min-h-[40px] sm:min-h-[36px] h-9 sm:h-8 px-3.5 shrink-0 shadow-xs"
+          >
             <Plus className="size-4" />
-            New Post
+            <span>New Post</span>
           </Button>
         </div>
       </header>
 
-      {/* Main View Container with Mobile Horizontal Scroll Support */}
+      {/* Main View Container: Fluid down to 320px for List View, scrollable for Calendar */}
       <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-x-auto overflow-y-auto pt-2">
-        <div className="min-w-[650px] md:min-w-0 h-full flex flex-col">
+        <div className={cn("h-full flex flex-col min-h-0", activeView === "calendar" ? "min-w-[650px] md:min-w-0" : "w-full min-w-0")}>
           {activeView === "list" ? (
             <ListView setCreatePostModalOpen={setCreatePostModalOpen} />
           ) : (

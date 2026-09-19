@@ -33,27 +33,31 @@ function SettingsContent() {
   }
 
   return (
-    <div className="w-full">
+    <div className="w-full min-w-0">
       <div className="max-w-5xl mx-auto w-full h-full">
-        <div className="py-4">
-          <h1 className="text-xl font-semibold">Settings</h1>
+        <div className="py-2 sm:py-4">
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground">Settings & Preferences</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground line-clamp-1 md:line-clamp-none mt-0.5">
+            Configure your account profile, social channels, and theme appearance
+          </p>
         </div>
 
         <div>
           <Tabs value={activeTab} onValueChange={handleTabChange}>
-            <div className="mb-6 w-full border-b">
-              <TabsList variant="line" className="w-fit space-x-4
-              group-data-horizontal/tabs:h-12
-              ">
-                <TabsTrigger value="profile">
+            <div className="mb-4 sm:mb-6 w-full border-b overflow-x-auto">
+              <TabsList variant="line" className="w-fit space-x-2 sm:space-x-4 min-h-[44px]">
+                <TabsTrigger value="profile" className="min-h-[44px] gap-2 px-3 text-xs sm:text-sm">
                   <User className="size-4" />
-                  Profile</TabsTrigger>
-                <TabsTrigger value="channels">
+                  <span>Profile</span>
+                </TabsTrigger>
+                <TabsTrigger value="channels" className="min-h-[44px] gap-2 px-3 text-xs sm:text-sm">
                   <Layers className="size-4" />
-                  Channels</TabsTrigger>
-                <TabsTrigger value="appearance">
+                  <span>Channels</span>
+                </TabsTrigger>
+                <TabsTrigger value="appearance" className="min-h-[44px] gap-2 px-3 text-xs sm:text-sm">
                   <Palette className="size-4" />
-                  Appearance</TabsTrigger>
+                  <span>Appearance</span>
+                </TabsTrigger>
               </TabsList>
             </div>
 
@@ -88,6 +92,7 @@ function SettingsContent() {
                   </div>
                    <div className="mt-6">
                     <UserProfile
+                      routing="hash"
                       appearance={{
                         elements: {
                           rootBox: "w-full",

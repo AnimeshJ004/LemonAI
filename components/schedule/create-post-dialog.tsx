@@ -432,20 +432,23 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
     return (
         <Dialog open={open} onOpenChange={handleOpenChange}>
             <DialogContent className={cn(
-                "w-[95vw] sm:max-w-[850px] max-h-[92vh] sm:max-h-[90vh] gap-0 px-0 pt-0 pb-0 overflow-hidden flex flex-col rounded-2xl",
+                "w-[96vw] sm:max-w-[850px] max-h-[92dvh] sm:max-h-[90vh] gap-0 px-0 pt-0 pb-0 overflow-hidden flex flex-col rounded-2xl",
                 selectedRightTab && "sm:max-w-[1100px]"
             )}>
                 <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-                    <DialogHeader className="px-6 sm:px-8 py-3.5 border-b shrink-0">
-                        <div className="flex items-center justify-between">
-                            <DialogTitle className="font-semibold text-lg">Create Post</DialogTitle>
+                    <DialogHeader className="px-3 sm:px-8 py-3.5 border-b shrink-0">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                            <DialogTitle className="font-semibold text-base sm:text-lg">Create Post</DialogTitle>
                             <DialogDescription className="sr-only">Create and schedule social media posts</DialogDescription>
                             <div className="flex items-center gap-1">
                                 {rightTabs.map((tab) => (
                                     <Button
                                         key={tab.id}
                                         variant={selectedRightTab === tab.id ? "default" : "ghost"}
-                                        className={cn(!selectedRightTab && "size-8")}
+                                        className={cn(
+                                            "min-h-[36px] text-xs font-medium",
+                                            !selectedRightTab && "size-8 sm:size-9"
+                                        )}
                                         onClick={() => handleSelectRightTab(tab.id)}
                                     >
                                         <tab.icon className="size-4" />
@@ -457,12 +460,12 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                     </DialogHeader>
 
 
-                    <div className="w-full flex flex-1 min-w-0 min-h-0 overflow-hidden max-h-[calc(90vh-130px)]">
+                    <div className="w-full flex flex-col md:flex-row flex-1 min-w-0 min-h-0 overflow-hidden max-h-[calc(90dvh-130px)]">
 
                         {/* Left — channel list */}
-                        <div className="flex flex-1 flex-col min-w-[320px] sm:min-w-[420px] w-full pb-8 overflow-y-auto">
-                            <div className="channel--selector py-4 px-8 border-b bg-muted/20 shrink-0">
-                                <div className="flex items-center justify-between mb-3">
+                        <div className="flex flex-1 flex-col min-w-0 w-full pb-8 overflow-y-auto">
+                            <div className="channel--selector py-3 px-3 sm:px-8 border-b bg-muted/20 shrink-0">
+                                <div className="flex items-center justify-between mb-2 sm:mb-3">
                                     <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Select Channels</span>
                                     {channels?.length > 0 && !isPending && (
                                         <button
@@ -676,7 +679,7 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
 
                         {/* Right — channel preview */}
                         {selectedRightTab && (
-                            <div className="w-[350px] flex flex-col shrink-0 border-l border-border bg-muted/30 min-h-0 overflow-y-auto">
+                            <div className="w-full md:w-[350px] flex flex-col shrink-0 border-t md:border-t-0 md:border-l border-border bg-muted/30 min-h-0 max-h-[50vh] md:max-h-none overflow-y-auto">
                                 <div className="py-4 flex-1 flex flex-col min-h-0">
                                     {selectedRightTab === "ai" && (
                                         <div className="px-6">

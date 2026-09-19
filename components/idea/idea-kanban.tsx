@@ -241,34 +241,56 @@ const IdeaKanban = () => {
 
     return (
         <>
-            <div className="flex flex-col overflow-hidden">
-                <header className="flex items-center justify-between border-b px-6 py-4">
+            <div className="flex flex-col overflow-hidden w-full min-w-0">
+                <header className="flex flex-wrap items-center justify-between gap-3 border-b px-2 sm:px-6 py-3 sm:py-4 shrink-0">
                     <div>
-                        <h1 className="text-xl font-semibold">Ideas</h1>
-                        <p className="text-sm text-muted-foreground">
-                            Capture and organize your content ideas
+                        <h1 className="text-lg sm:text-xl font-bold">Content Ideas</h1>
+                        <p className="text-xs sm:text-sm text-muted-foreground line-clamp-1 md:line-clamp-none">
+                            Capture, generate, and organize your content ideas
                         </p>
                     </div>
-                    <div className="flex items-center gap-3">
-                        {/* //GenerateIdea popover */}
+                    <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                        {/* GenerateIdea popover */}
                         <GenerateIdeasPopover onGenerated={handleGeneratedIdea} />
-                        <Button variant="outline" className="gap-2"
+                        <Button
+                            variant="outline"
+                            className="gap-1.5 min-h-[40px] sm:min-h-[36px] h-9 sm:h-8 text-xs sm:text-sm font-semibold"
                             onClick={() => handleAddIdea(columns[0]?.id ?? "")}
                         >
-                            <Plus className="h-4 w-4" />
-                            New Idea
+                            <Plus className="size-4" />
+                            <span>New Idea</span>
                         </Button>
                     </div>
                 </header>
 
+                {/* Mobile Stage Quick-Navigation Pills */}
+                {columns && columns.length > 0 && (
+                    <div className="flex md:hidden items-center gap-1.5 overflow-x-auto px-2 pt-2.5 pb-1 no-scrollbar shrink-0">
+                        {columns.map((col) => (
+                            <button
+                                key={col.id}
+                                onClick={() => {
+                                    const el = document.getElementById(`idea-col-${col.id}`);
+                                    el?.scrollIntoView({ behavior: "smooth", inline: "start" });
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap border bg-card hover:bg-muted text-foreground transition-colors min-h-[36px]"
+                            >
+                                <span>{col.title}</span>
+                                <Badge variant="secondary" className="px-1.5 py-0 text-[10px] h-4">
+                                    {col.ideas.length}
+                                </Badge>
+                            </button>
+                        ))}
+                    </div>
+                )}
 
-                <div className="h-[calc(100vh-120px)]">
-                    <div className="kanban--board relative py-6 flex-1 h-full overflow-hidden">
+                <div className="h-[calc(100vh-140px)] min-h-[450px]">
+                    <div className="kanban--board relative py-4 sm:py-6 flex-1 h-full overflow-hidden">
                         {isPending ? (
-                            <div className="flex gap-4 w-full h-full items-start">
+                            <div className="flex gap-3 sm:gap-4 w-full h-full items-start overflow-x-auto pb-4">
                                 {[1, 2, 3, 4].map((i) => (
-                                    <div key={i} className="shrink-0 w-[280px] flex flex-col h-full min-h-0 
-                rounded-lg bg-[#f7f6f3] dark:bg-neutral-800/40 border p-3">
+                                    <div key={i} className="shrink-0 w-[85vw] max-w-[300px] sm:w-[280px] flex flex-col h-full min-h-0 
+                rounded-xl bg-[#f7f6f3] dark:bg-neutral-800/40 border p-3">
                                         <div className="flex items-center justify-between pb-3">
                                             <Skeleton className="h-5 w-24" />
                                             <Skeleton className="h-5 w-6 rounded-full" />
@@ -282,19 +304,20 @@ const IdeaKanban = () => {
                                 ))}
                             </div>
                         ) : (
-                            <div className="h-full overflow-x-auto">
+                            <div className="h-full overflow-x-auto snap-x snap-mandatory sm:snap-none touch-pan-x pb-4">
                                 <DragDropContext onDragEnd={handleDragEnd}>
                                     <div
                                         style={{ height: "100%" }}
-                                        className="flex gap-4 w-full"
+                                        className="flex gap-3 sm:gap-4 w-full"
                                     >
                                         {columns?.map((column) => (
                                             <div
                                                 key={column.id}
-                                                className="shrink-0 w-[280px] flex flex-col h-full min-h-0 
-rounded-lg bg-[#f7f6f3] dark:bg-neutral-800/40 border p-3"
+                                                id={`idea-col-${column.id}`}
+                                                className="snap-start shrink-0 w-[85vw] max-w-[300px] sm:w-[280px] flex flex-col h-full min-h-0 
+rounded-xl bg-[#f7f6f3] dark:bg-neutral-800/40 border p-3"
                                             >
-                                                <div className="flex items-center justify-between px-3 pt-3 pb-2">
+                                                <div className="flex items-center justify-between px-2 sm:px-3 pt-2 pb-2">
                                                     <div className="flex items-center gap-2">
                                                         <h3 className="font-bold text-sm">
                                                             {column.title}
@@ -305,10 +328,10 @@ rounded-lg bg-[#f7f6f3] dark:bg-neutral-800/40 border p-3"
                                                     </div>
                                                     <Button size="icon"
                                                         variant="ghost"
-                                                        className="size-7"
+                                                        className="size-8 min-h-[32px] min-w-[32px]"
                                                         onClick={() => handleAddIdea(column.id)}
                                                     >
-                                                        <Plus className="w-4 h-4" />
+                                                        <Plus className="size-4" />
                                                     </Button>
                                                 </div>
 
@@ -399,7 +422,7 @@ p-2 px-3 transition-colors min-h-0`,
                                                         </CardHeader>
 
                                                         {idea.description && (
-                                                            <p className="text-xs text-muted-foreground line-clamp-2">
+                                                            <p className="text-xs text-muted-foreground line-clamp-2 md:line-clamp-none">
                                                                 {idea.description}
                                                             </p>
                                                         )}

@@ -93,13 +93,13 @@ export default function BlogStudioPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto py-6 px-3 space-y-6">
+    <div className="max-w-4xl mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-6 w-full min-w-0">
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <BookOpen className="size-6 text-primary" />
-          SEO Blog Writer
+        <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-foreground">
+          <BookOpen className="size-5 sm:size-6 text-primary shrink-0" />
+          <span>SEO Blog Writer</span>
         </h1>
-        <p className="text-muted-foreground text-sm mt-1">
+        <p className="text-muted-foreground text-xs sm:text-sm mt-1 line-clamp-2 md:line-clamp-none">
           Generate long-form SEO blogs with meta tags, FAQs & social media snippets
         </p>
       </div>

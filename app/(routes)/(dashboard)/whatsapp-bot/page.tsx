@@ -208,21 +208,23 @@ WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id_here`;
   });
 
   return (
-    <div className="max-w-5xl mx-auto py-6 px-4 space-y-6">
+    <div className="max-w-5xl mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-5 sm:space-y-6 w-full min-w-0">
       {/* Page Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <MessageCircle className="size-6 text-emerald-500" /> WhatsApp AI Sales Concierge
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-foreground">
+            <MessageCircle className="size-5 sm:size-6 text-emerald-500 shrink-0" />
+            <span>WhatsApp AI Sales Concierge</span>
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <p className="text-muted-foreground text-xs sm:text-sm mt-1 line-clamp-2 md:line-clamp-none">
             Autonomous 24/7 WhatsApp assistant that answers customer inquiries, shares consultation slots, and books appointments straight to your CRM.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Link href="/appointments">
-            <Button variant="outline" size="sm" className="text-xs gap-1.5">
-              <Calendar className="size-3.5" /> View Bookings
+            <Button variant="outline" size="sm" className="text-xs gap-1.5 min-h-[40px] sm:min-h-[36px]">
+              <Calendar className="size-3.5" />
+              <span>View Bookings</span>
             </Button>
           </Link>
           <Link href="/crm/inbox">

@@ -51,12 +51,13 @@ export default function AnalyticsPage() {
   ];
 
   return (
-    <div className="max-w-5xl mx-auto py-6 px-3 space-y-6">
+    <div className="max-w-5xl mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-5 sm:space-y-6 w-full min-w-0">
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <BarChart3 className="size-6 text-primary" /> Growth Analytics & Attribution
+        <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-foreground">
+          <BarChart3 className="size-5 sm:size-6 text-primary shrink-0" />
+          <span>Growth Analytics & Attribution</span>
         </h1>
-        <p className="text-muted-foreground text-sm mt-1">
+        <p className="text-muted-foreground text-xs sm:text-sm mt-1 line-clamp-2 md:line-clamp-none">
           Real-time performance across multi-channel content, leads, appointment conversion & closed revenue
         </p>
       </div>

@@ -25,7 +25,7 @@ export function BrandProfileView() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-foreground">Brand & Creator Profile</h1>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground line-clamp-2 md:line-clamp-none">
               Your AI uses this to personalize all generated social posts, reels, hooks & visuals
             </p>
           </div>
@@ -44,7 +44,7 @@ export function BrandProfileView() {
       </div>
 
       {/* Main Card */}
-      <div className="rounded-2xl border bg-card shadow-sm p-6">
+      <div className="rounded-2xl border bg-card shadow-sm p-4 sm:p-6">
         <BrandProfileForm />
       </div>
 
@@ -83,7 +83,7 @@ export function BrandProfileView() {
                 <Icon className="size-4 text-primary" />
                 <p className="text-xs font-semibold text-foreground">{tip.title}</p>
               </div>
-              <p className="text-[11px] text-muted-foreground leading-relaxed">{tip.desc}</p>
+              <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-2 md:line-clamp-none">{tip.desc}</p>
             </div>
           );
         })}

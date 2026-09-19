@@ -131,13 +131,13 @@ export default function ContentStrategyPage() {
   });
 
   return (
-    <div className="max-w-5xl mx-auto py-6 px-3 space-y-6">
+    <div className="max-w-5xl mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-6 w-full min-w-0">
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <TrendingUp className="size-6 text-primary" />
-          Content Strategy Planner
+        <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-foreground">
+          <TrendingUp className="size-5 sm:size-6 text-primary shrink-0" />
+          <span>Content Strategy Planner</span>
         </h1>
-        <p className="text-muted-foreground text-sm mt-1">
+        <p className="text-muted-foreground text-xs sm:text-sm mt-1 line-clamp-2 md:line-clamp-none">
           AI builds your complete content strategy — pillars, weekly schedule, KPIs & quick wins
         </p>
       </div>
