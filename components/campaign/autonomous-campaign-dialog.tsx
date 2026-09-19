@@ -384,7 +384,7 @@ export default function AutonomousCampaignDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[92vh] overflow-y-auto">
+      <DialogContent className="w-[95vw] max-w-3xl sm:max-w-3xl lg:max-w-4xl max-h-[90vh] overflow-y-auto overflow-x-hidden p-4 sm:p-6">
         <DialogHeader>
           <div className="flex items-center gap-2 text-primary mb-1">
             <Layers className="size-4" />
@@ -404,11 +404,11 @@ export default function AutonomousCampaignDialog({
           <div className="space-y-5 py-2">
             {/* 1. Duration & Days to Schedule */}
             <div className="space-y-3 p-3.5 rounded-xl border bg-muted/20">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-foreground flex items-center gap-1.5 shrink-0">
                   <Calendar className="size-3.5 text-primary" /> 1. Duration & Timeline
                 </Label>
-                <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
+                <span className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-0.5 rounded-md shrink-0">
                   {autoDays} {autoDays === 1 ? "Day" : "Days"} ({dateRangePreview})
                 </span>
               </div>
@@ -422,14 +422,14 @@ export default function AutonomousCampaignDialog({
                       type="button"
                       onClick={() => handleSelectPreset(preset.value)}
                       className={cn(
-                        "flex flex-col items-center justify-center py-2 px-2.5 rounded-xl border text-xs transition-all cursor-pointer",
+                        "flex flex-col items-center justify-center py-2 px-2 rounded-xl border text-xs transition-all cursor-pointer min-w-0",
                         selected
                           ? "border-primary bg-primary/15 text-primary font-bold shadow-xs ring-1 ring-primary/30"
                           : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-accent/40"
                       )}
                     >
-                      <span className="font-bold">{preset.label}</span>
-                      <span className="text-[10px] opacity-75">{preset.sub}</span>
+                      <span className="font-bold truncate w-full text-center">{preset.label}</span>
+                      <span className="text-[10px] opacity-75 truncate w-full text-center">{preset.sub}</span>
                     </button>
                   );
                 })}
@@ -452,11 +452,11 @@ export default function AutonomousCampaignDialog({
 
             {/* 2. Daily Posting Frequency */}
             <div className="space-y-3 p-3.5 rounded-xl border bg-muted/20">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-foreground flex items-center gap-1.5 shrink-0">
                   <TrendingUp className="size-3.5 text-primary" /> 2. Daily Posting Frequency
                 </Label>
-                <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
+                <span className="text-xs font-semibold text-primary bg-primary/10 px-2.5 py-0.5 rounded-md shrink-0">
                   {postsPerDay} {postsPerDay === 1 ? "Post" : "Posts"} / Day
                 </span>
               </div>
@@ -468,14 +468,14 @@ export default function AutonomousCampaignDialog({
                     type="button"
                     onClick={() => setPostsPerDay(preset.value)}
                     className={cn(
-                      "flex flex-col items-center justify-center py-2 px-2.5 rounded-xl border text-xs transition-all cursor-pointer",
+                      "flex flex-col items-center justify-center py-2 px-2 rounded-xl border text-xs transition-all cursor-pointer min-w-0",
                       postsPerDay === preset.value
                         ? "border-primary bg-primary/15 text-primary font-bold shadow-xs ring-1 ring-primary/30"
                         : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-accent/40"
                     )}
                   >
-                    <span className="font-bold">{preset.label}</span>
-                    <span className="text-[10px] opacity-75">{preset.desc}</span>
+                    <span className="font-bold truncate w-full text-center">{preset.label}</span>
+                    <span className="text-[10px] opacity-75 truncate w-full text-center">{preset.desc}</span>
                   </button>
                 ))}
               </div>
@@ -499,13 +499,13 @@ export default function AutonomousCampaignDialog({
                   {customTimes.slice(0, postsPerDay).map((timeVal, idx) => (
                     <div
                       key={idx}
-                      className="flex items-center justify-between gap-2 p-2 rounded-lg border bg-background text-xs"
+                      className="flex items-center justify-between gap-2 p-2 rounded-lg border bg-background text-xs min-w-0"
                     >
                       <div className="min-w-0">
-                        <span className="block text-[9px] uppercase font-bold text-muted-foreground">
+                        <span className="block text-[9px] uppercase font-bold text-muted-foreground truncate">
                           Post #{idx + 1}
                         </span>
-                        <span className="font-bold text-primary text-[11px]">
+                        <span className="font-bold text-primary text-[11px] truncate block">
                           {formatTimeDisplay(timeVal)}
                         </span>
                       </div>
@@ -513,7 +513,7 @@ export default function AutonomousCampaignDialog({
                         type="time"
                         value={timeVal}
                         onChange={(e) => updateTimeSlot(idx, e.target.value)}
-                        className="h-7 px-1.5 rounded border bg-card text-foreground font-mono text-[11px] font-bold focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer"
+                        className="h-7 px-1.5 rounded border bg-card text-foreground font-mono text-[11px] font-bold focus:outline-none focus:ring-1 focus:ring-primary cursor-pointer shrink-0"
                         title={`Change time for Post #${idx + 1}`}
                       />
                     </div>
@@ -525,17 +525,17 @@ export default function AutonomousCampaignDialog({
             {/* 3. Content Format Mix */}
             <div className="space-y-3 p-3.5 rounded-xl border bg-muted/20">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <Label className="text-xs font-semibold uppercase tracking-wider text-foreground flex items-center gap-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-foreground flex items-center gap-1.5 shrink-0">
                   <SlidersHorizontal className="size-3.5 text-primary" /> 3. Content Format Distribution
                 </Label>
 
                 {/* Mode Switcher: Auto Balanced vs Custom Mix */}
-                <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border">
+                <div className="flex items-center gap-1 bg-muted/60 p-0.5 rounded-lg border shrink-0">
                   <button
                     type="button"
                     onClick={() => setIsCustomMix(false)}
                     className={cn(
-                      "px-2.5 py-1 text-[11px] font-medium rounded-md transition-all cursor-pointer",
+                      "px-2.5 py-1 text-[11px] font-medium rounded-md transition-all cursor-pointer shrink-0",
                       !isCustomMix
                         ? "bg-background text-foreground shadow-xs font-semibold"
                         : "text-muted-foreground hover:text-foreground"
@@ -552,13 +552,13 @@ export default function AutonomousCampaignDialog({
                       setCustomCarousels(carouselsCount);
                     }}
                     className={cn(
-                      "px-2.5 py-1 text-[11px] font-medium rounded-md transition-all flex items-center gap-1 cursor-pointer",
+                      "px-2.5 py-1 text-[11px] font-medium rounded-md transition-all flex items-center gap-1 cursor-pointer shrink-0",
                       isCustomMix
                         ? "bg-background text-foreground shadow-xs font-semibold"
                         : "text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    <SlidersHorizontal className="size-3" /> Custom Steppers
+                    <SlidersHorizontal className="size-3" /> Custom Mix
                   </button>
                 </div>
               </div>
@@ -566,22 +566,22 @@ export default function AutonomousCampaignDialog({
               {!isCustomMix ? (
                 /* Auto Mix Breakdown */
                 <div className="p-3 rounded-xl bg-card border flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="font-semibold text-foreground">AI Rotation:</span>
-                    <span className="inline-flex items-center gap-1">
+                  <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+                    <span className="font-semibold text-foreground shrink-0">AI Rotation:</span>
+                    <span className="inline-flex items-center gap-1 shrink-0">
                       <Video className="size-3.5 text-blue-500" />
                       {reelsCount} {reelsCount === 1 ? "Reel" : "Reels"}
                     </span>
-                    <span className="inline-flex items-center gap-1">
+                    <span className="inline-flex items-center gap-1 shrink-0">
                       <FileText className="size-3.5 text-amber-500" />
                       {imagePostsCount} {imagePostsCount === 1 ? "Image Post" : "Image Posts"}
                     </span>
-                    <span className="inline-flex items-center gap-1">
+                    <span className="inline-flex items-center gap-1 shrink-0">
                       <LayoutGrid className="size-3.5 text-purple-500" />
                       {carouselsCount} {carouselsCount === 1 ? "Carousel" : "Carousels"}
                     </span>
                   </div>
-                  <Badge variant="outline" className="text-[10px] font-medium">
+                  <Badge variant="outline" className="text-[10px] font-medium shrink-0">
                     {totalPostsToSchedule} Total Posts
                   </Badge>
                 </div>
