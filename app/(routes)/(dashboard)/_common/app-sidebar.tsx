@@ -368,7 +368,7 @@ const AppSidebar = () => {
               {connectedCount}/{totalChannels} channels connected
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <UserButton
               showName={false}
               appearance={{
@@ -377,7 +377,9 @@ const AppSidebar = () => {
                 },
               }}
             />
-            <span className="text-sm">{user?.fullName || user?.primaryEmailAddress?.emailAddress}</span>
+            <span suppressHydrationWarning className="text-sm truncate">
+              {user?.fullName || user?.primaryEmailAddress?.emailAddress}
+            </span>
           </div>
         </SidebarFooter>
       </Sidebar>

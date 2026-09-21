@@ -25,6 +25,10 @@ import {
   BookOpen,
   RotateCcw,
   Sparkle,
+  Smile,
+  Zap,
+  Crown,
+  Flame,
 } from "lucide-react";
 import AutonomousCampaignDialog from "@/components/campaign/autonomous-campaign-dialog";
 
@@ -48,11 +52,11 @@ interface BrandProfile {
 }
 
 const BRAND_TONES = [
-  { value: "Professional", label: "Professional" },
-  { value: "Friendly", label: "Friendly" },
-  { value: "Bold", label: "Bold" },
-  { value: "Luxury", label: "Luxury" },
-  { value: "Energetic", label: "Energetic" },
+  { value: "Professional", label: "Professional", icon: Briefcase },
+  { value: "Friendly", label: "Friendly", icon: Smile },
+  { value: "Bold", label: "Bold", icon: Zap },
+  { value: "Luxury", label: "Luxury", icon: Crown },
+  { value: "Energetic", label: "Energetic", icon: Flame },
 ];
 
 const EMPTY_PROFILE: BrandProfile = {
@@ -391,23 +395,29 @@ export function BrandProfileForm() {
                 description="How should the AI sound in reels scripts, captions, and posts?"
                 icon={FIELD_ICONS.brand_tone}
               >
-                <div className="grid grid-cols-5 gap-2">
-                  {BRAND_TONES.map((tone) => (
-                    <button
-                      key={tone.value}
-                      type="button"
-                      id={`brand-tone-${tone.value.toLowerCase()}`}
-                      onClick={() => set("brand_tone", tone.value)}
-                      className={cn(
-                        "flex flex-col items-center gap-1 py-2 px-1 rounded-lg border-2 text-xs font-medium transition-all cursor-pointer",
-                        form.brand_tone === tone.value
-                          ? "border-primary bg-primary/10 text-primary font-bold shadow-xs"
-                          : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-accent/40"
-                      )}
-                    >
-                      <span>{tone.label}</span>
-                    </button>
-                  ))}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
+                  {BRAND_TONES.map((tone, idx) => {
+                    const Icon = tone.icon;
+                    const isSelected = form.brand_tone === tone.value;
+                    return (
+                      <button
+                        key={tone.value}
+                        type="button"
+                        id={`brand-tone-${tone.value.toLowerCase()}`}
+                        onClick={() => set("brand_tone", tone.value)}
+                        className={cn(
+                          "flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl border-2 text-xs font-semibold transition-all cursor-pointer min-h-[44px]",
+                          idx === BRAND_TONES.length - 1 ? "col-span-2 sm:col-span-1" : "",
+                          isSelected
+                            ? "border-primary bg-primary/10 text-primary shadow-xs ring-1 ring-primary/20"
+                            : "border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-accent/40 hover:text-foreground"
+                        )}
+                      >
+                        <Icon className={cn("size-4 shrink-0", isSelected ? "text-primary" : "text-muted-foreground")} />
+                        <span className="truncate">{tone.label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </FormField>
             </div>
@@ -609,13 +619,13 @@ function FormField({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <label htmlFor={id} className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-          {Icon && <Icon className="size-3.5 text-muted-foreground" />}
-          {label}
-          {required && <span className="text-destructive font-bold">*</span>}
+        <label htmlFor={id} className="text-xs font-semibold text-foreground flex items-center gap-1.5 flex-wrap">
+          {Icon && <Icon className="size-3.5 text-muted-foreground shrink-0" />}
+          <span className="leading-snug">{label}</span>
+          {required && <span className="text-destructive font-bold shrink-0">*</span>}
         </label>
       </div>
-      {description && <p className="text-[11px] text-muted-foreground">{description}</p>}
+      {description && <p className="text-[11px] text-muted-foreground leading-snug">{description}</p>}
       {children}
     </div>
   );

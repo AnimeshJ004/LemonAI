@@ -229,30 +229,33 @@ export default function AppointmentsPage() {
   );
 
   return (
-    <div className="max-w-6xl mx-auto py-6 px-4 space-y-6">
+    <div className="max-w-6xl mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-5 sm:space-y-6 w-full min-w-0">
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <CalendarClock className="size-6 text-primary" /> CRM Appointments & Scheduling Hub
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-foreground">
+            <CalendarClock className="size-5 sm:size-6 text-primary shrink-0" />
+            <span>CRM Appointments & Scheduling Hub</span>
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <p className="text-muted-foreground text-xs sm:text-sm mt-1 line-clamp-2 md:line-clamp-none">
             Review meetings booked autonomously by your AI Chatbot, configure available slots, and manage calendar integrations.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button
             variant="outline"
             size="sm"
             onClick={() => refetchLeads()}
             disabled={isRefetching}
-            className="text-xs gap-1.5"
+            className="text-xs gap-1.5 min-h-[40px] sm:min-h-[36px]"
           >
-            <RefreshCw className={`size-3.5 ${isRefetching ? "animate-spin" : ""}`} /> Refresh
+            <RefreshCw className={`size-3.5 ${isRefetching ? "animate-spin" : ""}`} />
+            <span>Refresh</span>
           </Button>
           <Link href="/crm/pipeline">
-            <Button size="sm" className="text-xs gap-1.5">
-              Open Pipeline Kanban <ArrowRight className="size-3.5" />
+            <Button size="sm" className="text-xs gap-1.5 min-h-[40px] sm:min-h-[36px]">
+              <span>Open Pipeline</span>
+              <ArrowRight className="size-3.5" />
             </Button>
           </Link>
         </div>

@@ -325,20 +325,20 @@ export default function AICallingPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto py-6 px-3 sm:px-6 space-y-6">
+    <div className="max-w-6xl mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-5 sm:space-y-6 w-full min-w-0">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
           <div className="flex items-center gap-2.5 flex-wrap">
-            <div className="p-2 rounded-xl bg-primary/10 text-primary">
-              <Phone className="size-6" />
+            <div className="p-2 rounded-xl bg-primary/10 text-primary shrink-0">
+              <Phone className="size-5 sm:size-6" />
             </div>
-            <h1 className="text-2xl font-bold tracking-tight">AI Voice Calling Agent</h1>
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">AI Voice Calling Agent</h1>
             <Badge variant="outline" className="text-xs bg-purple-500/10 text-purple-600 border-purple-200 dark:border-purple-800">
               Interactive Preview Mode
             </Badge>
           </div>
-          <p className="text-muted-foreground text-sm mt-1">
+          <p className="text-muted-foreground text-xs sm:text-sm mt-1 line-clamp-2 md:line-clamp-none">
             Simulate, test, and audit autonomous voice qualification, BANT scoring, and live call transcripts
           </p>
         </div>
@@ -348,10 +348,10 @@ export default function AICallingPage() {
             variant="outline"
             size="sm"
             onClick={handleResetSampleData}
-            className="gap-2 text-xs"
+            className="gap-2 text-xs min-h-[40px] sm:min-h-[36px]"
           >
             <RotateCcw className="size-3.5" />
-            Reset Sample Calls
+            <span>Reset Calls</span>
           </Button>
         </div>
       </div>
@@ -365,7 +365,7 @@ export default function AICallingPage() {
               <p className="text-sm font-semibold text-foreground">
                 Autonomous Inbound & Outbound Calling System
               </p>
-              <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl">
+              <p className="text-xs text-muted-foreground leading-relaxed max-w-2xl line-clamp-2 md:line-clamp-none">
                 When high-intent leads score ≥ 7 from Instagram DMs, Facebook comments, or web forms, your AI voice agent can automatically call them within 90 seconds to qualify budget, need, and lock consultations directly on Cal.com.
               </p>
             </div>
@@ -382,51 +382,51 @@ export default function AICallingPage() {
       </Card>
 
       {/* KPI Metric Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 sm:gap-3">
         <Card>
-          <CardContent className="pt-4 pb-3 flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-blue-500/10 text-blue-500">
-              <Phone className="size-5" />
+          <CardContent className="p-3 sm:pt-4 sm:pb-3 flex items-center gap-2.5 sm:gap-3">
+            <div className="p-2 sm:p-2.5 rounded-lg bg-blue-500/10 text-blue-500 shrink-0">
+              <Phone className="size-4 sm:size-5" />
             </div>
-            <div>
-              <p className="text-2xl font-bold tracking-tight">{totalCalls}</p>
-              <p className="text-xs text-muted-foreground">Total Dispatched</p>
+            <div className="min-w-0">
+              <p className="text-xl sm:text-2xl font-bold tracking-tight">{totalCalls}</p>
+              <p className="text-[11px] sm:text-xs text-muted-foreground truncate">Total Dispatched</p>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="pt-4 pb-3 flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-green-500/10 text-green-500">
-              <CalendarCheck className="size-5" />
+          <CardContent className="p-3 sm:pt-4 sm:pb-3 flex items-center gap-2.5 sm:gap-3">
+            <div className="p-2 sm:p-2.5 rounded-lg bg-green-500/10 text-green-500 shrink-0">
+              <CalendarCheck className="size-4 sm:size-5" />
             </div>
-            <div>
-              <p className="text-2xl font-bold tracking-tight">{bookedCalls}</p>
-              <p className="text-xs text-muted-foreground">Meetings Booked</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-4 pb-3 flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-orange-500/10 text-orange-500">
-              <Clock className="size-5" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold tracking-tight">{avgDuration}</p>
-              <p className="text-xs text-muted-foreground">Avg Call Duration</p>
+            <div className="min-w-0">
+              <p className="text-xl sm:text-2xl font-bold tracking-tight">{bookedCalls}</p>
+              <p className="text-[11px] sm:text-xs text-muted-foreground truncate">Meetings Booked</p>
             </div>
           </CardContent>
         </Card>
 
         <Card>
-          <CardContent className="pt-4 pb-3 flex items-center gap-3">
-            <div className="p-2.5 rounded-lg bg-purple-500/10 text-purple-500">
-              <CheckCircle2 className="size-5" />
+          <CardContent className="p-3 sm:pt-4 sm:pb-3 flex items-center gap-2.5 sm:gap-3">
+            <div className="p-2 sm:p-2.5 rounded-lg bg-orange-500/10 text-orange-500 shrink-0">
+              <Clock className="size-4 sm:size-5" />
             </div>
-            <div>
-              <p className="text-2xl font-bold tracking-tight">{connectionRate}</p>
-              <p className="text-xs text-muted-foreground">Connection Rate</p>
+            <div className="min-w-0">
+              <p className="text-xl sm:text-2xl font-bold tracking-tight">{avgDuration}</p>
+              <p className="text-[11px] sm:text-xs text-muted-foreground truncate">Avg Call Duration</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3 sm:pt-4 sm:pb-3 flex items-center gap-2.5 sm:gap-3">
+            <div className="p-2 sm:p-2.5 rounded-lg bg-purple-500/10 text-purple-500 shrink-0">
+              <CheckCircle2 className="size-4 sm:size-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xl sm:text-2xl font-bold tracking-tight">{connectionRate}</p>
+              <p className="text-[11px] sm:text-xs text-muted-foreground truncate">Connection Rate</p>
             </div>
           </CardContent>
         </Card>
@@ -437,11 +437,11 @@ export default function AICallingPage() {
         {/* Left: Manual Call Simulator */}
         <Card className="lg:col-span-1 shadow-sm">
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <PhoneCall className="size-4 text-primary" /> Test Voice Dispatch
+                <PhoneCall className="size-4 text-primary shrink-0" /> Test Voice Dispatch
               </CardTitle>
-              <Badge variant="secondary" className="text-[10px]">
+              <Badge variant="secondary" className="text-[10px] shrink-0">
                 Simulator
               </Badge>
             </div>
@@ -533,11 +533,11 @@ export default function AICallingPage() {
         {/* Right: Autonomous Calling Rules & Configuration */}
         <Card className="lg:col-span-2 shadow-sm">
           <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
               <CardTitle className="text-base flex items-center gap-2">
-                <Zap className="size-4 text-primary" /> Autonomous Calling Rules & Triggers
+                <Zap className="size-4 text-primary shrink-0" /> Autonomous Calling Rules & Triggers
               </CardTitle>
-              <Badge variant="outline" className="text-xs font-mono">
+              <Badge variant="outline" className="text-xs font-mono w-fit">
                 Provider: External Custom
               </Badge>
             </div>
@@ -547,8 +547,8 @@ export default function AICallingPage() {
           </CardHeader>
 
           <CardContent className="space-y-3.5">
-            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20 hover:bg-muted/40 transition-colors">
-              <div className="space-y-0.5">
+            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20 hover:bg-muted/40 transition-colors gap-3">
+              <div className="space-y-0.5 min-w-0 pr-1">
                 <p className="text-sm font-medium text-foreground">
                   Auto-Call High-Intent Leads (Score ≥ {minScoreThreshold})
                 </p>
@@ -557,26 +557,28 @@ export default function AICallingPage() {
                 </p>
               </div>
               <Switch
+                className="shrink-0"
                 checked={autoCallHighIntent}
                 onCheckedChange={(checked) => {
                   setAutoCallHighIntent(checked);
                   toast.success(
                     checked
-                      ? "Auto-Calling activated for high-intent leads (Score ≥ 7)!"
+                      ? `Auto-Calling activated for high-intent leads (Score ≥ ${minScoreThreshold})!`
                       : "Auto-Calling paused. Leads will remain queued for manual review."
                   );
                 }}
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20 hover:bg-muted/40 transition-colors">
-              <div className="space-y-0.5">
+            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20 hover:bg-muted/40 transition-colors gap-3">
+              <div className="space-y-0.5 min-w-0 pr-1">
                 <p className="text-sm font-medium text-foreground">Inbound AI Receptionist</p>
                 <p className="text-xs text-muted-foreground">
                   Answers incoming business calls, answers brand FAQs, and logs caller details directly into CRM
                 </p>
               </div>
               <Switch
+                className="shrink-0"
                 checked={inboundReceptionist}
                 onCheckedChange={(checked) => {
                   setInboundReceptionist(checked);
@@ -587,14 +589,15 @@ export default function AICallingPage() {
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20 hover:bg-muted/40 transition-colors">
-              <div className="space-y-0.5">
+            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20 hover:bg-muted/40 transition-colors gap-3">
+              <div className="space-y-0.5 min-w-0 pr-1">
                 <p className="text-sm font-medium text-foreground">Smart Voicemail Drop & WhatsApp Follow-up</p>
                 <p className="text-xs text-muted-foreground">
                   If the prospect line is busy or goes to voicemail, drop a tailored audio note and send booking URL via WhatsApp
                 </p>
               </div>
               <Switch
+                className="shrink-0"
                 checked={voicemailDrop}
                 onCheckedChange={(checked) => {
                   setVoicemailDrop(checked);
@@ -605,14 +608,15 @@ export default function AICallingPage() {
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20 hover:bg-muted/40 transition-colors">
-              <div className="space-y-0.5">
+            <div className="flex items-center justify-between p-3 rounded-lg border bg-muted/20 hover:bg-muted/40 transition-colors gap-3">
+              <div className="space-y-0.5 min-w-0 pr-1">
                 <p className="text-sm font-medium text-foreground">Cal.com & Google Calendar Instant Lock</p>
                 <p className="text-xs text-muted-foreground">
                   Voice agent accesses real-time calendar availability and reserves slots during the live telephone conversation
                 </p>
               </div>
               <Switch
+                className="shrink-0"
                 checked={calendarSync}
                 onCheckedChange={(checked) => {
                   setCalendarSync(checked);
@@ -623,20 +627,20 @@ export default function AICallingPage() {
               />
             </div>
 
-            <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 flex items-center justify-between gap-3 text-xs">
+            <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2">
                 <SlidersHorizontal className="size-4 text-primary shrink-0" />
-                <span className="text-muted-foreground">
+                <span className="text-muted-foreground font-medium">
                   Minimum BANT Intent Score to Trigger Auto-Call:
                 </span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div className="grid grid-cols-4 sm:flex items-center gap-1.5 w-full sm:w-auto">
                 {[6, 7, 8, 9].map((score) => (
                   <Button
                     key={score}
                     size="sm"
                     variant={minScoreThreshold === String(score) ? "default" : "outline"}
-                    className="h-7 px-2.5 text-xs"
+                    className="h-7 px-2 text-xs flex-1 sm:flex-initial"
                     onClick={() => {
                       setMinScoreThreshold(String(score));
                       toast.success(`Auto-call minimum intent threshold set to ${score}/10`);
@@ -657,27 +661,27 @@ export default function AICallingPage() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <CardTitle className="text-base flex items-center gap-2">
-                <Clock className="size-4 text-primary" /> Voice Call Activity & Transcripts
+                <Clock className="size-4 text-primary shrink-0" /> Voice Call Activity & Transcripts
               </CardTitle>
               <CardDescription className="text-xs">
                 Review call recordings, qualification scores, and interactive transcripts
               </CardDescription>
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
               {/* Search */}
-              <div className="relative w-48 sm:w-60">
+              <div className="relative w-full sm:w-60">
                 <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   placeholder="Search lead or company..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="text-xs h-8 pl-8"
+                  className="text-xs h-8 pl-8 w-full"
                 />
               </div>
 
               {/* Status Filter Tabs */}
-              <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border text-xs">
+              <div className="flex items-center bg-muted/60 p-0.5 rounded-lg border text-xs overflow-x-auto w-full sm:w-auto">
                 {(
                   [
                     { key: "all", label: "All" },
@@ -689,7 +693,7 @@ export default function AICallingPage() {
                   <button
                     key={tab.key}
                     onClick={() => setStatusFilter(tab.key)}
-                    className={`px-2.5 py-1 rounded-md transition-all font-medium ${
+                    className={`flex-1 sm:flex-initial px-2.5 py-1 rounded-md transition-all font-medium text-center shrink-0 ${
                       statusFilter === tab.key
                         ? "bg-background text-foreground shadow-sm"
                         : "text-muted-foreground hover:text-foreground"
@@ -743,12 +747,12 @@ export default function AICallingPage() {
 
                       <div className="min-w-0 space-y-0.5">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-semibold text-foreground">{call.leadName}</p>
+                          <p className="text-sm font-semibold text-foreground truncate">{call.leadName}</p>
                           <span className="text-xs text-muted-foreground font-mono">
                             {call.phone}
                           </span>
                           {call.company && (
-                            <Badge variant="outline" className="text-[10px] py-0">
+                            <Badge variant="outline" className="text-[10px] py-0 truncate max-w-[120px]">
                               {call.company}
                             </Badge>
                           )}
@@ -766,8 +770,8 @@ export default function AICallingPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2.5 self-end sm:self-center shrink-0">
-                      <div className="text-right hidden sm:block">
+                    <div className="flex items-center justify-between sm:justify-end gap-2.5 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-border/50 shrink-0">
+                      <div className="text-left sm:text-right">
                         <Badge
                           variant="secondary"
                           className={`text-xs font-medium ${
@@ -778,13 +782,13 @@ export default function AICallingPage() {
                         >
                           BANT: {call.score}/10
                         </Badge>
-                        <p className="text-[10px] text-muted-foreground mt-0.5">{call.persona}</p>
+                        <p className="text-[10px] text-muted-foreground mt-0.5 hidden sm:block">{call.persona}</p>
                       </div>
 
                       <Button
                         size="sm"
                         variant="outline"
-                        className="h-8 gap-1.5 text-xs hover:bg-primary hover:text-primary-foreground transition-all"
+                        className="h-8 gap-1.5 text-xs hover:bg-primary hover:text-primary-foreground transition-all shrink-0"
                         onClick={() => {
                           setSelectedCall(call);
                           setIsPlayingAudio(false);

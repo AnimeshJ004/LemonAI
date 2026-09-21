@@ -17,7 +17,6 @@ interface ContentTextareaProps {
   minHeight?: number
   showAIAssistant?: boolean
   onAIAssistantClick?: () => void
-  showHashtag?: boolean
   className?: string
   images?: ImageObject[]
   onImagesChange?: (images: ImageObject[]) => void

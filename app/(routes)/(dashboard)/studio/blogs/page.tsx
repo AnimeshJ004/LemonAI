@@ -279,15 +279,15 @@ export default function BlogStudioPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto py-6 px-3 space-y-6">
+    <div className="max-w-5xl mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-6 w-full min-w-0">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <BookOpen className="size-6 text-primary" />
-            SEO Blog Writer & Optimizer
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-foreground">
+            <BookOpen className="size-5 sm:size-6 text-primary shrink-0" />
+            <span>SEO Blog Writer & Optimizer</span>
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <p className="text-muted-foreground text-xs sm:text-sm mt-1 line-clamp-2 md:line-clamp-none">
             Generate ranking long-form SEO articles with real-time SEO health audit, FAQ schema & one-click Markdown/HTML export.
           </p>
         </div>

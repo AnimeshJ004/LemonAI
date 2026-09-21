@@ -273,13 +273,13 @@ export function CRMHubClient() {
                     </Badge>
                   </div>
                   <CardTitle className="text-sm sm:text-base font-bold text-foreground">{mod.title}</CardTitle>
-                  <CardDescription className="text-xs leading-relaxed mt-1">
+                  <CardDescription className="text-xs leading-relaxed mt-1 line-clamp-2 md:line-clamp-none">
                     {mod.description}
                   </CardDescription>
                 </CardHeader>
 
                 <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0">
-                  <Button asChild className="w-full justify-between gap-2 text-xs font-semibold h-9" variant="outline">
+                  <Button asChild className="w-full justify-between gap-2 text-xs font-semibold min-h-[44px] sm:min-h-[36px] h-11 sm:h-9 shadow-xs" variant="outline">
                     <Link href={mod.href}>
                       <span>{mod.actionText}</span>
                       <ArrowRight className="size-3.5" />

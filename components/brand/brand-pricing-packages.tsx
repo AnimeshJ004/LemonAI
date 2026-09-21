@@ -168,14 +168,14 @@ export function BrandPricingPackages() {
   }
 
   return (
-    <div className="rounded-2xl border bg-card shadow-sm p-6">
-      <div className="flex items-start justify-between gap-4 mb-1">
+    <div className="rounded-2xl border bg-card shadow-sm p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-2">
         <div>
           <div className="flex items-center gap-2">
-            <IndianRupee className="size-5 text-primary" />
+            <IndianRupee className="size-5 text-primary shrink-0" />
             <h2 className="text-lg font-bold text-foreground">Pricing Packages</h2>
           </div>
-          <p className="text-xs text-muted-foreground mt-1 leading-relaxed max-w-xl">
+          <p className="text-xs text-muted-foreground mt-1 leading-relaxed max-w-xl line-clamp-2 md:line-clamp-none">
             Shown to prospects on the public lead-form after they submit a pricing enquiry from
             Instagram / Facebook DMs. Keep them short — 2 to 4 tiers works best.
           </p>
@@ -183,7 +183,7 @@ export function BrandPricingPackages() {
         <button
           type="button"
           onClick={addPackage}
-          className="shrink-0 inline-flex items-center gap-1.5 text-xs font-medium rounded-lg border border-primary/30 bg-primary/10 text-primary px-3 py-1.5 hover:bg-primary/20 transition-colors"
+          className="shrink-0 inline-flex items-center justify-center gap-1.5 text-xs font-medium rounded-lg border border-primary/30 bg-primary/10 text-primary px-3 py-2 min-h-[40px] hover:bg-primary/20 transition-colors w-full sm:w-auto"
         >
           <Plus className="size-3.5" /> Add package
         </button>

@@ -130,7 +130,7 @@ Schedule: ${daysNum} day(s) duration with ${perDayNum} post(s) per day (Total ${
 Strict Generation Rules:
 1. Every single post MUST specifically feature ${brandProfile?.business_name || "our brand"}, its niche (${brandProfile?.niche || "industry"}), and core offer. Do NOT write generic motivational quotes or unrelated filler.
 2. Every single post MUST have a completely UNIQUE, distinct topic, headline, and creative angle across all days (e.g. Day 1: Problem breakdown, Day 2: Case study/Results, Day 3: Step-by-step framework, Day 4: Overcoming mistakes, etc.). NEVER duplicate the same opening title or theme across days.
-3. Every post MUST end with 4 to 6 relevant hashtags including #${cleanBrandTag} and #${cleanNicheTag} (e.g. #${cleanBrandTag} #${cleanNicheTag} #${cleanNicheTag}Tips #BusinessGrowth).
+3. VIRAL HASHTAG INTELLIGENCE: Every single post MUST end with 4 to 6 top trending viral hashtags analyzed for ${brandProfile?.business_name || "the brand"} and its ${brandProfile?.niche || "industry"} niche (e.g. #${cleanBrandTag} #${cleanNicheTag} #${cleanNicheTag}Tips #BusinessGrowth).
 4. Plain text only: zero emojis, zero icons, zero symbols. Do not use markdown headings (# Header) or bold asterisks (**bold**).
 
 Return ONLY a valid JSON object matching this schema without markdown formatting:
@@ -373,17 +373,17 @@ function cleanAndEnsureHashtags(content: string, brandProfile?: any): string {
     // 3. Build brand-specific hashtags
     const brandTags = formatBrandHashtags(brandProfile);
     
-    // Combine unique tags
+    // Combine unique tags: prioritize AI-generated viral hashtags, then brand essentials
     const combinedSet = new Set<string>();
-    for (const t of brandTags) {
-        if (t) combinedSet.add(t);
-    }
     for (const t of foundTags) {
         if (t && t.length > 1) combinedSet.add(t);
     }
+    for (const t of brandTags) {
+        if (t) combinedSet.add(t);
+    }
 
-    // Pick top 4 to 6 hashtags
-    const finalTags = Array.from(combinedSet).slice(0, 5).join(" ");
+    // Pick top 5 to 6 hashtags
+    const finalTags = Array.from(combinedSet).slice(0, 6).join(" ");
 
     return `${cleaned}\n\n${finalTags}`;
 }
@@ -420,7 +420,7 @@ DO NOT write generic motivational quotes, generic life advice, or vague platitud
         "Generation Rules:",
         "1. Focus entirely on the brand's niche, services, and value proposition.",
         "2. Clean plain text only: ZERO emojis, ZERO icons, ZERO symbols, and ZERO markdown headings (# Heading) or bold asterisks (**text**).",
-        `3. Every post MUST include 4 to 6 relevant social hashtags at the very bottom, always including #${cleanBrandTag} and #${cleanNicheTag} (e.g. #${cleanBrandTag} #${cleanNicheTag} #${cleanNicheTag}Tips #BusinessGrowth).`,
+        `3. VIRAL HASHTAG INTELLIGENCE: Every post MUST conclude with 4 to 6 top trending, viral social hashtags analyzed for ${brandProfile?.business_name || "the brand"} and its ${brandProfile?.niche || "industry"} niche, always including #${cleanBrandTag} and #${cleanNicheTag} (e.g. #${cleanBrandTag} #${cleanNicheTag} #${cleanNicheTag}Tips #BusinessGrowth).`,
         "4. Scheduling & Date Detection:",
         `   - If user mentions dates or times (e.g. 'tomorrow at 5pm', 'next Monday 10:00 AM', 'September 5th at 3 PM', 'today at 6 PM', 'schedule kardo'):`,
         `     * Calculate the exact target date formatted as 'YYYY-MM-DD' (relative to ${todayStr}).`,

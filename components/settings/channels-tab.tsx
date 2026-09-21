@@ -158,12 +158,12 @@ function ChannelTabContent() {
                     <div className='space-y-3'>
                         {isPending ? (
                             Array.from({ length: 6 }).map((_, index) => (
-                                <div key={index} className='flex items-center justify-between rounded-xl border p-4'>
+                                <div key={index} className='flex items-center justify-between rounded-xl border p-3.5 sm:p-4'>
                                     <div className='flex items-center gap-3'>
-                                        <Skeleton className='size-6 rounded-sm bg-secondary' />
+                                        <Skeleton className='size-6 rounded-sm bg-secondary shrink-0' />
                                         <Skeleton className='h-5 w-24 bg-secondary' />
                                     </div>
-                                    <Skeleton className='h-8 w-20 bg-secondary' />
+                                    <Skeleton className='h-8 w-20 bg-secondary shrink-0' />
                                 </div>
                             ))
                         ) : (
@@ -176,11 +176,17 @@ function ChannelTabContent() {
                                 )
 
                                 return (
-                                    <div key={channel.id}
-                                        className='flex items-center justify-between rounded-xl border p-4 transition-colors hover:border-primary/20'
+                                    <div
+                                        key={channel.id}
+                                        className={cn(
+                                            "rounded-xl border p-3.5 sm:p-4 gap-3 transition-colors hover:border-primary/20",
+                                            channel.connected
+                                                ? "flex flex-col sm:flex-row sm:items-center justify-between"
+                                                : "flex items-center justify-between"
+                                        )}
                                     >
-                                        <div className='flex items-center gap-3'>
-                                            <span className='relative'>
+                                        <div className='flex items-center gap-3 min-w-0'>
+                                            <span className='relative shrink-0'>
                                                 {icon ? (
                                                     <HugeiconsIcon icon={icon}
                                                         color='currentColor'
@@ -202,22 +208,25 @@ function ChannelTabContent() {
                                                 </div>
                                             </span>
 
-                                            <div className="flex flex-col">
-                                                <span className='font-medium'>{channel.name}</span>
+                                            <div className="flex flex-col min-w-0">
+                                                <span className='font-medium text-sm sm:text-base truncate'>{channel.name}</span>
                                                 {channel.connected && channel.handle && (
-                                                    <span className='text-xs text-muted-foreground font-mono'>{channel.handle}</span>
+                                                    <span className='text-xs text-muted-foreground font-mono truncate' title={channel.handle}>{channel.handle}</span>
                                                 )}
                                             </div>
                                         </div>
 
-                                        <div className="flex items-center gap-2">
+                                        <div className={cn(
+                                            "flex items-center gap-2 shrink-0",
+                                            channel.connected ? "w-full sm:w-auto justify-end pt-1 sm:pt-0" : "justify-end"
+                                        )}>
                                             {channel.connected && (
                                                 <Button
                                                     variant="outline"
                                                     size="sm"
                                                     disabled={isActionRunning}
                                                     onClick={() => handleConnectClick(channel)}
-                                                    className="h-8 px-3 text-xs font-medium border-border hover:bg-muted"
+                                                    className="h-8 px-3 text-xs font-medium border-border hover:bg-muted flex-1 sm:flex-initial"
                                                 >
                                                     Edit
                                                 </Button>
@@ -228,7 +237,10 @@ function ChannelTabContent() {
                                                 size="sm"
                                                 disabled={isActionRunning}
                                                 onClick={() => channel.connected ? handleDisconnect(channel) : handleConnectClick(channel)}
-                                                className="min-w-[90px] h-8 text-xs font-medium"
+                                                className={cn(
+                                                    "h-8 text-xs font-medium shrink-0",
+                                                    channel.connected ? "min-w-[90px] flex-1 sm:flex-initial" : "min-w-[84px]"
+                                                )}
                                             >
                                                 {isThisConnecting ? (
                                                     <>

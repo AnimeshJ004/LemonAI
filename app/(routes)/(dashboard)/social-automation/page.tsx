@@ -113,20 +113,22 @@ export default function SocialAutomationPage() {
   ];
 
   return (
-    <div className="max-w-5xl mx-auto py-6 px-4 space-y-6">
-      <div className="flex items-start justify-between">
+    <div className="max-w-5xl mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-5 sm:space-y-6 w-full min-w-0">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Bot className="size-6 text-primary" /> Social Automation
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-foreground">
+            <Bot className="size-5 sm:size-6 text-primary shrink-0" />
+            <span>Social Automation</span>
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <p className="text-muted-foreground text-xs sm:text-sm mt-1 line-clamp-2 md:line-clamp-none">
             Autonomous 24/7 AI engagement for Instagram & Facebook comments and DM conversions
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <Button asChild variant="outline" size="sm" className="gap-2 text-xs border-purple-300 text-purple-600 hover:bg-purple-50">
+          <Button asChild variant="outline" size="sm" className="gap-2 text-xs border-purple-300 text-purple-600 hover:bg-purple-50 min-h-[40px] sm:min-h-[36px]">
             <Link href="/social-automation/dm-inbox">
-              <Inbox className="size-3.5" /> DM Inbox
+              <Inbox className="size-3.5" />
+              <span>DM Inbox</span>
             </Link>
           </Button>
           <Button
@@ -134,13 +136,14 @@ export default function SocialAutomationPage() {
             size="sm"
             onClick={handleSyncLiveComments}
             disabled={isSyncing}
-            className="gap-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white"
+            className="gap-2 text-xs bg-emerald-600 hover:bg-emerald-700 text-white min-h-[40px] sm:min-h-[36px]"
           >
             <RefreshCw className={`size-3.5 ${isSyncing ? "animate-spin" : ""}`} />
-            {isSyncing ? "Scanning Instagram..." : "Sync & Auto-Reply Now"}
+            <span>{isSyncing ? "Scanning..." : "Sync & Auto-Reply"}</span>
           </Button>
-          <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 text-xs">
-            <RefreshCw className="size-3.5" /> Refresh Log
+          <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2 text-xs min-h-[40px] sm:min-h-[36px]">
+            <RefreshCw className="size-3.5" />
+            <span>Refresh</span>
           </Button>
         </div>
       </div>

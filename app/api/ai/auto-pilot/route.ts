@@ -208,7 +208,7 @@ CRITICAL TIMELINE RULES:
 - The schedule STARTS TODAY (Day Offset 0).
 - Day Offset 0 is TODAY: Post 1 must be a timely, high-impact introductory announcement, value insight, or compelling hook for today.
 - Day Offsets MUST range from 0 to ${days - 1} (total ${days} days).
-- Each post must feature punchy hooks, value-packed body copy, and 3-5 brand-relevant hashtags.
+- VIRAL HASHTAG INTELLIGENCE: Every post MUST automatically conclude with 4 to 6 top viral trending hashtags analyzed specifically for ${businessName} and its ${niche} niche (mixing broad viral reach, niche authority #${cleanTag(niche)} #${cleanTag(niche)}Tips, and branded authority #${cleanTag(businessName)}).
 - Align post topics with the user's strategic pillars and roadmap.
 
 Return ONLY valid JSON matching this exact schema (no markdown, no backticks):

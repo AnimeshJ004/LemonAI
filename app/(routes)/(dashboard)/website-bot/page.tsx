@@ -176,20 +176,21 @@ export default function WebsiteBotPage() {
   };
 
   return (
-    <div className="max-w-6xl mx-auto py-6 px-4 space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="max-w-6xl mx-auto py-4 sm:py-6 px-2 sm:px-4 space-y-5 sm:space-y-6 w-full min-w-0">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Globe className="size-6 text-primary" /> Website AI Chatbot
+          <h1 className="text-xl sm:text-2xl font-bold flex items-center gap-2 text-foreground">
+            <Globe className="size-5 sm:size-6 text-primary shrink-0" />
+            <span>Website AI Chatbot</span>
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <p className="text-muted-foreground text-xs sm:text-sm mt-1 line-clamp-2 md:line-clamp-none">
             Train, ground, and deploy an autonomous 24/7 sales & lead qualification chatbot
           </p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className="text-xs bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 border-emerald-300 gap-1.5 py-1">
             <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-            AI Grounding Engine Live
+            <span>AI Grounding Engine Live</span>
           </Badge>
         </div>
       </div>

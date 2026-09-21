@@ -250,8 +250,9 @@ export function adaptCaptionForPlatform(
   cleaned = cleaned.replace(/#[a-zA-Z0-9_]+/g, "").trim();
 
   const tagPool = new Set<string>();
-  for (const t of baseTags) if (t) tagPool.add(t);
+  // Prioritize smart analyzed/curated hashtags first, then supplement with base brand tags
   for (const t of existingTags) if (t && t.length > 1) tagPool.add(t);
+  for (const t of baseTags) if (t) tagPool.add(t);
 
   // 1. INSTAGRAM
   // Visual storytelling, authentic creative hook, clear IG CTA, 6-8 clustered discovery hashtags

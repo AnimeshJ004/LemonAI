@@ -247,6 +247,19 @@ export function AIAssistant({ className, content, channelId, onGenerate }: AIAss
         </div>
       )}
 
+      {/* Viral Hashtag Intelligence Active Indicator */}
+      <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg border bg-gradient-to-r from-primary/10 via-primary/5 to-transparent text-[11px]">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-orange-500 font-bold text-xs">#</span>
+          <span className="text-foreground font-medium truncate">
+            {brand?.niche ? `${brand.niche} Viral Trends` : "Viral Hashtag Intelligence"}
+          </span>
+        </div>
+        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold bg-emerald-500/10 px-1.5 py-0.5 rounded-sm shrink-0">
+          Auto-Viral Tags
+        </span>
+      </div>
+
       {/* Textarea for unified prompt */}
       <div className="flex flex-col gap-2.5 flex-1">
         <Textarea

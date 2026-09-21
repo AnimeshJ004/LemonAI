@@ -52,6 +52,9 @@ export function formatBrandHashtags(brandProfile?: any): string[] {
   return Array.from(tags).slice(0, 5);
 }
 
+export { analyzeViralHashtagsForProfile, generateHeuristicHashtags, getPlatformHashtagRules } from "./hashtag-analyzer";
+
+
 /**
  * Returns comprehensive Business Brain context formatted for AI prompt injection.
  * Injects products, pricing, location, audience, offer, and booking URL.
