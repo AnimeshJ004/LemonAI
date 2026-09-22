@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { callResilientCompletion } from "@/lib/ai-gateway";
 import { validateInputLengths } from "@/lib/validate-inputs";
@@ -115,18 +115,16 @@ export async function handleMetaWebhookPost(req: NextRequest) {
       }
     } catch { }
 
-    // Synchronously execute webhook processing with timeout guard.
-    // Meta allows up to 5,000ms before timing out; we bound execution to 4,200ms
-    // to guarantee HTTP 200 is returned in time while keeping the serverless
-    // container alive so AI generation, comment replies, and DMs run to completion.
-    try {
-      await Promise.race([
-        processWebhookEntriesAsync(entries, baseUrl),
-        new Promise((resolve) => setTimeout(resolve, 4200)),
-      ]);
-    } catch (procErr) {
-      console.error("[Meta Webhook] Ingestion processing error:", procErr);
-    }
+    // Use Next.js after() to return HTTP 200 to Meta in < 20ms, preventing Meta
+    // webhook retry storms, while Next.js & Vercel keep the serverless container alive
+    // up to maxDuration (60s) so AI generation, comment replies, and DMs run to completion.
+    after(async () => {
+      try {
+        await processWebhookEntriesAsync(entries, baseUrl);
+      } catch (procErr) {
+        console.error("[Meta Webhook] Background ingestion error:", procErr);
+      }
+    });
 
     return NextResponse.json({ status: "acknowledged" }, { status: 200 });
   } catch (err: any) {

@@ -949,6 +949,7 @@ export async function pollConnectedChannelsComments(maxChannels = 10): Promise<{
       .select("id, user_id, provider_account_id, page_id, handle, access_token, page_access_token, channel_types!inner(type)")
       .in("channel_types.type", ["INSTAGRAM", "FACEBOOK", "THREADS", "YOUTUBE", "LINKEDIN"])
       .eq("is_connected", true)
+      .order("updated_at", { ascending: false })
       .limit(maxChannels);
 
     if (chanErr || !channels || channels.length === 0) {

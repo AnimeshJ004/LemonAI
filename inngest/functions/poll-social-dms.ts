@@ -36,6 +36,7 @@ export const pollSocialDMs = inngest.createFunction(
         .select("id, user_id, handle, access_token, page_access_token, page_id, provider_account_id, channel_types!inner(type)")
         .in("channel_types.type", ["INSTAGRAM", "FACEBOOK", "TWITTER", "LINKEDIN"])
         .eq("is_connected", true)
+        .order("updated_at", { ascending: false })
         .limit(40);
 
       if (!channels || channels.length === 0) {
@@ -360,8 +361,20 @@ Write a warm, professional reply under 80 words. If they ask about services or b
               // Use pageAccessToken if available (it has messaging_type RESPONSE rights),
               // fall back to the user access_token.
               const convToken = pageAccessToken || accessToken;
-              const convUrl = `https://graph.facebook.com/v22.0/${convAccountId}/conversations?fields=id,participants,messages{message,from,created_time}&access_token=${convToken}&limit=10`;
-              const convRes = await fetch(convUrl, { signal: AbortSignal.timeout(8000) });
+              const isInstagram = platform === "INSTAGRAM";
+              const platformParam = isInstagram ? "&platform=instagram" : "";
+              const convUrl = `https://graph.facebook.com/v22.0/${convAccountId}/conversations?fields=id,participants,messages{message,from,created_time}${platformParam}&access_token=${convToken}&limit=10`;
+              let convRes = await fetch(convUrl, { signal: AbortSignal.timeout(8000) });
+
+              // If fetching via Page ID fails, fallback to accountId if different
+              if (!convRes.ok && convAccountId !== accountId && accountId) {
+                const fallbackUrl = `https://graph.facebook.com/v22.0/${accountId}/conversations?fields=id,participants,messages{message,from,created_time}${platformParam}&access_token=${convToken}&limit=10`;
+                const fallbackRes = await fetch(fallbackUrl, { signal: AbortSignal.timeout(8000) });
+                if (fallbackRes.ok) {
+                  convRes = fallbackRes;
+                }
+              }
+
               if (!convRes.ok) {
                 const errBody = await convRes.json().catch(() => ({}));
                 console.warn(`[Poll DMs] Conversations fetch failed for channel ${channel.id} (${platform}):`, JSON.stringify(errBody));
