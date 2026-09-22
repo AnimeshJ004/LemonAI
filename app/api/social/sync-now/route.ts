@@ -109,36 +109,60 @@ export async function POST(req: NextRequest) {
 
       // Strategy 2: Resolve Page → instagram_business_account and query media via
       // the Page access token. This is the correct fallback for Instagram Graph
-      // API tokens (the older /me/media edge only exists on Instagram Basic
-      // Display tokens and returns #100 "nonexisting field (media)" here).
+      // API tokens.
       if (posts.length === 0 && channelType === "INSTAGRAM") {
         try {
-          const pagesRes = await fetch(
-            `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id}&access_token=${encodeURIComponent(accessToken)}`
-          );
-          if (pagesRes.ok) {
-            const pagesData = await pagesRes.json();
-            const pages = pagesData?.data || [];
-            const targetIgId = channel.provider_account_id;
-            const matchedPage = targetIgId ? pages.find((p: any) => p.instagram_business_account?.id === targetIgId) : null;
-            const pageWithIg = matchedPage || pages.find((p: any) => p.instagram_business_account?.id);
-            if (pageWithIg?.instagram_business_account?.id) {
-              const igId = targetIgId || pageWithIg.instagram_business_account.id;
-              const igToken = pageWithIg.access_token || accessToken;
-              const mediaRes = await fetch(
-                `https://graph.facebook.com/v22.0/${igId}/media?fields=id,caption,comments{id,text,from{id,username},timestamp,comments{id,from{id,username},text}}&limit=5&access_token=${encodeURIComponent(igToken)}`
-              );
-              if (mediaRes.ok) {
-                const mediaData = await mediaRes.json();
-                posts = mediaData?.data || [];
-              } else {
-                const errData = await mediaRes.json().catch(() => ({}));
-                console.warn("[Sync Now] Strategy 2 IG-via-Page failed:", errData?.error?.message || mediaRes.status);
+          let resolvedIgId = channel.provider_account_id;
+          let igToken = accessToken;
+
+          // If we have a user token, /me/accounts lists the user's pages and linked IG accounts
+          if (userToken) {
+            const pagesRes = await fetch(
+              `https://graph.facebook.com/v22.0/me/accounts?fields=id,name,access_token,instagram_business_account{id}&access_token=${encodeURIComponent(userToken)}`
+            );
+            if (pagesRes.ok) {
+              const pagesData = await pagesRes.json();
+              const pages = pagesData?.data || [];
+              const matchedPage = resolvedIgId ? pages.find((p: any) => p.instagram_business_account?.id === resolvedIgId) : null;
+              const pageWithIg = matchedPage || pages.find((p: any) => p.instagram_business_account?.id);
+              if (pageWithIg?.instagram_business_account?.id) {
+                resolvedIgId = resolvedIgId || pageWithIg.instagram_business_account.id;
+                igToken = pageWithIg.access_token || accessToken;
               }
+            } else {
+              const errData = await pagesRes.json().catch(() => ({}));
+              console.warn("[Sync Now] Strategy 2 /me/accounts failed:", errData?.error?.message || pagesRes.status);
             }
-          } else {
-            const errData = await pagesRes.json().catch(() => ({}));
-            console.warn("[Sync Now] Strategy 2 /me/accounts failed:", errData?.error?.message || pagesRes.status);
+          } else if (pageToken) {
+            // If we only have a Page token, /me is the Page itself (calling /me/accounts would fail with #100).
+            // Query the page node directly for its linked instagram_business_account.
+            const pageNode = channel.page_id || "me";
+            const pageRes = await fetch(
+              `https://graph.facebook.com/v22.0/${pageNode}?fields=id,name,instagram_business_account{id}&access_token=${encodeURIComponent(pageToken)}`
+            );
+            if (pageRes.ok) {
+              const pageData = await pageRes.json();
+              if (pageData?.instagram_business_account?.id) {
+                resolvedIgId = resolvedIgId || pageData.instagram_business_account.id;
+                igToken = pageToken;
+              }
+            } else {
+              const errData = await pageRes.json().catch(() => ({}));
+              console.warn("[Sync Now] Strategy 2 Page node failed:", errData?.error?.message || pageRes.status);
+            }
+          }
+
+          if (resolvedIgId && igToken) {
+            const mediaRes = await fetch(
+              `https://graph.facebook.com/v22.0/${resolvedIgId}/media?fields=id,caption,comments{id,text,from{id,username},timestamp,comments{id,from{id,username},text}}&limit=5&access_token=${encodeURIComponent(igToken)}`
+            );
+            if (mediaRes.ok) {
+              const mediaData = await mediaRes.json();
+              posts = mediaData?.data || [];
+            } else {
+              const errData = await mediaRes.json().catch(() => ({}));
+              console.warn("[Sync Now] Strategy 2 IG-via-Page failed:", errData?.error?.message || mediaRes.status);
+            }
           }
         } catch (e: any) {
           console.warn("[Sync Now] Strategy 2 network error:", e?.message);

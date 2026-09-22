@@ -33,7 +33,7 @@ export const pollSocialDMs = inngest.createFunction(
       // Find all active connected Instagram, Facebook, Twitter, and LinkedIn channels
       const { data: channels } = await admin.database
         .from("user_channels")
-        .select("id, user_id, handle, access_token, provider_account_id, channel_types!inner(type)")
+        .select("id, user_id, handle, access_token, page_access_token, page_id, provider_account_id, channel_types!inner(type)")
         .in("channel_types.type", ["INSTAGRAM", "FACEBOOK", "TWITTER", "LINKEDIN"])
         .eq("is_connected", true)
         .limit(40);
@@ -59,7 +59,19 @@ export const pollSocialDMs = inngest.createFunction(
 
         const platform = (channel.channel_types as any)?.type;
         const accountId = channel.provider_account_id;
+        // pageId is the Facebook Page ID — this is what the bot sends DMs AS.
+        // For IG channels: page_id is the linked Facebook Page.
+        // For FB channels: page_id may be the same as provider_account_id.
+        // Prefer page_id for conversations API; fall back to accountId.
+        const pageId = channel.page_id || accountId;
         const userId = channel.user_id;
+
+        // Also decrypt the page_access_token if available — it has messaging permissions
+        let pageAccessToken: string | null = null;
+        const rawPageToken = channel.page_access_token;
+        if (rawPageToken) {
+          try { pageAccessToken = decrypt(rawPageToken) || rawPageToken; } catch { pageAccessToken = rawPageToken; }
+        }
 
         await step.run(`poll-channel-${channel.id}`, async () => {
           let channelDMs = 0;
@@ -340,10 +352,21 @@ Write a warm, professional reply under 80 words. If they ask about services or b
               }
             // ─── C. Meta (Instagram & Facebook) DMs ───────────────────────────
             } else if (accountId) {
-              // Fetch conversations
-              const convUrl = `https://graph.facebook.com/v22.0/${accountId}/conversations?fields=id,participants,messages{message,from,created_time}&access_token=${accessToken}&limit=10`;
+              // Prefer the Facebook Page ID for the conversations endpoint — this is the
+              // same identity the bot sends DMs AS (via page_access_token). Using the IG
+              // Business Account ID works for reading but the from.id on our own replies
+              // will be the Page ID, not the IG account ID, breaking the self-msg filter.
+              const convAccountId = pageId || accountId;
+              // Use pageAccessToken if available (it has messaging_type RESPONSE rights),
+              // fall back to the user access_token.
+              const convToken = pageAccessToken || accessToken;
+              const convUrl = `https://graph.facebook.com/v22.0/${convAccountId}/conversations?fields=id,participants,messages{message,from,created_time}&access_token=${convToken}&limit=10`;
               const convRes = await fetch(convUrl, { signal: AbortSignal.timeout(8000) });
-              if (!convRes.ok) return;
+              if (!convRes.ok) {
+                const errBody = await convRes.json().catch(() => ({}));
+                console.warn(`[Poll DMs] Conversations fetch failed for channel ${channel.id} (${platform}):`, JSON.stringify(errBody));
+                return;
+              }
 
               const convData = await convRes.json().catch(() => ({}));
               const conversations = convData?.data || [];
@@ -354,26 +377,35 @@ Write a warm, professional reply under 80 words. If they ask about services or b
                 if (!lastMsg) continue;
 
                 const participants = conv.participants?.data || [];
-                const sender = participants.find((p: any) => p.id !== accountId);
+                // Filter out the bot's own participant identity:
+                // for Instagram, our bot appears as the Page ID (page_id), not the IG account ID.
+                // Check both to be safe.
+                const sender = participants.find((p: any) => p.id !== accountId && p.id !== pageId);
                 const senderName = sender?.name || "Customer";
                 const senderId = sender?.id || conv.id;
 
-                // Don't reply if last message is from ourselves
-                if (lastMsg.from?.id === accountId) continue;
+                // Don't reply if last message is from ourselves (check BOTH IG account ID and Page ID)
+                if (lastMsg.from?.id === accountId || lastMsg.from?.id === pageId) continue;
+
+                // Use stable conversation ID: pageId_senderId (same format as webhook handler)
+                // This ensures webhook replies and poller replies share the same dedup record.
+                const stableConvId = (pageId && senderId && senderId !== conv.id)
+                  ? `${pageId}_${senderId}`
+                  : conv.id;
 
                 // Check existing record
                 const { data: existing } = await admin.database
                   .from("social_dms")
                   .select("id, last_replied_at, last_message_at")
-                  .eq("conversation_id", conv.id)
+                  .eq("conversation_id", stableConvId)
                   .maybeSingle();
 
-                // Upsert the DM conversation record
+                // Upsert the DM conversation record (use stable conv ID)
                 await admin.database.from("social_dms").upsert(
                   {
                     user_id: userId,
                     platform: platform,
-                    conversation_id: conv.id,
+                    conversation_id: stableConvId,
                     sender_id: senderId,
                     sender_name: senderName,
                     last_message: lastMsg.message || "[Media]",
@@ -388,10 +420,12 @@ Write a warm, professional reply under 80 words. If they ask about services or b
 
                 channelDMs++;
 
-                // Auto-reply if new incoming message that hasn't been replied to yet
+                // Auto-reply if the last message is newer than our last reply.
+                // Using strict > (not >=) so clock-equal timestamps (edge case)
+                // don't cause a re-reply.
                 const alreadyReplied =
                   existing?.last_replied_at &&
-                  new Date(existing.last_replied_at).getTime() >= new Date(lastMsg.created_time).getTime();
+                  new Date(existing.last_replied_at).getTime() > new Date(lastMsg.created_time).getTime();
 
                 if (!alreadyReplied && lastMsg.message) {
                   try {
@@ -417,7 +451,7 @@ Write a warm, helpful reply under 80 words. If they ask about price, availabilit
                         platform,
                         commenterId: senderId,
                         igAccountId: accountId,
-                        accessToken,
+                        accessToken: convToken,
                         dmMessage: replyText,
                       });
 
@@ -430,7 +464,7 @@ Write a warm, helpful reply under 80 words. If they ask about price, availabilit
                             last_replied_at: new Date().toISOString(),
                             is_read: true,
                           })
-                          .eq("conversation_id", conv.id);
+                          .eq("conversation_id", stableConvId);
 
                         // If inquiry sentiment, capture as lead into CRM
                         const lower = (lastMsg.message || "").toLowerCase();

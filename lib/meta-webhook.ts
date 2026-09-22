@@ -1,11 +1,10 @@
-import { NextRequest, NextResponse, after } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getInsforgeAdminClient } from "@/lib/insforge-server";
 import { callResilientCompletion } from "@/lib/ai-gateway";
 import { validateInputLengths } from "@/lib/validate-inputs";
 import { decrypt } from "@/lib/encryption";
 import { processSingleComment } from "@/lib/social-comments-service";
 import { getAppUrl } from "@/lib/app-url";
-import { socialDMService } from "@/lib/social-dm-service";
 import {
   createLead,
   createConversation,
@@ -13,6 +12,7 @@ import {
   recordActivity,
 } from "@/lib/crm-service";
 import crypto from "crypto";
+
 
 export const maxDuration = 60;
 
@@ -273,8 +273,64 @@ async function processWebhookEntriesAsync(entries: any[], baseUrl?: string) {
     for (const msgItem of messaging) {
       const senderId = msgItem?.sender?.id;
       const msgText = msgItem?.message?.text;
+      const msgTimestamp = msgItem?.timestamp
+        ? new Date(Number(msgItem.timestamp) * (String(msgItem.timestamp).length <= 10 ? 1000 : 1)).toISOString()
+        : new Date().toISOString();
 
       if (!senderId || !msgText || senderId === targetAccountId) continue;
+
+      // Dedup: resolve the Page ID we'll use for messaging — this is stable and
+      // consistent between webhook events and the DM poller.
+      const messagingPageId = channelRecord.page_id || targetAccountId;
+      const messagingToken = (channelRecord.page_access_token ? decrypt(channelRecord.page_access_token) || channelRecord.page_access_token : null) || accessToken;
+      // Use a stable conversation ID: sender + page pair (same as DM poller).
+      const stableConvId = `${messagingPageId}_${senderId}`;
+
+      // Check if we already replied to this exact message time to prevent duplicate replies
+      // when Meta sends multiple webhook events for the same message.
+      try {
+        const { data: existingDM } = await admin.database
+          .from("social_dms")
+          .select("id, last_replied_at, last_message_at")
+          .eq("conversation_id", stableConvId)
+          .maybeSingle();
+
+        const alreadyReplied =
+          existingDM?.last_replied_at &&
+          existingDM?.last_message_at &&
+          new Date(existingDM.last_replied_at).getTime() >= new Date(existingDM.last_message_at).getTime();
+
+        if (alreadyReplied) {
+          // Update last_message_at only if the incoming message is newer
+          const incomingTs = new Date(msgTimestamp).getTime();
+          const storedTs = existingDM.last_message_at ? new Date(existingDM.last_message_at).getTime() : 0;
+          if (incomingTs <= storedTs) {
+            // Duplicate event — same message we already replied to, skip.
+            console.log(`[Meta Webhook] Skipping duplicate DM event for conv ${stableConvId}`);
+            continue;
+          }
+          // Genuinely new message — fall through to reply.
+        }
+
+        // Record/update the incoming DM immediately so concurrent events dedup correctly.
+        await admin.database.from("social_dms").upsert(
+          {
+            user_id: userId,
+            platform: (channelRecord?.channel_types as any)?.type || "FACEBOOK",
+            conversation_id: stableConvId,
+            sender_id: senderId,
+            sender_name: `Customer (${senderId.slice(-4)})`,
+            last_message: msgText,
+            last_message_at: msgTimestamp,
+            is_read: false,
+            messages_count: 1,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "conversation_id" }
+        );
+      } catch (dedupErr) {
+        console.warn("[Meta Webhook] DM dedup check notice:", dedupErr);
+      }
 
       try {
         const aiResponse = await callResilientCompletion({
@@ -294,17 +350,16 @@ Customer message: "${msgText}"`,
 
         const replyText = aiResponse.content || `Hi there! Thanks for reaching out to ${brandName}. How can we best help you today?`;
 
-        // Use the Facebook Page ID (channelRecord.page_id or targetAccountId) — NOT the Instagram Account ID or 'me',
-        // which is rejected by Meta's messaging endpoint with error #200.
-        const messagingPageId = channelRecord.page_id || targetAccountId;
-        const messagingToken = (channelRecord.page_access_token ? decrypt(channelRecord.page_access_token) || channelRecord.page_access_token : null) || accessToken;
-
         const sendRes = await fetch(`https://graph.facebook.com/v22.0/${messagingPageId}/messages`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             recipient: { id: senderId },
             message: { text: replyText },
+            // REQUIRED: messaging_type RESPONSE is mandatory for Instagram/Facebook DMs
+            // to ensure delivery within the 24-hour messaging window. Without this,
+            // Meta may silently drop messages or return error code 10.
+            messaging_type: "RESPONSE",
             access_token: messagingToken,
           }),
         });
@@ -317,25 +372,19 @@ Customer message: "${msgText}"`,
           );
         } else {
           console.log(`[Meta Webhook] ✓ DM auto-reply sent to ${senderId} via account ${messagingPageId}`);
+          // Mark as replied so the DM poller doesn't duplicate this reply.
+          await admin.database
+            .from("social_dms")
+            .update({
+              last_reply: replyText,
+              last_replied_at: new Date().toISOString(),
+              is_read: true,
+            })
+            .eq("conversation_id", stableConvId);
         }
 
-        // Persist DM thread in social_dms table and local fallback
+        // CRM: capture lead + open conversation for this DM (best-effort, never blocks reply)
         try {
-          await socialDMService.upsertDM({
-            user_id: userId,
-            platform: "FACEBOOK",
-            conversation_id: `dm_${senderId}`,
-            sender_id: senderId,
-            sender_name: `Customer (${senderId.slice(-4)})`,
-            last_message: msgText,
-            last_message_at: new Date().toISOString(),
-            last_reply: sendRes.ok ? replyText : undefined,
-            last_replied_at: sendRes.ok ? new Date().toISOString() : undefined,
-            is_read: true,
-            messages_count: 2,
-          });
-
-          // Record lead in CRM and open conversation in Inbox for all inbound DMs
           const lower = msgText.toLowerCase();
           const isHighIntent =
             lower.includes("price") ||
@@ -345,57 +394,55 @@ Customer message: "${msgText}"`,
             lower.includes("hire") ||
             lower.includes("book") ||
             lower.includes("demo") ||
-            lower.includes("interested") ||
-            lower.includes("detail") ||
-            lower.includes("info") ||
-            lower.includes("how");
+            lower.includes("interested");
 
-          const lead = await createLead({
-            user_id: userId,
-            name: `DM Prospect (@${senderId.slice(-4)})`,
-            source: "meta_dm",
-            stage: isHighIntent ? "qualified" : "new",
-            score: isHighIntent ? 8 : 5,
-            deal_value: isHighIntent ? 2000 : 500,
-            notes: `Inbound DM: "${msgText}"`,
-            metadata: {
-              sender_id: senderId,
-              inquiry: msgText,
-            },
-          });
+          // Guard: only create a CRM lead if one doesn't already exist for this sender
+          // to prevent duplicate leads accumulating on every webhook event.
+          const { data: existingLead } = await admin.database
+            .from("leads")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("source", "meta_dm")
+            .filter("metadata->>sender_id", "eq", senderId)
+            .maybeSingle();
 
-          const conv = await createConversation({
-            user_id: userId,
-            lead_id: lead.id,
-            channel: "instagram",
-            is_ai_active: true,
-          });
-
-          if (conv?.id) {
-            await addMessage({
-              conversation_id: conv.id,
-              sender_type: "lead",
-              content: msgText,
+          if (!existingLead) {
+            const lead = await createLead({
+              user_id: userId,
+              name: `DM Prospect (@${senderId.slice(-4)})`,
+              source: "meta_dm",
+              stage: isHighIntent ? "qualified" : "new",
+              score: isHighIntent ? 8 : 5,
+              deal_value: isHighIntent ? 2000 : 500,
+              notes: `Inbound DM: "${msgText}"`,
+              metadata: { sender_id: senderId, inquiry: msgText },
             });
-            if (sendRes.ok && replyText) {
-              await addMessage({
-                conversation_id: conv.id,
-                sender_type: "ai_assistant",
-                content: replyText,
-              });
-            }
-          }
 
-          await recordActivity({
-            user_id: userId,
-            lead_id: lead.id,
-            type: "direct_message",
-            title: `Direct message received from ${senderId.slice(-4)}`,
-            description: `Inquiry: "${msgText.slice(0, 100)}"`,
-            metadata: { sender_id: senderId },
-          });
+            const conv = await createConversation({
+              user_id: userId,
+              lead_id: lead.id,
+              channel: "instagram",
+              is_ai_active: true,
+            });
+
+            if (conv?.id) {
+              await addMessage({ conversation_id: conv.id, sender_type: "lead", content: msgText });
+              if (sendRes.ok && replyText) {
+                await addMessage({ conversation_id: conv.id, sender_type: "ai_assistant", content: replyText });
+              }
+            }
+
+            await recordActivity({
+              user_id: userId,
+              lead_id: lead.id,
+              type: "direct_message",
+              title: `Direct message received from ${senderId.slice(-4)}`,
+              description: `Inquiry: "${msgText.slice(0, 100)}"`,
+              metadata: { sender_id: senderId },
+            });
+          }
         } catch (storageErr) {
-          console.warn("[Meta Webhook] DM persistence notice:", storageErr);
+          console.warn("[Meta Webhook] DM CRM capture notice:", storageErr);
         }
       } catch (dmErr) {
         console.warn("[Meta Webhook] Error responding to direct DM:", dmErr);
