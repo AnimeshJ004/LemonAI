@@ -10,7 +10,6 @@ import ListView from "@/components/schedule/list-view";
 import CalendarView from "@/components/schedule/calendar-view";
 import CreatePostDialog from "@/components/schedule/create-post-dialog";
 import { ModernLoader } from "@/components/ui/modern-loader";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 
 import { cn } from "@/lib/utils";
 
@@ -29,8 +28,6 @@ const SchedulePageContent = () => {
     <div className="flex flex-col h-full w-full min-w-0">
       <header className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 px-1 sm:px-4 pt-1 pb-3 border-b border-border/40 shrink-0">
         <div className="flex items-center gap-2">
-          {/* Mobile Sidebar Toggle Button with 44px tap target */}
-          <SidebarTrigger className="md:hidden min-h-[44px] min-w-[44px] size-11 flex items-center justify-center -ml-2 rounded-lg hover:bg-muted text-foreground transition-colors" />
           <div>
             <h1 className="text-base sm:text-xl font-bold text-foreground">Schedule Workspace</h1>
             <p className="text-[11px] sm:text-xs text-muted-foreground line-clamp-1 md:line-clamp-none">

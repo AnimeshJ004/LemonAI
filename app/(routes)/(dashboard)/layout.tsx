@@ -21,7 +21,7 @@ export default function DashboardLayout({
         {/* 3. Top Bar with Mobile Hamburger Trigger (min 44x44px target) */}
         <header className="flex h-14 shrink-0 items-center justify-between border-b px-3 sm:px-6 bg-background/95 backdrop-blur-xs z-10">
           <div className="flex items-center gap-2">
-            <SidebarTrigger className="min-h-[44px] min-w-[44px] size-11 flex items-center justify-center -ml-2 rounded-lg hover:bg-muted text-foreground transition-colors" />
+            <SidebarTrigger className="hidden md:flex min-h-[44px] min-w-[44px] size-11 items-center justify-center -ml-2 rounded-lg hover:bg-muted text-foreground transition-colors" />
             <div className="flex items-center gap-2">
               <Logo hideName={false} className="scale-90 origin-left" />
             </div>
