@@ -13,7 +13,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarTrigger,
   useSidebar,
 } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
@@ -52,7 +51,7 @@ import { ChannelType } from '@/types/channel.type';
 import { PlusSignIcon } from '@hugeicons/core-free-icons';
 import { UserButton, useUser } from '@clerk/nextjs';
 import ChannelAvatar from '@/components/channel-avatar';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import CreatePostDialog from '@/components/schedule/create-post-dialog';
 import { ConnectChannelDialog } from '@/components/settings/connect-channel-dialog';
 import AutonomousCampaignDialog from '@/components/campaign/autonomous-campaign-dialog';
@@ -98,8 +97,13 @@ const AppSidebar = () => {
   const pathname = usePathname();
   const { state, setOpenMobile } = useSidebar();
   const isCollapsed = state === "collapsed";
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
+  const [mounted, setMounted] = useState<boolean>(false);
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [isCreatePostOpen, setIsCreatePostOpen] = useState<boolean>(false);
   const [selectedChannelForConnect, setSelectedChannelForConnect] = useState<ChannelType | null>(null);
   const [isConnectDialogOpen, setIsConnectDialogOpen] = useState<boolean>(false);
@@ -140,7 +144,6 @@ const AppSidebar = () => {
         <SidebarHeader className={cn("p-4", isCollapsed && "p-2")}>
           <div className='flex items-center justify-between'>
             <Logo hideName={isCollapsed} />
-            <SidebarTrigger className="hidden md:flex -mx-8 mb-0" />
           </div>
           <Button
             className='mt-4 w-full'
@@ -367,16 +370,20 @@ const AppSidebar = () => {
             </span>
           </div>
           <div className="flex items-center gap-2 min-w-0">
-            <UserButton
-              showName={false}
-              appearance={{
-                elements: {
-                  avatarBox: "h-8 w-8",
-                },
-              }}
-            />
+            {mounted && isLoaded ? (
+              <UserButton
+                showName={false}
+                appearance={{
+                  elements: {
+                    avatarBox: "h-8 w-8",
+                  },
+                }}
+              />
+            ) : (
+              <div className="h-8 w-8 rounded-full bg-muted animate-pulse shrink-0" />
+            )}
             <span suppressHydrationWarning className="text-sm truncate">
-              {user?.fullName || user?.primaryEmailAddress?.emailAddress}
+              {mounted && isLoaded ? (user?.fullName || user?.primaryEmailAddress?.emailAddress) : ""}
             </span>
           </div>
         </SidebarFooter>
