@@ -24,7 +24,7 @@ export async function demoLoginAction() {
   })
 
   // Redirect back to our app's dashboard after Clerk sign in
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://lemon-ai-snowy.vercel.app"
   const redirectUrl = `${token.url}${token.url.includes('?') ? '&' : '?'}redirect_url=${appUrl}/schedule`
 
   redirect(redirectUrl)
