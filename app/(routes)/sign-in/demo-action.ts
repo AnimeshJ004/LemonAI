@@ -2,14 +2,15 @@
 
 import { clerkClient } from "@clerk/nextjs/server"
 import { redirect } from "next/navigation"
+import { headers } from "next/headers"
 
 export async function demoLoginAction() {
   const email = "vlazereigns@gmail.com"
   const client = await clerkClient()
-  
+
   const users = await client.users.getUserList({ emailAddress: [email] })
   let user = users.data[0]
-  
+
   if (!user) {
     user = await client.users.createUser({
       emailAddress: [email],
@@ -23,9 +24,13 @@ export async function demoLoginAction() {
     expiresInSeconds: 60,
   })
 
-  // Redirect back to our app's dashboard after Clerk sign in
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://lemon-ai-snowy.vercel.app"
-  const redirectUrl = `${token.url}${token.url.includes('?') ? '&' : '?'}redirect_url=${appUrl}/schedule`
+  // Detect origin dynamically — works on localhost AND production automatically
+  const headersList = await headers()
+  const host = headersList.get("host") || "lemon-ai-snowy.vercel.app"
+  const proto = host.startsWith("localhost") ? "http" : "https"
+  const appUrl = `${proto}://${host}`
+
+  const redirectUrl = `${token.url}${token.url.includes("?") ? "&" : "?"}redirect_url=${appUrl}/schedule`
 
   redirect(redirectUrl)
 }
