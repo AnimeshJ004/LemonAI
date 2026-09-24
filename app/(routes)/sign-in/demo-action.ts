@@ -24,13 +24,21 @@ export async function demoLoginAction() {
     expiresInSeconds: 60,
   })
 
-  // Detect origin dynamically — works on localhost AND production automatically
+  // Clerk's dev token URL is hardcoded to localhost — replace it with the real host
   const headersList = await headers()
   const host = headersList.get("host") || "lemon-ai-snowy.vercel.app"
   const proto = host.startsWith("localhost") ? "http" : "https"
   const appUrl = `${proto}://${host}`
 
-  const redirectUrl = `${token.url}${token.url.includes("?") ? "&" : "?"}redirect_url=${appUrl}/schedule`
+  // token.url looks like: http://localhost:3000/?_clerk_db_jwt=xxx
+  // We replace localhost:3000 with the actual host so it works on Vercel
+  let clerkUrl = token.url
+  clerkUrl = clerkUrl.replace(/https?:\/\/localhost:\d+/, appUrl)
+  clerkUrl = clerkUrl.replace(/https?:\/\/127\.0\.0\.1:\d+/, appUrl)
 
-  redirect(redirectUrl)
+  // Ensure the final redirect lands on the dashboard
+  const separator = clerkUrl.includes("?") ? "&" : "?"
+  const finalUrl = `${clerkUrl}${separator}redirect_url=${appUrl}/schedule`
+
+  redirect(finalUrl)
 }
