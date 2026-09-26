@@ -279,40 +279,31 @@ export interface GeneratedVideoResult {
 }
 
 function sanitizePhotorealisticPrompt(raw: string): string {
-  // 1. Strip any anime, manga, cartoon, drawing, illustration words even if negated (FLUX has no negative prompt so tokens like 'anime' trigger anime aesthetics)
-  let cleaned = raw
+  // Strip any anime, manga, cartoon, drawing, illustration words even if negated
+  return raw
     .replace(/(no|zero|without|not|avoid|never|stop)\s+(anime|manga|cartoon|illustration|drawing|avatar|chibi|cgi|3d\s+render|comic)/gi, "")
     .replace(/\b(anime|manga|cartoon|illustration|drawing|sketch|avatar|chibi|cgi|3d\s+render|comic|pixar|disney)\b/gi, "")
     .replace(/["'“”]/g, "")
     .replace(/\s{2,}/g, " ")
     .trim();
-
-  // 2. Prepend strong commercial design anchors
-  if (!cleaned.toLowerCase().includes("template") && !cleaned.toLowerCase().includes("poster")) {
-    cleaned = `High-end commercial promotional poster template for ${cleaned}`;
-  }
-
-  // 3. Append design and realism anchors matching the reference image style
-  cleaned += ", professional graphic design layout featuring three distinct glowing feature sections or cards in the center, elegant dark aesthetic with metallic accents, rich luxurious typography perfectly aligned to brand aesthetic, stylised text integration, completely empty of humans, no people, clean composition, premium marketing creative.";
-
-  return cleaned;
 }
 
 /**
  * Creates a category-aware, industry-level commercial art-directed photography prompt
- * strictly grounded in the user's specific Brand Profile and detected profile category.
+ * strictly grounded in the user's specific Brand Profile and detected profile category,
+ * adhering to the two premium visual reference archetypes (Luxury Service Poster & Organic Editorial Flatlay).
  */
 async function buildBrandAlignedVisualPrompt(
   rawPrompt: string,
   brandProfile?: any,
   niche?: string
 ): Promise<string> {
-  const brandName = brandProfile?.business_name || "";
-  const brandNiche = brandProfile?.niche || niche || "";
+  const brandName = brandProfile?.business_name || "Premium Brand";
+  const brandNiche = brandProfile?.niche || niche || "Lifestyle & Business";
   const products = brandProfile?.products_services || "";
   const offer = brandProfile?.main_offer || "";
   const audience = brandProfile?.target_audience || "";
-  const tone = brandProfile?.brand_tone || "Modern, luxury, professional";
+  const tone = brandProfile?.brand_tone || "Modern, luxury, authentic";
 
   // ─── Detect profile category for specialized art direction ───────────────
   const profileCategory = detectProfileCategory(brandProfile, niche);
@@ -338,30 +329,47 @@ async function buildBrandAlignedVisualPrompt(
           content: `${categoryStyle.systemContext}
 
 Brand Profile Context:
-- Brand Name: ${brandName || "Premium Brand"}
+- Brand Name: ${brandName}
 - Profile Category: ${categoryStyle.label}
-- Industry / Niche: ${brandNiche || "Modern Business"}
+- Industry / Niche: ${brandNiche}
 - Products / Services: ${products || offer || "High-end commercial offerings"}
 - Target Audience: ${audience || "Discerning clients"}
 - Brand Tone & Aesthetic: ${tone}
 
-ART DIRECTION REQUIREMENTS:
-1. Ground the visual scene directly in this brand's world — their specific category aesthetics, products, or lifestyle.
-2. The scene MUST reflect the "${categoryStyle.label}" industry visual style described above.
-3. If products appear: high-end commercial representation, minimalist surface, warm directional light, crisp textures.
-4. CRITICAL: DO NOT include any people, humans, or faces. The image must be completely empty of people.
-5. The image should be designed as a template, poster, or marketing creative.
-6. INCLUDE stylized typography and text perfectly aligned with the brand's aesthetic. The text should be relevant and elegantly integrated into the image layout.
+MASTER ART DIRECTION INSTRUCTIONS (Strictly follow one of the two user-provided reference archetypes):
 
-Output ONLY the final 2-3 sentence prompt. No markdown, quotes, or preambles.`,
+ARCHETYPE 1: THE LUXURY BRANDED SERVICE POSTER (Like "Door of Soul" reference)
+- Best for: Service showcases, brand promos, announcements, campaign posters, feature pillars.
+- Visual structure:
+  * Atmospheric, warm cinematic architectural background matched to ${categoryStyle.label} (e.g. arched sunset pavilion, ambient warm interior lighting, lush greenery).
+  * Top: Refined celestial/minimalist brand emblem with brand name "${brandName}" in tasteful luxury typography, followed by a delicate tagline.
+  * Center: An aspirational, powerful headline in luxury serif or modern editorial typography tailored to "${cleanedSubject || brandNiche}".
+  * Middle: Three beautifully framed visual cards with rounded corners, each depicting a core service or benefit with evocative imagery and clean labels.
+  * Bottom: Minimalist icon badges with benefit labels, and an elegant pill-shaped call-to-action button ("LET'S CONNECT →").
+  * Mood: High-end agency creative, balanced graphic design layout, warm ambient lighting.
+
+ARCHETYPE 2: THE ORGANIC MINDFUL EDITORIAL FLATLAY (Like "Pause, Breathe, Ignite" reference)
+- Best for: Daily wisdom, quotes, tips, mindful habits, lifestyle reflections, product teasers.
+- Visual structure:
+  * Tactile top-down or high-angle editorial flatlay on textured natural cream/beige linen fabric or warm raw limestone.
+  * Warm, directional natural sunlight streaming from the side with soft, sharp diagonal window shadows.
+  * Curated tactile props relevant to ${brandNiche} (e.g. handmade stoneware ceramic cup, autumn pecan or acorn, fine drafting pencil, botanical sprig).
+  * Centerpiece: An ultra-clean minimalist matte ivory stationery card or tactile device featuring tasteful, elegant editorial serif typography ("${cleanedSubject || "Pause, Breathe, Focus"}"), subtle minimalist glyphs (e.g. timer "5:00" or mindfulness icons), and generous negative space.
+  * Mood: Calming, tactile, Kinfolk and Cereal magazine editorial photography, authentic and serene.
+
+CRITICAL RULES:
+1. NEVER paste crude, oversized repetitive watermark text across the image. No duplicate brand names.
+2. The typography must look like a published high-fashion magazine editorial or luxury creative agency poster.
+3. Completely tailor colors, props, and lighting to the brand's niche: ${brandNiche}.
+4. Output ONLY the final 2-3 sentence prompt for the diffusion image model. No markdown, quotes, or preambles.`,
         },
         {
           role: "user",
-          content: `Topic / post visual idea: "${cleanedSubject || brandNiche || "Brand showcase"}"\n\nCategory scene reference examples: ${categoryStyle.exampleScenes.slice(0, 2).join(" | ")}`,
+          content: `Topic / post visual idea: "${cleanedSubject || brandNiche || "Brand showcase"}"`,
         },
       ],
       temperature: 0.5,
-      maxTokens: 200,
+      maxTokens: 220,
     });
 
     if (aiRes?.content && aiRes.content.trim().length > 25) {
@@ -376,9 +384,16 @@ Output ONLY the final 2-3 sentence prompt. No markdown, quotes, or preambles.`,
 
   // ─── Deterministic category-aware fallback ───────────────────────────────
   const contextSubject = cleanedSubject || products || offer || brandNiche || "commercial showcase";
-  const exampleScene = categoryStyle.exampleScenes[Math.floor(Math.random() * categoryStyle.exampleScenes.length)];
+  const isLifestyleOrMindful = /\b(pause|breathe|quote|tip|habit|mindful|daily|focus|relax|calm|thought|morning|routine|self.?care)\b/i.test(contextSubject);
+
+  if (isLifestyleOrMindful) {
+    return sanitizePhotorealisticPrompt(
+      `Tactile editorial flatlay on textured beige linen fabric in warm diagonal morning sunlight, ceramic tea cup, autumn acorn, fine pencil, with a minimalist matte ivory stationery card in the center featuring elegant serif typography "${contextSubject}" and subtle digital timer glyph, Kinfolk magazine aesthetic, warm natural shadows, peaceful authentic atmosphere.`
+    );
+  }
+
   return sanitizePhotorealisticPrompt(
-    `High-end ${categoryStyle.label} marketing template — ${exampleScene}. Specifically designed for ${brandName || "the brand"}: ${contextSubject}. Includes relevant typography and text, ${tone.toLowerCase()} aesthetic, ${categoryStyle.label} industry visual language, no people.`
+    `High-end luxury marketing poster for ${brandName}, atmospheric architectural background with warm ambient evening glow, elegant emblem header at top, inspiring serif headline "${contextSubject}", three beautifully framed rounded feature cards in center illustrating core pillars of ${brandNiche}, minimalist benefit icons and subtle gold pill button at bottom, luxury editorial graphic design layout, balanced commercial composition.`
   );
 }
 
@@ -748,8 +763,7 @@ export async function generateAdCreativeImage(
   if (!hfKey) {
     console.warn("[Image Engine] HUGGINGFACE_API_KEY is not set in environment variables. Skipping Hugging Face.");
   } else {
-    const brandName = brandProfile?.business_name || "Premium Brand";
-    const hfPrompt = `${photorealisticPrompt}. The image MUST prominently feature the exact text "${brandName}" rendered perfectly in beautiful, legible typography. Ensure the style is a high-end commercial mix of photorealism and 3D digital art.`;
+    const hfPrompt = photorealisticPrompt;
     const storageKey = `creatives/${options.userId || "auto"}/${Date.now()}-hf.jpg`;
 
     try {
