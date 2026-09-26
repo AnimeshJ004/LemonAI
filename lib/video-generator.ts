@@ -168,8 +168,8 @@ export async function fetchSceneImages(
           }
           const ab = await (imageBlob as unknown as Blob).arrayBuffer();
           return { sceneNumber: scene.sceneNumber, imageBuffer: Buffer.from(ab) };
-        } catch {
-          // fall through to Together.ai
+        } catch (hfErr: any) {
+          console.warn("[Video Engine] HF error:", hfErr?.message || hfErr);
         }
       }
       if (togetherKey) {

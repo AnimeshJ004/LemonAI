@@ -745,7 +745,9 @@ export async function generateAdCreativeImage(
 
   // ─── Priority 3.5: Hugging Face FLUX.1-schnell (via HF's own inference servers) ─────
   const hfKey = process.env.HUGGINGFACE_API_KEY;
-  if (hfKey) {
+  if (!hfKey) {
+    console.warn("[Image Engine] HUGGINGFACE_API_KEY is not set in environment variables. Skipping Hugging Face.");
+  } else {
     const brandName = brandProfile?.business_name || "Premium Brand";
     const hfPrompt = `${photorealisticPrompt}. The image MUST prominently feature the exact text "${brandName}" rendered perfectly in beautiful, legible typography. Ensure the style is a high-end commercial mix of photorealism and 3D digital art.`;
     const storageKey = `creatives/${options.userId || "auto"}/${Date.now()}-hf.jpg`;
