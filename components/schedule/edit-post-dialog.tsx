@@ -482,6 +482,7 @@ export function EditPostDialog({
                             <ButtonGroup className="p-0!">
                                 <ScheduleDatePicker
                                     date={date} setDate={setDate} time={time} setTime={setTime}
+                                    channelType={activeChannel?.type}
                                     renderButton={(isDatePassed, isTimeNotAvailable) => <Button
                                         size="lg"
                                         className="border py-4.5 px-4"

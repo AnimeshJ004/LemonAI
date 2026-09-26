@@ -498,7 +498,7 @@ Return ONLY valid JSON matching this schema:
     const isReel = post.format === "REEL";
     const isCarousel = post.format === "CAROUSEL";
     const videoUrl = isReel ? CURATED_VERTICAL_REELS[i % CURATED_VERTICAL_REELS.length] : null;
-    const imageUrl = asset?.imageUrl || (
+    const imageUrl = asset?.imageUrls?.[0] || (
       isCarousel
         ? CURATED_COMMERCIAL_PHOTOS.marketing[i % CURATED_COMMERCIAL_PHOTOS.marketing.length]
         : isReel
@@ -911,7 +911,7 @@ Return ONLY valid JSON matching this schema:
       const isReel = p.format === "REEL";
       const isCarousel = p.format === "CAROUSEL";
       const assignedVideo = isReel ? CURATED_VERTICAL_REELS[idx % CURATED_VERTICAL_REELS.length] : null;
-      const assignedImage = visualAssets[idx]?.imageUrl || (
+      const assignedImage = visualAssets[idx]?.imageUrls?.[0] || (
         isCarousel
           ? CURATED_COMMERCIAL_PHOTOS.marketing[idx % CURATED_COMMERCIAL_PHOTOS.marketing.length]
           : isReel

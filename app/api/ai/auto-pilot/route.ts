@@ -354,10 +354,10 @@ Return ONLY valid JSON matching this exact schema (no markdown, no backticks):
                 userId,
                 niche,
               });
-              if (imgRes.success && imgRes.imageUrl) {
+              if (imgRes.success && imgRes.imageUrls?.[0]) {
                 imageArray = [
                   {
-                    url: imgRes.imageUrl,
+                    url: imgRes.imageUrls[0],
                     key: imgRes.storageKey || `ai-post-${Date.now()}-${idx}`,
                   },
                 ];

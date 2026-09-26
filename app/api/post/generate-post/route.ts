@@ -8,7 +8,7 @@ import { auth } from "@clerk/nextjs/server";
 import { inngest } from "@/inngest/client";
 import { NextRequest, NextResponse } from "next/server";
 import { getUserMemoryContext, buildMemoryPromptBlock } from "@/lib/ai-memory";
-import { getPlatformPeakTime, adaptCaptionForPlatform } from "@/lib/platform-adapt-helper";
+import { getPlatformPeakTime, getOptimalTrendingTime, getTrendingPeakTimesForPlatform, adaptCaptionForPlatform } from "@/lib/platform-adapt-helper";
 
 const ACTIONS = ["generate", "rephrase", "shorten", "expand"] as const;
 type ActionType = (typeof ACTIONS)[number];
@@ -98,14 +98,16 @@ export async function POST(request: NextRequest) {
             const now = new Date();
             const todayStr = now.toISOString().split("T")[0];
 
+            const targetChannelType = channelType || targetChannel || "TWITTER";
+            const platformTrendingSlots = getTrendingPeakTimesForPlatform(targetChannelType, { niche: brandProfile?.niche }).map(s => s.timeSlot);
             const TIME_SLOT_MAP: Record<number, string[]> = {
-                1: ["10:00 AM"],
-                2: ["10:00 AM", "6:30 PM"],
-                3: ["9:00 AM", "2:00 PM", "8:00 PM"],
-                4: ["9:00 AM", "1:00 PM", "5:00 PM", "8:30 PM"],
-                5: ["8:30 AM", "11:30 AM", "2:30 PM", "5:30 PM", "8:30 PM"],
+                1: [platformTrendingSlots[0] || "10:00 AM"],
+                2: [platformTrendingSlots[0] || "10:00 AM", platformTrendingSlots[1] || "06:30 PM"],
+                3: platformTrendingSlots.length >= 3 ? platformTrendingSlots.slice(0, 3) : ["09:00 AM", "02:00 PM", "08:00 PM"],
+                4: platformTrendingSlots.length >= 4 ? platformTrendingSlots.slice(0, 4) : ["09:00 AM", "01:00 PM", "05:00 PM", "08:30 PM"],
+                5: ["08:30 AM", "11:30 AM", "02:30 PM", "05:30 PM", "08:30 PM"],
             };
-            const defaultSlots = TIME_SLOT_MAP[perDayNum] || ["10:00 AM"];
+            const defaultSlots = TIME_SLOT_MAP[perDayNum] || [platformTrendingSlots[0] || "10:00 AM"];
 
             const cleanBrandTag = cleanTag(brandProfile?.business_name, "Brand");
             const cleanNicheTag = cleanTag(brandProfile?.niche, "Business");
@@ -203,8 +205,8 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
                         userId,
                         niche: brandProfile?.niche,
                     });
-                    if (imgRes.success && imgRes.imageUrl) {
-                        imageObj = { url: imgRes.imageUrl, key: imgRes.storageKey || `ai-${Date.now()}-${i}` };
+                    if (imgRes.success && imgRes.imageUrls?.[0]) {
+                        imageObj = { url: imgRes.imageUrls[0], key: imgRes.storageKey || `ai-${Date.now()}-${i}` };
                     }
                 }
 
@@ -281,13 +283,34 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
                     promptLower.includes("post on") ||
                     promptLower.includes("tomorrow") ||
                     promptLower.includes("today at") ||
-                    promptLower.includes("todat at");
+                    promptLower.includes("todat at") ||
+                    promptLower.includes("trending time") ||
+                    promptLower.includes("best time");
 
                 const hasExplicitSchedule = Boolean(
                     parsed.autoSchedule === true ||
                     (parsed.schedule?.date && parsed.schedule?.time) ||
-                    (parsed.schedule && hasScheduleKeywords)
+                    (parsed.schedule && hasScheduleKeywords) ||
+                    hasScheduleKeywords
                 );
+
+                const detectedChannel = (Array.isArray(parsed.channels) && parsed.channels[0]) || targetChannel || "instagram";
+                let finalSchedule = parsed.schedule || null;
+
+                // Intelligently resolve trending time if user requested scheduling without exact time
+                if (hasExplicitSchedule) {
+                    if (!finalSchedule) {
+                        const targetD = new Date();
+                        const trending = getOptimalTrendingTime(detectedChannel, targetD, brandProfile?.niche);
+                        finalSchedule = {
+                            date: targetD.toISOString().split("T")[0],
+                            time: trending.timeSlot,
+                        };
+                    } else if (finalSchedule.date && !finalSchedule.time) {
+                        const trending = getOptimalTrendingTime(detectedChannel, finalSchedule.date, brandProfile?.niche);
+                        finalSchedule.time = trending.timeSlot;
+                    }
+                }
 
                 let generatedImageObj: { url: string; key: string } | null = null;
 
@@ -300,9 +323,9 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
                             userId,
                             niche: brandProfile?.niche,
                         });
-                        if (imgRes.success && imgRes.imageUrl) {
+                        if (imgRes.success && imgRes.imageUrls?.[0]) {
                             generatedImageObj = {
-                                url: imgRes.imageUrl,
+                                url: imgRes.imageUrls[0],
                                 key: imgRes.storageKey || `ai-creative-${Date.now()}`,
                             };
                         }
@@ -321,7 +344,7 @@ Return ONLY a valid JSON object matching this schema without markdown formatting
                 return NextResponse.json({
                     isMultiDay: false,
                     content: finalContent,
-                    schedule: parsed.schedule || null,
+                    schedule: finalSchedule,
                     autoSchedule: hasExplicitSchedule,
                     channels: Array.isArray(parsed.channels) ? parsed.channels : (targetChannel === "all" ? ["all"] : [targetChannel]),
                     image: generatedImageObj,
@@ -421,13 +444,23 @@ DO NOT write generic motivational quotes, generic life advice, or vague platitud
         "1. Focus entirely on the brand's niche, services, and value proposition.",
         "2. Clean plain text only: ZERO emojis, ZERO icons, ZERO symbols, and ZERO markdown headings (# Heading) or bold asterisks (**text**).",
         `3. VIRAL HASHTAG INTELLIGENCE: Every post MUST conclude with 4 to 6 top trending, viral social hashtags analyzed for ${brandProfile?.business_name || "the brand"} and its ${brandProfile?.niche || "industry"} niche, always including #${cleanBrandTag} and #${cleanNicheTag} (e.g. #${cleanBrandTag} #${cleanNicheTag} #${cleanNicheTag}Tips #BusinessGrowth).`,
-        "4. Scheduling & Date Detection:",
-        `   - If user mentions dates or times (e.g. 'tomorrow at 5pm', 'next Monday 10:00 AM', 'September 5th at 3 PM', 'today at 6 PM', 'schedule kardo'):`,
-        `     * Calculate the exact target date formatted as 'YYYY-MM-DD' (relative to ${todayStr}).`,
-        "     * Format the time in 'h:mm A' 12-hour format (e.g. '5:00 PM', '10:30 AM').",
-        "     * Set schedule: { 'date': 'YYYY-MM-DD', 'time': '5:00 PM' }.",
-        "     * Set autoSchedule: true.",
-        "   - If no scheduling is mentioned, set schedule: null and autoSchedule: false.",
+        "4. Trending Scheduling & Date Detection:",
+        `   - If user mentions dates or times (e.g. 'tomorrow at 5pm', 'next Monday 10:00 AM', 'September 5th at 3 PM', 'today at 6 PM', 'schedule kardo', 'best time pe post karo', 'trending time'):`,
+        `     * If exact time is specified by user, honor that time formatted in 'h:mm A' 12-hour format (e.g. '5:00 PM', '10:30 AM').`,
+        `     * If user asks to schedule WITHOUT an exact time:`,
+        `       INTELLIGENTLY calculate the algorithmic viral/trending peak engagement time for ${targetChannel || 'the target social channel'} and the brand's ${brandProfile?.niche || 'industry'} niche:`,
+        `       - LinkedIn: 09:15 AM (Morning B2B focus) or 04:45 PM (End of workday review)`,
+        `       - Instagram: 06:45 PM (Prime evening Reels & Stories) or 11:30 AM (Lunch discovery)`,
+        `       - Twitter/X: 12:45 PM (Midday news & lunch scroll) or 06:15 PM (Evening digest)`,
+        `       - Facebook: 03:30 PM (Afternoon community reading) or 08:00 PM (Evening family/groups)`,
+        `       - YouTube: 05:15 PM (Pre-evening prime video watch) or 11:00 AM`,
+        `       - Threads / Bluesky: 08:15 PM - 09:00 PM (Late-evening discourse)`,
+        `       - Niche nuances: Fitness (06:45 AM or 05:30 PM), Food/Restaurant (11:30 AM or 05:45 PM), SaaS/Tech (09:15 AM or 01:00 PM)`,
+        `       * If scheduling for today (${todayStr}) and a peak time has already passed, pick the next upcoming evening peak slot.`,
+        `     * Format date as 'YYYY-MM-DD' (relative to ${todayStr}).`,
+        `     * Set schedule: { 'date': 'YYYY-MM-DD', 'time': '<Calculated Trending Peak Time>' }.`,
+        `     * Set autoSchedule: true.`,
+        `   - If no scheduling is mentioned at all, set schedule: null and autoSchedule: false.`,
         "5. Channel Detection:",
         "   - If user mentions target social platforms (e.g. 'Twitter', 'X', 'LinkedIn', 'Instagram', 'Facebook', 'Bluesky', 'all channels'):",
         "     * Set channels array: ['twitter', 'linkedin'] or ['all'].",

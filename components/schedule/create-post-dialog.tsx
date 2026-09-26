@@ -849,6 +849,8 @@ const CreatePostDialog = ({ open, onOpenChange, selectedDate }: PropsType) => {
                                     setDate={setDate}
                                     time={timeSlot}
                                     setTime={setTimeSlot}
+                                    channelType={channels.find((c) => c.id === (activeAccordion || selectedChannels[0]))?.type || "instagram"}
+                                    niche={brand?.niche}
                                     renderButton={(isDatePassed, isTimeNotAvailable) => <Button
                                         size="lg"
                                         className="border py-4.5 px-4"

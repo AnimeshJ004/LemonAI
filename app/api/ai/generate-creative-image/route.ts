@@ -34,9 +34,11 @@ export async function POST(request: NextRequest) {
       aspectRatio,
       userId,
       niche: body.niche,
+      brandProfile: body.brandProfile,
+      numOutputs: body.numOutputs || 4, // Generate 4 images by default
     });
 
-    if (!imageResult.success || !imageResult.imageUrl) {
+    if (!imageResult.success || !imageResult.imageUrls || imageResult.imageUrls.length === 0) {
       return NextResponse.json(
         { error: "Failed to generate AI visual. Please try again." },
         { status: 500 }
@@ -45,13 +47,13 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      image: {
-        url: imageResult.imageUrl,
-        key: imageResult.storageKey,
+      images: imageResult.imageUrls.map((url, i) => ({
+        url,
+        key: `${imageResult.storageKey}-${i}`,
         aspectRatio: imageResult.aspectRatio,
         provider: imageResult.provider,
         latencyMs: imageResult.latencyMs,
-      },
+      })),
     });
   } catch (error: any) {
     console.error("[Generate Creative Image API Error]:", error);

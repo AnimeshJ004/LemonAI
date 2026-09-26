@@ -1,7 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { extractJsonFromText } from "@/lib/ai-gateway";
 import { getBrandBrainSummary, formatBrandHashtags, cleanTag } from "@/lib/brand-helper";
-import { getPlatformPeakTime, parseCustomTimeString } from "@/lib/platform-adapt-helper";
+import {
+  getPlatformPeakTime,
+  parseCustomTimeString,
+  getTrendingPeakTimesForPlatform,
+  getOptimalTrendingTime,
+  isTrendingTimeSlot,
+} from "@/lib/platform-adapt-helper";
 
 describe("AI Engine & LLM Output Integration Tests", () => {
   describe("Structured JSON Output Parsing (extractJsonFromText)", () => {
@@ -174,6 +180,29 @@ Let me know if you want any edits or revisions!`;
       expect(pmRes?.hour).toBe(20);
       expect(pmRes?.minute).toBe(15);
       expect(pmRes?.timeSlot).toBe("08:15 PM");
+    });
+
+    it("evaluates platform trending peak times and industry niches", () => {
+      const igSlots = getTrendingPeakTimesForPlatform("INSTAGRAM", { dayOfWeek: 2 });
+      expect(igSlots.length).toBeGreaterThanOrEqual(2);
+      expect(igSlots[0].timeSlot).toBe("06:45 PM");
+
+      const fitnessSlots = getTrendingPeakTimesForPlatform("INSTAGRAM", { niche: "fitness gym coach" });
+      expect(fitnessSlots[0].timeSlot).toBe("06:45 AM");
+
+      const isPeak = isTrendingTimeSlot("06:45 PM", "INSTAGRAM");
+      expect(isPeak).toBe(true);
+
+      const notPeak = isTrendingTimeSlot("03:15 AM", "INSTAGRAM");
+      expect(notPeak).toBe(false);
+    });
+
+    it("determines optimal upcoming trending slot for future dates", () => {
+      const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const opt = getOptimalTrendingTime("LINKEDIN", tomorrow);
+      expect(opt).toBeDefined();
+      expect(opt.timeSlot).toBeDefined();
+      expect(["09:15 AM", "10:00 AM"]).toContain(opt.timeSlot);
     });
   });
 });

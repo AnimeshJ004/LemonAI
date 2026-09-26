@@ -29,7 +29,7 @@ export function AIVisualGenerator({
 }: AIVisualGeneratorProps) {
   const [prompt, setPrompt] = useState("");
   const [aspectRatio, setAspectRatio] = useState<"1:1" | "9:16" | "16:9">("1:1");
-  const [lastGeneratedUrl, setLastGeneratedUrl] = useState<string | null>(null);
+  const [generatedImages, setGeneratedImages] = useState<ImageObject[]>([]);
 
   // Auto-fetch user's saved brand profile for context
   const { data: brandData } = useQuery({
@@ -71,6 +71,8 @@ export function AIVisualGenerator({
           prompt: effectivePrompt,
           aspectRatio,
           niche: brand?.niche,
+          brandProfile: brand,
+          numOutputs: 4,
         }),
       });
 
@@ -81,13 +83,18 @@ export function AIVisualGenerator({
       return res.json();
     },
     onSuccess: (data) => {
-      if (data.image?.url) {
-        setLastGeneratedUrl(data.image.url);
-        onImageGenerated({
+      if (data.images && data.images.length > 0) {
+        setGeneratedImages(data.images.map((img: any) => ({
+          key: img.key || `ai-creative-${Date.now()}-${Math.random()}`,
+          url: img.url,
+        })));
+        toast.success(`Generated ${data.images.length} visual variations! Click one to attach.`);
+      } else if (data.image?.url) { // fallback for older API
+        setGeneratedImages([{
           key: data.image.key || `ai-creative-${Date.now()}`,
           url: data.image.url,
-        });
-        toast.success("AI visual generated & attached to post!");
+        }]);
+        toast.success("AI visual generated!");
       }
     },
     onError: (err: any) => {
@@ -166,34 +173,45 @@ export function AIVisualGenerator({
         {generateMutation.isPending ? (
           <>
             <Loader2 className="size-3.5 animate-spin" />
-            Generating 8K Visual...
+            Generating 8K Visuals...
           </>
         ) : (
           <>
             <ImageIcon className="size-3.5" />
-            Generate & Attach AI Image
+            Generate Visual Variations
           </>
         )}
       </Button>
 
-      {/* Last Generated Preview */}
-      {lastGeneratedUrl && (
-        <div className="p-2 rounded-lg border bg-muted/30 space-y-1.5">
-          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-            <span className="flex items-center gap-1 text-emerald-600 font-medium">
-              <Check className="size-3" /> Attached to post
-            </span>
-            <span>{aspectRatio}</span>
-          </div>
-          <div className="relative aspect-video rounded-md overflow-hidden border bg-background">
-            <img
-              src={lastGeneratedUrl}
-              alt="AI Generated"
-              className="w-full h-full object-cover"
-            />
+      {/* Generated Images Grid */}
+      {generatedImages.length > 0 && (
+        <div className="pt-2 space-y-2 border-t">
+          <label className="text-xs font-medium text-foreground">Select an Image to Attach:</label>
+          <div className="grid grid-cols-2 gap-2">
+            {generatedImages.map((img, index) => (
+              <button
+                key={img.key || index}
+                type="button"
+                onClick={() => {
+                  onImageGenerated(img);
+                  toast.success("Image attached to post!");
+                }}
+                className="relative group rounded-md overflow-hidden border bg-muted aspect-video hover:ring-2 hover:ring-primary transition-all"
+              >
+                <img
+                  src={img.url}
+                  alt={`AI Generated ${index + 1}`}
+                  className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <Check className="size-6 text-white" />
+                </div>
+              </button>
+            ))}
           </div>
         </div>
       )}
     </div>
   );
 }
+

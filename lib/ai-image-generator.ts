@@ -15,6 +15,7 @@ export type ProfileCategory =
   | "finance_consulting"
   | "food_restaurant"
   | "real_estate"
+  | "spiritual_mystical"
   | "general";
 
 /**
@@ -144,6 +145,19 @@ Camera: Phase One XF IQ4 100MP, 28mm tilt-shift, real estate architectural lens 
     ],
     fallbackCategory: "realestate",
   },
+  spiritual_mystical: {
+    label: "Spiritual / Mystical",
+    systemContext: `You are a creative director for a premium spiritual, esoteric, and holistic healing brand.
+Visual style: Mystical dark aesthetics, elegant gold accents, glowing auras, professional tarot card spreads on rich dark velvet, ancient wisdom symbols, subtle smoky incense, balanced harmonious compositions, soft magical lighting, premium cinematic quality.
+Mood: Mystical, elegant, profound, healing, aligned, premium.
+Camera: Canon EOS R5, 50mm f/1.4, rich dark shadows, glowing highlights, soft depth of field, mystical elegant color grading.`,
+    exampleScenes: [
+      "Elegant dark mystical scene with gold glowing aura, sacred geometry subtle in background, premium spiritual atmosphere",
+      "Professional tarot cards beautifully laid out on dark textured velvet, soft warm candlelight, mystical healing energy, elegant composition",
+      "Vastu harmony concept with balanced dark aesthetic, glowing central energy point, polished natural stones, elegant mystical lighting",
+    ],
+    fallbackCategory: "spiritual",
+  },
   general: {
     label: "General / Brand",
     systemContext: `You are an award-winning commercial creative director for top-tier global brands.
@@ -221,6 +235,11 @@ export function detectProfileCategory(
   if (/\b(real estate|property|properties|realtor|agent|broker|luxury home|apartment|condo|commercial property|interior design|architecture|architect|home staging|construction|renovation|development|developer)\b/.test(text)) {
     return "real_estate";
   }
+  
+  // Spiritual / Mystical
+  if (/\b(spiritual|mystic|mystical|healing|vastu|tarot|aura|astrology|numerology|reiki|holistic|soul|chakra|energy healing|magic|esoteric|occult|meditation|manifestation|wellness)\b/.test(text)) {
+    return "spiritual_mystical";
+  }
 
   return "general";
 }
@@ -231,11 +250,12 @@ export interface GenerateImageOptions {
   userId?: string;
   niche?: string;
   brandProfile?: any;
+  numOutputs?: number;
 }
 
 export interface GeneratedImageResult {
   success: boolean;
-  imageUrl: string | null;
+  imageUrls: string[];
   storageKey?: string;
   aspectRatio: ImageAspectRatio;
   prompt: string;
@@ -266,13 +286,13 @@ function sanitizePhotorealisticPrompt(raw: string): string {
     .replace(/\s{2,}/g, " ")
     .trim();
 
-  // 2. Prepend strong photographic anchors
-  if (!cleaned.toLowerCase().includes("photograph") && !cleaned.toLowerCase().includes("photo")) {
-    cleaned = `Authentic raw color 35mm photograph of ${cleaned}`;
+  // 2. Prepend strong commercial design anchors
+  if (!cleaned.toLowerCase().includes("template") && !cleaned.toLowerCase().includes("poster")) {
+    cleaned = `High-end commercial promotional poster template for ${cleaned}`;
   }
 
-  // 3. Append physical realism anchors
-  cleaned += ", 35mm Hasselblad H6D-100c camera, 50mm f/1.8 lens, natural daylight, real skin texture with visible pores, real physical world, authentic editorial lighting, high resolution photography.";
+  // 3. Append design and realism anchors matching the reference image style
+  cleaned += ", professional graphic design layout featuring three distinct glowing feature sections or cards in the center, elegant dark aesthetic with metallic accents, rich luxurious typography perfectly aligned to brand aesthetic, stylised text integration, completely empty of humans, no people, clean composition, premium marketing creative.";
 
   return cleaned;
 }
@@ -327,10 +347,10 @@ Brand Profile Context:
 ART DIRECTION REQUIREMENTS:
 1. Ground the visual scene directly in this brand's world — their specific category aesthetics, products, or lifestyle.
 2. The scene MUST reflect the "${categoryStyle.label}" industry visual style described above.
-3. If products appear: real physical photography, minimalist surface, warm directional light, crisp textures.
-4. If people appear: real people, candid documentary capture, natural unairbrushed skin with pores, authentic posture.
-5. NO TEXT, NO LOGOS, NO WATERMARKS, NO GRAPHIC OVERLAYS in the scene.
-6. CRITICAL: The visual MUST depict a real physical world photograph taken with a camera. Do NOT use terms like 'illustration', 'art', 'concept', or 'drawing'.
+3. If products appear: high-end commercial representation, minimalist surface, warm directional light, crisp textures.
+4. CRITICAL: DO NOT include any people, humans, or faces. The image must be completely empty of people.
+5. The image should be designed as a template, poster, or marketing creative.
+6. INCLUDE stylized typography and text perfectly aligned with the brand's aesthetic. The text should be relevant and elegantly integrated into the image layout.
 
 Output ONLY the final 2-3 sentence prompt. No markdown, quotes, or preambles.`,
         },
@@ -344,7 +364,10 @@ Output ONLY the final 2-3 sentence prompt. No markdown, quotes, or preambles.`,
     });
 
     if (aiRes?.content && aiRes.content.trim().length > 25) {
-      return sanitizePhotorealisticPrompt(aiRes.content);
+      const lower = aiRes.content.toLowerCase();
+      if (!lower.includes("i'm sorry") && !lower.includes("as an ai") && !lower.includes("i cannot")) {
+        return sanitizePhotorealisticPrompt(aiRes.content);
+      }
     }
   } catch (err) {
     console.warn("[Image Engine] AI prompt enhancement notice:", err);
@@ -354,7 +377,7 @@ Output ONLY the final 2-3 sentence prompt. No markdown, quotes, or preambles.`,
   const contextSubject = cleanedSubject || products || offer || brandNiche || "commercial showcase";
   const exampleScene = categoryStyle.exampleScenes[Math.floor(Math.random() * categoryStyle.exampleScenes.length)];
   return sanitizePhotorealisticPrompt(
-    `Award-winning ${categoryStyle.label} editorial photograph — ${exampleScene}. Specifically for ${brandName || "the brand"}: ${contextSubject}. High-end ${tone.toLowerCase()} aesthetic, cinematic color grading, ${categoryStyle.label} industry visual language.`
+    `High-end ${categoryStyle.label} marketing template — ${exampleScene}. Specifically designed for ${brandName || "the brand"}: ${contextSubject}. Includes relevant typography and text, ${tone.toLowerCase()} aesthetic, ${categoryStyle.label} industry visual language, no people.`
   );
 }
 
@@ -466,6 +489,11 @@ export const CURATED_COMMERCIAL_PHOTOS: Record<string, string[]> = {
     "https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&w=1200&q=80",
     "https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&w=1200&q=80",
   ],
+  spiritual: [
+    "https://images.unsplash.com/photo-1603503364272-6e27ab3493df?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1518241353330-0f7941c2d9b5?auto=format&fit=crop&w=1200&q=80",
+    "https://images.unsplash.com/photo-1601614392472-e1d0f5bbd247?auto=format&fit=crop&w=1200&q=80",
+  ],
   default: [
     "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=1200&q=80",
     "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=1200&q=80",
@@ -535,7 +563,7 @@ export async function generateAdCreativeImage(
     if (!verdict.allowed) {
       return {
         success: false,
-        imageUrl: null,
+        imageUrls: [],
         aspectRatio,
         prompt: photorealisticPrompt,
         provider: "REPLICATE_FLUX_1",
@@ -562,7 +590,7 @@ export async function generateAdCreativeImage(
             aspect_ratio: fluxAspectRatio,
             output_format: "webp",
             output_quality: 90,
-            num_outputs: 1,
+            num_outputs: options.numOutputs || 1,
             disable_safety_checker: false,
           },
         }),
@@ -574,11 +602,12 @@ export async function generateAdCreativeImage(
           prediction = await pollReplicatePrediction(prediction.urls.get, replicateToken);
         }
 
-        const outputUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output;
-        if (outputUrl) {
+        const outputs = Array.isArray(prediction.output) ? prediction.output : [prediction.output];
+        const validOutputs = outputs.filter(Boolean);
+        if (validOutputs.length > 0) {
           return {
             success: true,
-            imageUrl: outputUrl,
+            imageUrls: validOutputs,
             storageKey: `flux-${prediction.id || Date.now()}`,
             aspectRatio,
             prompt: photorealisticPrompt,
@@ -633,7 +662,7 @@ export async function generateAdCreativeImage(
 
           return {
             success: true,
-            imageUrl: finalImageUrl,
+            imageUrls: [finalImageUrl],
             storageKey,
             aspectRatio,
             prompt: photorealisticPrompt,
@@ -673,11 +702,11 @@ export async function generateAdCreativeImage(
 
       if (res.ok) {
         const data = (await res.json()) as { data?: { url?: string }[] };
-        const imageUrl = data?.data?.[0]?.url ?? null;
-        if (imageUrl) {
+        const imageUrls = data?.data?.map(d => d.url).filter(Boolean) as string[];
+        if (imageUrls && imageUrls.length > 0) {
           return {
             success: true,
-            imageUrl,
+            imageUrls,
             storageKey: `creatives/${options.userId || "auto"}/${Date.now()}.webp`,
             aspectRatio,
             prompt: photorealisticPrompt,
@@ -700,7 +729,7 @@ export async function generateAdCreativeImage(
 
   return {
     success: true,
-    imageUrl: selectedPhoto,
+    imageUrls: [selectedPhoto],
     storageKey: `fallback-editorial-${Date.now()}`,
     aspectRatio,
     prompt: photorealisticPrompt,
@@ -716,10 +745,24 @@ export async function generateAdCreativeImage(
 export async function generateAdCreativeVideo(options: {
   prompt: string;
   userId?: string;
+  niche?: string;
+  brandProfile?: any;
 }): Promise<GeneratedVideoResult> {
   const startTime = Date.now();
   const replicateToken = process.env.REPLICATE_API_TOKEN;
-  const photorealisticPrompt = await buildBrandAlignedVisualPrompt(options.prompt);
+  
+  // Automatically fetch brand profile for user if not already provided
+  let brandProfile = options.brandProfile;
+  if (!brandProfile && options.userId) {
+    try {
+      const { getBrandProfileForUser } = await import("@/lib/brand-helper");
+      brandProfile = await getBrandProfileForUser(options.userId);
+    } catch {
+      // continue without DB profile
+    }
+  }
+
+  const photorealisticPrompt = await buildBrandAlignedVisualPrompt(options.prompt, brandProfile, options.niche);
 
   if (replicateToken && replicateToken.trim()) {
     // 1. Primary: Try Wan 2.2 S2V ($0.02/sec, 1080p Full HD)

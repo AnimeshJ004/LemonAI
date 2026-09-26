@@ -22,10 +22,11 @@ export interface PlatformTimeSlot {
   timeSlot: string;
   hour: number;
   minute: number;
+  label?: string;
 }
 
 /**
- * Returns algorithmic peak engagement times per social media platform.
+ * Returns prioritized algorithmic peak engagement times per social media platform.
  * Staggers platforms so content publishes at the highest-converting hour for each audience:
  * - LinkedIn: Morning professional hours (09:15 AM)
  * - Twitter/X: Midday real-time browsing (12:45 PM)
@@ -39,73 +40,268 @@ export function getPlatformPeakTime(channelType: string, slotIndex: number = 0):
   const type = (channelType || "").toLowerCase();
 
   if (type.includes("linkedin")) {
-    const slots = [
-      { timeSlot: "09:15 AM", hour: 9, minute: 15 },
-      { timeSlot: "04:45 PM", hour: 16, minute: 45 },
-      { timeSlot: "12:15 PM", hour: 12, minute: 15 },
+    const slots: PlatformTimeSlot[] = [
+      { timeSlot: "09:15 AM", hour: 9, minute: 15, label: "Morning B2B Focus" },
+      { timeSlot: "04:45 PM", hour: 16, minute: 45, label: "End of Workday Review" },
+      { timeSlot: "12:15 PM", hour: 12, minute: 15, label: "Lunch Networking" },
     ];
     return slots[slotIndex % slots.length];
   }
 
   if (type.includes("twitter") || type.includes("x")) {
-    const slots = [
-      { timeSlot: "12:45 PM", hour: 12, minute: 45 },
-      { timeSlot: "06:15 PM", hour: 18, minute: 15 },
-      { timeSlot: "09:45 AM", hour: 9, minute: 45 },
+    const slots: PlatformTimeSlot[] = [
+      { timeSlot: "12:45 PM", hour: 12, minute: 45, label: "Midday News & Scroll" },
+      { timeSlot: "06:15 PM", hour: 18, minute: 15, label: "Evening Digest" },
+      { timeSlot: "09:45 AM", hour: 9, minute: 45, label: "Morning Trending Feed" },
     ];
     return slots[slotIndex % slots.length];
   }
 
   if (type.includes("facebook")) {
-    const slots = [
-      { timeSlot: "03:30 PM", hour: 15, minute: 30 },
-      { timeSlot: "08:00 PM", hour: 20, minute: 0 },
-      { timeSlot: "01:15 PM", hour: 13, minute: 15 },
+    const slots: PlatformTimeSlot[] = [
+      { timeSlot: "03:30 PM", hour: 15, minute: 30, label: "Afternoon Community Reading" },
+      { timeSlot: "08:00 PM", hour: 20, minute: 0, label: "Evening Family & Groups" },
+      { timeSlot: "01:15 PM", hour: 13, minute: 15, label: "Lunch Break" },
     ];
     return slots[slotIndex % slots.length];
   }
 
   if (type.includes("youtube")) {
-    const slots = [
-      { timeSlot: "05:15 PM", hour: 17, minute: 15 },
-      { timeSlot: "11:00 AM", hour: 11, minute: 0 },
+    const slots: PlatformTimeSlot[] = [
+      { timeSlot: "05:15 PM", hour: 17, minute: 15, label: "Pre-Evening Prime Watch" },
+      { timeSlot: "11:00 AM", hour: 11, minute: 0, label: "Midday Shorts Feed" },
+      { timeSlot: "08:00 PM", hour: 20, minute: 0, label: "Night Long-form" },
     ];
     return slots[slotIndex % slots.length];
   }
 
   if (type.includes("instagram")) {
-    const slots = [
-      { timeSlot: "06:45 PM", hour: 18, minute: 45 },
-      { timeSlot: "11:30 AM", hour: 11, minute: 30 },
-      { timeSlot: "08:45 PM", hour: 20, minute: 45 },
+    const slots: PlatformTimeSlot[] = [
+      { timeSlot: "06:45 PM", hour: 18, minute: 45, label: "Prime Evening Reels & Stories" },
+      { timeSlot: "11:30 AM", hour: 11, minute: 30, label: "Lunch Break Discovery" },
+      { timeSlot: "08:45 PM", hour: 20, minute: 45, label: "Night Wind-Down" },
     ];
     return slots[slotIndex % slots.length];
   }
 
   if (type.includes("bluesky")) {
-    const slots = [
-      { timeSlot: "08:15 PM", hour: 20, minute: 15 },
-      { timeSlot: "02:00 PM", hour: 14, minute: 0 },
-      { timeSlot: "10:30 AM", hour: 10, minute: 30 },
+    const slots: PlatformTimeSlot[] = [
+      { timeSlot: "08:15 PM", hour: 20, minute: 15, label: "Late-Evening Conversation" },
+      { timeSlot: "02:00 PM", hour: 14, minute: 0, label: "Afternoon Feed" },
+      { timeSlot: "10:30 AM", hour: 10, minute: 30, label: "Morning Feed" },
     ];
     return slots[slotIndex % slots.length];
   }
 
   if (type.includes("threads")) {
-    const slots = [
-      { timeSlot: "09:00 PM", hour: 21, minute: 0 },
-      { timeSlot: "01:30 PM", hour: 13, minute: 30 },
+    const slots: PlatformTimeSlot[] = [
+      { timeSlot: "09:00 PM", hour: 21, minute: 0, label: "Night Discussion Feed" },
+      { timeSlot: "01:30 PM", hour: 13, minute: 30, label: "Midday Discourse" },
+      { timeSlot: "07:30 PM", hour: 19, minute: 30, label: "Evening Discussion" },
     ];
     return slots[slotIndex % slots.length];
   }
 
   // Default fallback slots
-  const fallbackSlots = [
-    { timeSlot: "10:15 AM", hour: 10, minute: 15 },
-    { timeSlot: "02:45 PM", hour: 14, minute: 45 },
-    { timeSlot: "07:30 PM", hour: 19, minute: 30 },
+  const fallbackSlots: PlatformTimeSlot[] = [
+    { timeSlot: "10:15 AM", hour: 10, minute: 15, label: "Morning Peak" },
+    { timeSlot: "02:45 PM", hour: 14, minute: 45, label: "Afternoon Window" },
+    { timeSlot: "07:30 PM", hour: 19, minute: 30, label: "Evening Prime" },
   ];
   return fallbackSlots[slotIndex % fallbackSlots.length];
+}
+
+/**
+ * Returns full prioritized list of trending peak engagement windows for a channel,
+ * factoring in weekday vs weekend and audience industry niche.
+ */
+export function getTrendingPeakTimesForPlatform(
+  channelType: string,
+  options?: { dayOfWeek?: number; niche?: string }
+): PlatformTimeSlot[] {
+  const type = (channelType || "").toLowerCase();
+  const niche = (options?.niche || "").toLowerCase();
+  const dayOfWeek = options?.dayOfWeek ?? new Date().getDay();
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+  // 1. Industry / Niche specialized peak windows
+  if (niche.includes("fitness") || niche.includes("gym") || niche.includes("health")) {
+    return [
+      { timeSlot: "06:45 AM", hour: 6, minute: 45, label: "Morning Workout Inspiration" },
+      { timeSlot: "05:30 PM", hour: 17, minute: 30, label: "Post-Work Fitness Motivation" },
+      { timeSlot: "12:15 PM", hour: 12, minute: 15, label: "Midday Health Break" },
+    ];
+  }
+
+  if (niche.includes("food") || niche.includes("restaurant") || niche.includes("cafe")) {
+    return [
+      { timeSlot: "11:30 AM", hour: 11, minute: 30, label: "Lunch Craving Decision" },
+      { timeSlot: "05:45 PM", hour: 17, minute: 45, label: "Dinner Planning" },
+      { timeSlot: "08:15 PM", hour: 20, minute: 15, label: "Evening Foodie Reels" },
+    ];
+  }
+
+  if (niche.includes("software") || niche.includes("saas") || niche.includes("b2b") || niche.includes("tech")) {
+    if (isWeekend) {
+      return [
+        { timeSlot: "11:00 AM", hour: 11, minute: 0, label: "Weekend Tech Reading" },
+        { timeSlot: "03:00 PM", hour: 15, minute: 0, label: "Afternoon Deep Dive" },
+      ];
+    }
+    return [
+      { timeSlot: "09:15 AM", hour: 9, minute: 15, label: "Morning Professional Focus" },
+      { timeSlot: "01:00 PM", hour: 13, minute: 0, label: "Lunch Tech Discovery" },
+      { timeSlot: "04:45 PM", hour: 16, minute: 45, label: "Wrap-up & Industry News" },
+    ];
+  }
+
+  // 2. Platform-specific peaks with weekend adjustments
+  if (type.includes("instagram")) {
+    if (isWeekend) {
+      return [
+        { timeSlot: "11:00 AM", hour: 11, minute: 0, label: "Weekend Brunch Scroll" },
+        { timeSlot: "07:30 PM", hour: 19, minute: 30, label: "Sunday Prime Reels" },
+      ];
+    }
+    return [
+      { timeSlot: "06:45 PM", hour: 18, minute: 45, label: "Prime Evening Reels" },
+      { timeSlot: "11:30 AM", hour: 11, minute: 30, label: "Lunch Discovery" },
+      { timeSlot: "08:45 PM", hour: 20, minute: 45, label: "Night Wind-Down" },
+    ];
+  }
+
+  if (type.includes("linkedin")) {
+    if (isWeekend) {
+      return [
+        { timeSlot: "10:00 AM", hour: 10, minute: 0, label: "Weekend Career Reflection" },
+        { timeSlot: "02:30 PM", hour: 14, minute: 30, label: "Afternoon Insights" },
+      ];
+    }
+    return [
+      { timeSlot: "09:15 AM", hour: 9, minute: 15, label: "Morning B2B Focus" },
+      { timeSlot: "04:45 PM", hour: 16, minute: 45, label: "End of Workday Review" },
+      { timeSlot: "12:15 PM", hour: 12, minute: 15, label: "Lunch Networking" },
+    ];
+  }
+
+  if (type.includes("twitter") || type.includes("x")) {
+    return [
+      { timeSlot: "12:45 PM", hour: 12, minute: 45, label: "Lunch Break News" },
+      { timeSlot: "06:15 PM", hour: 18, minute: 15, label: "Evening Digest" },
+      { timeSlot: "09:45 AM", hour: 9, minute: 45, label: "Morning Viral Feed" },
+    ];
+  }
+
+  if (type.includes("youtube")) {
+    return [
+      { timeSlot: "05:15 PM", hour: 17, minute: 15, label: "Pre-Evening Prime Watch" },
+      { timeSlot: "11:00 AM", hour: 11, minute: 0, label: "Midday Shorts Feed" },
+      { timeSlot: "08:00 PM", hour: 20, minute: 0, label: "Night Long-form" },
+    ];
+  }
+
+  if (type.includes("facebook")) {
+    return [
+      { timeSlot: "03:30 PM", hour: 15, minute: 30, label: "Afternoon Community Reading" },
+      { timeSlot: "08:00 PM", hour: 20, minute: 0, label: "Evening Family & Groups" },
+      { timeSlot: "01:15 PM", hour: 13, minute: 15, label: "Lunch Break" },
+    ];
+  }
+
+  if (type.includes("threads")) {
+    return [
+      { timeSlot: "09:00 PM", hour: 21, minute: 0, label: "Night Discussion Feed" },
+      { timeSlot: "01:30 PM", hour: 13, minute: 30, label: "Midday Discourse" },
+      { timeSlot: "07:30 PM", hour: 19, minute: 30, label: "Evening Discussion" },
+    ];
+  }
+
+  if (type.includes("bluesky")) {
+    return [
+      { timeSlot: "08:15 PM", hour: 20, minute: 15, label: "Late-Evening Conversation" },
+      { timeSlot: "02:00 PM", hour: 14, minute: 0, label: "Afternoon Feed" },
+      { timeSlot: "10:30 AM", hour: 10, minute: 30, label: "Morning Feed" },
+    ];
+  }
+
+  return [
+    { timeSlot: "10:15 AM", hour: 10, minute: 15, label: "Morning Peak" },
+    { timeSlot: "02:45 PM", hour: 14, minute: 45, label: "Afternoon Window" },
+    { timeSlot: "07:30 PM", hour: 19, minute: 30, label: "Evening Prime" },
+  ];
+}
+
+/**
+ * Intelligently finds the optimal trending/peak time for a given channel and date.
+ * If targetDate is today: finds the next upcoming peak window (e.g. 6:45 PM instead of past 9:15 AM or arbitrary 2:30 PM).
+ * If all peak slots today have passed: returns prime peak time for tomorrow.
+ */
+export function getOptimalTrendingTime(
+  channelType: string,
+  targetDate?: Date | string | null,
+  niche?: string
+): PlatformTimeSlot {
+  const base = targetDate ? new Date(targetDate) : new Date();
+  const now = new Date();
+  const isTargetToday =
+    base.getFullYear() === now.getFullYear() &&
+    base.getMonth() === now.getMonth() &&
+    base.getDate() === now.getDate();
+
+  const slots = getTrendingPeakTimesForPlatform(channelType, {
+    dayOfWeek: base.getDay(),
+    niche,
+  });
+
+  if (isTargetToday) {
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+
+    // Look for a peak slot today that is at least 15 minutes in the future
+    const upcoming = slots.find((s) => {
+      if (s.hour > currentHour) return true;
+      if (s.hour === currentHour && s.minute >= currentMinute + 15) return true;
+      return false;
+    });
+
+    if (upcoming) {
+      return upcoming;
+    }
+
+    // If today's primary daytime peaks passed but it is before 9 PM, use late evening window
+    if (currentHour < 21) {
+      return { timeSlot: "08:45 PM", hour: 20, minute: 45, label: "Evening Prime Window" };
+    }
+
+    // If late at night, return tomorrow's top peak slot
+    const tomorrowDay = (now.getDay() + 1) % 7;
+    const tomorrowSlots = getTrendingPeakTimesForPlatform(channelType, {
+      dayOfWeek: tomorrowDay,
+      niche,
+    });
+    return tomorrowSlots[0] || slots[0];
+  }
+
+  // For future dates, always return the top primary peak time for that channel
+  return slots[0];
+}
+
+/**
+ * Checks if a given time slot string falls within one of the platform's trending peak windows.
+ */
+export function isTrendingTimeSlot(
+  timeSlot: string,
+  channelType: string,
+  niche?: string
+): boolean {
+  if (!timeSlot) return false;
+  const parsed = parseCustomTimeString(timeSlot);
+  if (!parsed) return false;
+
+  const slots = getTrendingPeakTimesForPlatform(channelType, { niche });
+  return slots.some(
+    (s) => Math.abs(s.hour * 60 + s.minute - (parsed.hour * 60 + parsed.minute)) <= 45
+  );
 }
 
 /**

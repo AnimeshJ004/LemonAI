@@ -184,7 +184,7 @@ Return ONLY a valid JSON object matching this structure:
         caption: payload.caption || `Level up with ${brandName}.\n\n${brandHashtags.join(" ")}`,
         brandName,
         suggestedHandle,
-        imageUrl: imageResult.imageUrl,
+        imageUrl: imageResult.imageUrls?.[0],
         aspectRatio,
         provider: imageResult.provider,
         hashtags: brandHashtags,

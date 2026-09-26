@@ -90,8 +90,8 @@ Ad Platform: ${platform || "Meta Ads (Instagram + Facebook)"}`,
             userId,
             niche: brand?.niche || "",
           });
-          if (imgRes.success && imgRes.imageUrl) {
-            variations[0].imageUrl = imgRes.imageUrl;
+          if (imgRes.success && imgRes.imageUrls?.[0]) {
+            variations[0].imageUrl = imgRes.imageUrls[0];
           }
         } catch (imgErr) {
           console.warn("[studio-ad-creatives] Image generation failed:", imgErr);

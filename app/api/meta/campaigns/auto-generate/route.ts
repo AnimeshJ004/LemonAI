@@ -177,8 +177,8 @@ Return ONLY a valid JSON object with a "campaigns" key containing an array match
             userId,
             niche,
           });
-          if (imgRes.success && imgRes.imageUrl) {
-            imageUrl = imgRes.imageUrl;
+          if (imgRes.success && imgRes.imageUrls?.[0]) {
+            imageUrl = imgRes.imageUrls[0];
           }
         } catch (imgErr) {
           console.warn(`[Meta Ads Auto-Gen] Image creation failed for campaign ${i}:`, imgErr);

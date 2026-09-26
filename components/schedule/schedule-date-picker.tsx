@@ -1,11 +1,12 @@
 "use client"
 
 import * as React from "react"
-import { CalendarDays, ChevronDown, Clock, Check } from "lucide-react"
+import { CalendarDays, ChevronDown, Clock, Check, Flame } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn } from "@/lib/utils"
+import { getOptimalTrendingTime, isTrendingTimeSlot } from "@/lib/platform-adapt-helper"
 
 import {
   Select,
@@ -25,8 +26,9 @@ interface ScheduleDatePickerProps {
   className?: string
   align?: "start" | "center" | "end"
   renderButton?: (isDatePassed: boolean, isTimeNotAvailable: boolean) => React.ReactNode
+  channelType?: string
+  niche?: string
 }
-
 
 const generateTimeOptions = () => {
   const options: string[] = []
@@ -39,8 +41,6 @@ const generateTimeOptions = () => {
 
 const timeOptions = generateTimeOptions()
 
-
-
 export function ScheduleDatePicker({
   date,
   setDate,
@@ -48,11 +48,12 @@ export function ScheduleDatePicker({
   setTime,
   className,
   align = "end",
-  renderButton
+  renderButton,
+  channelType,
+  niche,
 }: ScheduleDatePickerProps) {
   const [open, setOpen] = React.useState(false)
   const today = React.useMemo(() => startOfDay(new Date()), [])
-
 
   const availableTimeOptions = React.useMemo(() => {
     if (!date || !isSameDay(date, new Date())) return timeOptions
@@ -60,7 +61,6 @@ export function ScheduleDatePicker({
     return timeOptions.filter((slot) => {
       const [timeValue, meridiem] = slot.split(" ")
       const [rawHour, rawMinute] = timeValue.split(":").map(Number)
-      // hour - 
       const hour = meridiem === "PM" && rawHour !== 12 ? rawHour + 12 : meridiem === "AM" && rawHour === 12 ? 0 : rawHour
       const candidate = new Date(date)
       candidate.setHours(hour, rawMinute, 0, 0)
@@ -68,15 +68,35 @@ export function ScheduleDatePicker({
     })
   }, [date])
 
+  const optimalTrending = React.useMemo(() => {
+    return getOptimalTrendingTime(channelType || "instagram", date, niche)
+  }, [channelType, date, niche])
+
   React.useEffect(() => {
     if (!time && availableTimeOptions.length > 0) {
-      setTime(availableTimeOptions[0])
-      return
+      // Intelligently default to the platform's trending peak time if available
+      const matchingTrendingOption = availableTimeOptions.find((opt) => {
+        const match = opt.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+        if (!match) return false;
+        let h = parseInt(match[1], 10);
+        const m = parseInt(match[2], 10);
+        const meridiem = match[3].toUpperCase();
+        if (meridiem === "PM" && h !== 12) h += 12;
+        if (meridiem === "AM" && h === 12) h = 0;
+        return h === optimalTrending.hour && Math.abs(m - optimalTrending.minute) <= 15;
+      });
+
+      if (matchingTrendingOption) {
+        setTime(matchingTrendingOption);
+      } else {
+        setTime(availableTimeOptions[0]);
+      }
+      return;
     }
     if (time) {
-      setTime(time)
+      setTime(time);
     }
-  }, [availableTimeOptions, setTime, time])
+  }, [availableTimeOptions, setTime, time, optimalTrending])
 
   const isDatePassed = date ? isBefore(date, new Date()) && !isSameDay(date, new Date()) : false
   const isTimeNotAvailable = React.useMemo(() => {
@@ -113,8 +133,8 @@ export function ScheduleDatePicker({
             <ChevronDown className="size-4!" />
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-[280px] p-0" align={align}>
-          <div className="w-full p-4 space-y-6">
+        <PopoverContent className="w-[300px] p-0" align={align}>
+          <div className="w-full p-4 space-y-5">
             <Calendar
               mode="single"
               selected={date}
@@ -129,36 +149,85 @@ export function ScheduleDatePicker({
                 caption_label: "text-base font-semibold",
                 nav: "absolute right-2 top-0 flex items-center gap-1",
                 month: "space-y-4 w-full",
-                // table: "w-full border-collapse space-y-1",
-                // head_row: "flex w-full justify-between",
-                // head_cell: "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
-                // row: "flex w-full mt-2 justify-between",
-                // cell: "text-center text-sm p-0 relative focus-within:relative focus-within:z-20",
                 day: cn(
                   "h-9 w-9 p-0 font-normal aria-selected:opacity-100 rounded-lg hover:bg-muted transition-colors"
                 ),
-                // day_selected: "bg-primary! text-primary-foreground! hover:bg-primary! hover:text-primary-foreground! rounded-lg",
-                // day_today: "bg-muted text-foreground",
-                // day_outside: "text-muted-foreground opacity-50",
-                // day_disabled: "text-muted-foreground opacity-50",
-                // day_hidden: "invisible",
               }}
             />
 
-            <div className="space-y-1">
-              <h4 className="text-[13px] font-semibold text-foreground/70">Select Time</h4>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h4 className="text-[13px] font-semibold text-foreground/80">Select Time</h4>
+                {channelType && (
+                  <span className="text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded-full flex items-center gap-1">
+                    <Flame className="size-2.5 fill-amber-500 text-amber-500" />
+                    {channelType.toUpperCase()}
+                  </span>
+                )}
+              </div>
+
+              {/* Quick 1-click Trending Peak shortcut */}
+              <button
+                type="button"
+                onClick={() => {
+                  const targetMatch = availableTimeOptions.find((opt) => {
+                    const match = opt.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+                    if (!match) return false;
+                    let h = parseInt(match[1], 10);
+                    const m = parseInt(match[2], 10);
+                    const meridiem = match[3].toUpperCase();
+                    if (meridiem === "PM" && h !== 12) h += 12;
+                    if (meridiem === "AM" && h === 12) h = 0;
+                    return h === optimalTrending.hour && Math.abs(m - optimalTrending.minute) <= 15;
+                  });
+                  if (targetMatch) {
+                    setTime(targetMatch);
+                  } else {
+                    setTime(optimalTrending.timeSlot);
+                  }
+                }}
+                className={cn(
+                  "w-full text-left text-xs p-2 rounded-md flex items-center justify-between border transition-all cursor-pointer",
+                  time && isTrendingTimeSlot(time, channelType || "instagram", niche)
+                    ? "bg-amber-500/15 border-amber-500/30 text-amber-800 dark:text-amber-300 font-medium"
+                    : "bg-amber-500/5 hover:bg-amber-500/10 border-amber-500/20 text-amber-700 dark:text-amber-400"
+                )}
+              >
+                <span className="flex items-center gap-1.5 font-medium truncate">
+                  <Flame className="size-3.5 text-amber-500 fill-amber-500 shrink-0" />
+                  <span className="truncate">Peak ({optimalTrending.label || "Trending"}):</span>
+                </span>
+                <span className="font-bold underline ml-1 shrink-0">{optimalTrending.timeSlot}</span>
+              </button>
+
               <div className="flex items-center gap-2">
                 <Select value={time} onValueChange={handleTimeChange}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Select time" />
                   </SelectTrigger>
-                  <SelectContent position="popper" className="max-h-[200px]">
-                    {availableTimeOptions.map((time) => (
-                      <SelectItem key={time} value={time}>
-                        <Clock className="size-3" />
-                        {time}
-                      </SelectItem>
-                    ))}
+                  <SelectContent position="popper" className="max-h-[220px]">
+                    {availableTimeOptions.map((timeOption) => {
+                      const isTrending = isTrendingTimeSlot(timeOption, channelType || "instagram", niche);
+                      return (
+                        <SelectItem key={timeOption} value={timeOption} className="cursor-pointer">
+                          <div className="flex items-center justify-between w-full gap-2">
+                            <span className="flex items-center gap-1.5">
+                              {isTrending ? (
+                                <Flame className="size-3 text-amber-500 fill-amber-500 shrink-0" />
+                              ) : (
+                                <Clock className="size-3 text-muted-foreground shrink-0" />
+                              )}
+                              <span className={cn(isTrending && "font-semibold text-foreground")}>{timeOption}</span>
+                            </span>
+                            {isTrending && (
+                              <span className="text-[9px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1 py-0.2 rounded shrink-0">
+                                Trending Peak
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -173,8 +242,7 @@ export function ScheduleDatePicker({
           </div>
         </PopoverContent>
       </Popover>
-      {renderButton && renderButton(isDatePassed, isTimeNotAvailable)
-      }
+      {renderButton && renderButton(isDatePassed, isTimeNotAvailable)}
     </>
   )
 }

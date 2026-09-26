@@ -80,7 +80,7 @@ export function KanbanColumn({
             ref={provided.innerRef}
             {...provided.droppableProps}
             className={cn(
-              "flex-1 min-h-[360px] sm:min-h-[480px] rounded-lg transition-colors p-1 space-y-2",
+              "flex-1 min-h-[360px] sm:min-h-[480px] max-h-[calc(100vh-220px)] overflow-y-auto overflow-x-hidden rounded-lg transition-colors p-1 space-y-2 scrollbar-thin scrollbar-thumb-muted-foreground/20 hover:scrollbar-thumb-muted-foreground/40",
               snapshot.isDraggingOver && "bg-primary/5 ring-1 ring-primary/20"
             )}
           >

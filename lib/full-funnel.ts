@@ -118,11 +118,11 @@ export async function runFullMarketingFunnel(params: FullFunnelRequest): Promise
       }),
     ]);
 
-    if (squareImg.status === "fulfilled" && squareImg.value.imageUrl) {
-      squareImageUrl = squareImg.value.imageUrl;
+    if (squareImg.status === "fulfilled" && squareImg.value.imageUrls?.[0]) {
+      squareImageUrl = squareImg.value.imageUrls[0];
     }
-    if (verticalImg.status === "fulfilled" && verticalImg.value.imageUrl) {
-      verticalImageUrl = verticalImg.value.imageUrl;
+    if (verticalImg.status === "fulfilled" && verticalImg.value.imageUrls?.[0]) {
+      verticalImageUrl = verticalImg.value.imageUrls[0];
     }
   }
 

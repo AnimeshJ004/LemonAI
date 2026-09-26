@@ -35,9 +35,7 @@ export const pollSocialDMs = inngest.createFunction(
         .from("user_channels")
         .select("id, user_id, handle, access_token, page_access_token, page_id, provider_account_id, channel_types!inner(type)")
         .in("channel_types.type", ["INSTAGRAM", "FACEBOOK", "TWITTER", "LINKEDIN"])
-        .eq("is_connected", true)
-        .order("updated_at", { ascending: false })
-        .limit(40);
+        .eq("is_connected", true);
 
       if (!channels || channels.length === 0) {
         return { processed: 0, message: "No active social channels found for DM polling." };
