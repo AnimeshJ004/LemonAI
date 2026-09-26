@@ -754,42 +754,46 @@ export async function generateAdCreativeImage(
 
     try {
       const { InferenceClient } = await import("@huggingface/inference");
-      const hfClient = new InferenceClient(hfKey);
+      const hfClient = new InferenceClient(hfKey.trim());
       let imageBlob: any;
       try {
         imageBlob = await hfClient.textToImage({
           model: "black-forest-labs/FLUX.1-schnell",
           inputs: hfPrompt,
-          provider: "hf-inference",
         });
       } catch (fluxErr: any) {
-        console.warn("[Image Engine] HF FLUX.1-schnell notice, trying SD 3.5 Large:", fluxErr?.message || fluxErr);
+        console.warn("[Image Engine] HF FLUX.1-schnell notice, trying FLUX.1-dev:", fluxErr?.message || fluxErr);
         try {
+          imageBlob = await hfClient.textToImage({
+            model: "black-forest-labs/FLUX.1-dev",
+            inputs: hfPrompt,
+          });
+        } catch (fluxDevErr: any) {
+          console.warn("[Image Engine] HF FLUX.1-dev notice, trying SD 3.5:", fluxDevErr?.message || fluxDevErr);
           imageBlob = await hfClient.textToImage({
             model: "stabilityai/stable-diffusion-3.5-large",
             inputs: hfPrompt,
-            provider: "hf-inference",
-          });
-        } catch (sd35Err: any) {
-          console.warn("[Image Engine] HF SD 3.5 notice, trying SD 1.5 (free/lightweight):", sd35Err?.message || sd35Err);
-          imageBlob = await hfClient.textToImage({
-            model: "stable-diffusion-v1-5/stable-diffusion-v1-5",
-            inputs: hfPrompt,
-            provider: "hf-inference",
           });
         }
       }
-      const arrayBuffer = await (imageBlob as unknown as Blob).arrayBuffer();
-      let finalImageUrl = `data:image/jpeg;base64,${Buffer.from(arrayBuffer).toString("base64")}`;
-      try {
-        const blob = new Blob([new Uint8Array(arrayBuffer)], { type: "image/jpeg" });
-        const { getInsforgeUploadClient } = await import("@/lib/insforge-server");
-        const insforge = getInsforgeUploadClient();
-        const { data, error } = await insforge.storage.from("lemon").upload(storageKey, blob as any);
-        if (!error && data?.url) finalImageUrl = data.url;
-      } catch (storageErr) {
-        console.warn("[Image Engine] Insforge upload notice:", storageErr);
+
+      let finalImageUrl = "";
+      if (typeof imageBlob === "string") {
+        finalImageUrl = imageBlob;
+      } else {
+        const arrayBuffer = await (imageBlob as unknown as Blob).arrayBuffer();
+        finalImageUrl = `data:image/jpeg;base64,${Buffer.from(arrayBuffer).toString("base64")}`;
+        try {
+          const blob = new Blob([new Uint8Array(arrayBuffer)], { type: "image/jpeg" });
+          const { getInsforgeUploadClient } = await import("@/lib/insforge-server");
+          const insforge = getInsforgeUploadClient();
+          const { data, error } = await insforge.storage.from("lemon").upload(storageKey, blob as any);
+          if (!error && data?.url) finalImageUrl = data.url;
+        } catch (storageErr) {
+          console.warn("[Image Engine] Insforge upload notice:", storageErr);
+        }
       }
+
       return {
         success: true,
         imageUrls: [finalImageUrl],

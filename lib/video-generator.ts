@@ -138,34 +138,45 @@ export async function fetchSceneImages(
     scenes.map(async (scene) => {
       const fullPrompt = `Authentic documentary photo of ${scene.imagePrompt}, real human, natural skin texture with pores, candid shot, natural lighting, no anime, no CGI, strictly photorealistic`;
 
-      // ── Priority 0: Hugging Face Native Inference (via HF's own servers, not Replicate) ──
+      // ── Priority 0: Hugging Face Inference (via Hugging Face API Token) ──
       const hfKey = process.env.HUGGINGFACE_API_KEY;
       if (hfKey) {
         try {
           const { InferenceClient } = await import("@huggingface/inference");
-          const hfClient = new InferenceClient(hfKey);
+          const hfClient = new InferenceClient(hfKey.trim());
           let imageBlob: any;
           try {
             imageBlob = await hfClient.textToImage({
               model: "black-forest-labs/FLUX.1-schnell",
               inputs: fullPrompt,
-              provider: "hf-inference",
             });
-          } catch (hfErr1) {
+          } catch (hfErr1: any) {
+            console.warn("[Video Engine] HF FLUX.1-schnell error, trying FLUX.1-dev:", hfErr1?.message || hfErr1);
             try {
+              imageBlob = await hfClient.textToImage({
+                model: "black-forest-labs/FLUX.1-dev",
+                inputs: fullPrompt,
+              });
+            } catch (hfErr2: any) {
+              console.warn("[Video Engine] HF FLUX.1-dev error, trying SD 3.5:", hfErr2?.message || hfErr2);
               imageBlob = await hfClient.textToImage({
                 model: "stabilityai/stable-diffusion-3.5-large",
                 inputs: fullPrompt,
-                provider: "hf-inference",
-              });
-            } catch (hfErr2) {
-              imageBlob = await hfClient.textToImage({
-                model: "stable-diffusion-v1-5/stable-diffusion-v1-5",
-                inputs: fullPrompt,
-                provider: "hf-inference",
               });
             }
           }
+
+          if (typeof imageBlob === "string") {
+            if (imageBlob.startsWith("data:")) {
+              const base64Data = imageBlob.split(",")[1];
+              return { sceneNumber: scene.sceneNumber, imageBuffer: Buffer.from(base64Data, "base64") };
+            } else if (imageBlob.startsWith("http")) {
+              const imgRes = await fetch(imageBlob);
+              const ab = await imgRes.arrayBuffer();
+              return { sceneNumber: scene.sceneNumber, imageBuffer: Buffer.from(ab) };
+            }
+          }
+
           const ab = await (imageBlob as unknown as Blob).arrayBuffer();
           return { sceneNumber: scene.sceneNumber, imageBuffer: Buffer.from(ab) };
         } catch (hfErr: any) {
