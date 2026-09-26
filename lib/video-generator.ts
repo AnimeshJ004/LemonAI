@@ -3,7 +3,7 @@
  *
  * Full pipeline:
  *   1. AI generates viral scene scripts (Groq AI — ~₹0.05)
- *   2. Scene images fetched from Pollinations FLUX (free)
+ *   2. Scene images fetched from Hugging Face FLUX (hf-inference) / Together / Cloudflare
  *   3. Edge TTS voiceover via Microsoft Edge Speech (free)
  *   4. FFmpeg (WASM or static binary) stitches images + audio → MP4
  *   5. MP4 uploaded to Supabase Storage
@@ -117,7 +117,7 @@ Write a high-converting viral reel script.`;
   }));
 }
 
-// ─── Step 2: Fetch Scene Images from Pollinations FLUX (Free) ────────────────
+// ─── Step 2: Fetch Scene Images (Hugging Face Native Inference / Together) ───
 
 export async function fetchSceneImages(
   scenes: SceneScript[],
@@ -138,7 +138,33 @@ export async function fetchSceneImages(
     scenes.map(async (scene) => {
       const fullPrompt = `Authentic documentary photo of ${scene.imagePrompt}, real human, natural skin texture with pores, candid shot, natural lighting, no anime, no CGI, strictly photorealistic`;
 
-      // ── Priority 1: Together.ai FLUX.1-schnell-Free ──
+      // ── Priority 0: Hugging Face Native Inference (via HF's own servers, not Replicate) ──
+      const hfKey = process.env.HUGGINGFACE_API_KEY;
+      if (hfKey) {
+        try {
+          const { InferenceClient } = await import("@huggingface/inference");
+          const hfClient = new InferenceClient(hfKey);
+          let imageBlob: any;
+          try {
+            imageBlob = await hfClient.textToImage({
+              model: "black-forest-labs/FLUX.1-schnell",
+              inputs: fullPrompt,
+              provider: "hf-inference",
+            });
+          } catch (hfErr1) {
+            // Fallback to SD 3.5 on Hugging Face native inference
+            imageBlob = await hfClient.textToImage({
+              model: "stabilityai/stable-diffusion-3.5-large",
+              inputs: fullPrompt,
+              provider: "hf-inference",
+            });
+          }
+          const ab = await (imageBlob as unknown as Blob).arrayBuffer();
+          return { sceneNumber: scene.sceneNumber, imageBuffer: Buffer.from(ab) };
+        } catch {
+          // fall through to Together.ai
+        }
+      }
       if (togetherKey) {
         try {
           const res = await fetch("https://api.together.xyz/v1/images/generations", {
@@ -167,7 +193,7 @@ export async function fetchSceneImages(
             }
           }
         } catch {
-          // fall through to Pollinations
+          // fall through
         }
       }
 
@@ -340,7 +366,7 @@ export async function stitchReelWithFFmpeg(params: {
   } finally {
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
-    } catch {}
+    } catch { }
   }
 }
 

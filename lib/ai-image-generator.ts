@@ -235,7 +235,7 @@ export function detectProfileCategory(
   if (/\b(real estate|property|properties|realtor|agent|broker|luxury home|apartment|condo|commercial property|interior design|architecture|architect|home staging|construction|renovation|development|developer)\b/.test(text)) {
     return "real_estate";
   }
-  
+
   // Spiritual / Mystical
   if (/\b(spiritual|mystic|mystical|healing|vastu|tarot|aura|astrology|numerology|reiki|holistic|soul|chakra|energy healing|magic|esoteric|occult|meditation|manifestation|wellness)\b/.test(text)) {
     return "spiritual_mystical";
@@ -260,11 +260,12 @@ export interface GeneratedImageResult {
   aspectRatio: ImageAspectRatio;
   prompt: string;
   provider:
-    | "REPLICATE_FLUX_1"
-    | "CLOUDFLARE_WORKERS_AI"
-    | "TOGETHER_FLUX"
-    | "GOOGLE_IMAGEN_3"
-    | "CURATED_EDITORIAL_PHOTOGRAPHY";
+  | "REPLICATE_FLUX_1"
+  | "BING_IMAGE_CREATOR"
+  | "TOGETHER_FLUX"
+  | "GOOGLE_IMAGEN_3"
+  | "CURATED_EDITORIAL_PHOTOGRAPHY"
+  | "HUGGING_FACE_SDXL";
   latencyMs: number;
 }
 
@@ -542,14 +543,69 @@ export async function generateAdCreativeImage(
   );
 
   const dimensions: Record<ImageAspectRatio, { width: number; height: number }> = {
-    "1:1":  { width: 1024, height: 1024 },
-    "9:16": { width: 768,  height: 1344 },
-    "16:9": { width: 1344, height: 768  },
-    "4:5":  { width: 896,  height: 1120 },
+    "1:1": { width: 1024, height: 1024 },
+    "9:16": { width: 768, height: 1344 },
+    "16:9": { width: 1344, height: 768 },
+    "4:5": { width: 896, height: 1120 },
   };
   const { width, height } = dimensions[aspectRatio] || { width: 1024, height: 1024 };
 
-  // ─── Priority 1: Replicate FLUX.1 ────────────────────────────────────────
+  // ─── Priority 1: Google Gemini (Imagen 3 / gemini-3.1-flash-image) ───────
+  /*
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+  if (geminiApiKey) {
+    try {
+      const brandName = brandProfile?.business_name || "Premium Brand";
+      const imagenPrompt = `${photorealisticPrompt}. MUST feature the exact text "${brandName}" legibly in elegant typography. Ensure photorealistic and commercial style.`;
+      
+      const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent?key=${geminiApiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: imagenPrompt }] }]
+        })
+      });
+
+      if (geminiRes.ok) {
+        const json = await geminiRes.json();
+        const base64Data = json.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (base64Data) {
+          const imageBuffer = Buffer.from(base64Data, "base64");
+          const storageKey = `creatives/${options.userId || "auto"}/${Date.now()}-gemini.jpg`;
+          let finalImageUrl = `data:image/jpeg;base64,${base64Data}`;
+
+          try {
+            const { getInsforgeUploadClient } = await import("@/lib/insforge-server");
+            const insforge = getInsforgeUploadClient();
+            const blob = new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" });
+            const { data, error } = await insforge.storage.from("lemon").upload(storageKey, blob as any);
+            if (!error && data?.url) {
+              finalImageUrl = data.url;
+            }
+          } catch (storageErr) {
+            console.warn("[Image Engine] Insforge upload notice:", storageErr);
+          }
+
+          return {
+            success: true,
+            imageUrls: [finalImageUrl],
+            storageKey,
+            aspectRatio,
+            prompt: imagenPrompt,
+            provider: "GOOGLE_IMAGEN_3",
+            latencyMs: Date.now() - startTime,
+          };
+        }
+      } else {
+        const errText = await geminiRes.text().catch(() => "");
+        console.warn(`[Image Engine] Gemini Imagen 3 HTTP ${geminiRes.status}:`, errText);
+      }
+    }
+  }
+  */
+
+  // ─── Priority 2: Replicate FLUX.1 ────────────────────────────────────────
+  /* 
   const replicateToken = process.env.REPLICATE_API_TOKEN;
   if (replicateToken && replicateToken.trim()) {
     // Cost guard — Replicate is 10x more expensive per call than a text
@@ -620,66 +676,124 @@ export async function generateAdCreativeImage(
       console.warn("[Image Engine] Replicate FLUX.1 attempt notice:", err);
     }
   }
+  */
 
-  // ─── Priority 2: Cloudflare Workers AI FLUX.1 (10,000 free Neurons/day) ──
-  const cfAccountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-  const cfApiToken = process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_KEY;
-  if (cfAccountId && cfApiToken) {
+  // ─── Priority 3: Bing Image Creator (DALL-E 3 via bimg) ──────────────────
+  /*
+  const bingCookie = process.env.BING_IMAGE_COOKIE;
+  if (bingCookie) {
     try {
-      const cfUrl = `https://api.cloudflare.com/client/v4/accounts/${cfAccountId.trim()}/ai/run/@cf/black-forest-labs/flux-1-schnell`;
-      const cfRes = await fetch(cfUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${cfApiToken.trim()}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          prompt: photorealisticPrompt,
-          steps: 8,
-        }),
-      });
-
-      if (cfRes.ok) {
-        const json = (await cfRes.json()) as any;
-        const b64 = json.result?.image || json.image;
-        if (b64) {
-          const imageBuffer = Buffer.from(b64, "base64");
-          const storageKey = `creatives/${options.userId || "auto"}/${Date.now()}-cf.jpg`;
-          let finalImageUrl = `data:image/jpeg;base64,${b64}`;
-
-          // Upload to Insforge storage for persistent CDN URL if available
+      const { generateImagesLinks } = await import("bimg");
+      
+      const brandName = brandProfile?.business_name || "Premium Brand";
+      const dalle3Prompt = `${photorealisticPrompt}. The image MUST prominently feature the exact text "${brandName}" rendered perfectly in beautiful, legible typography. Ensure the style is a high-end commercial mix of photorealism and 3D digital art.`;
+      
+      const rawLinks = await generateImagesLinks(dalle3Prompt);
+      // Bing's HTML changed, causing bimg to capture JS/SVG scripts. Filter for actual generated images.
+      const imageLinks = rawLinks
+        .filter((link: string) => link.includes("OIG"))
+        .map((link: string) => link.replace(/&amp;/g, "&"));
+      
+      if (imageLinks && imageLinks.length > 0) {
+        const finalImageUrls: string[] = [];
+        const baseStorageKey = `bing-${Date.now()}`;
+        
+        for (let i = 0; i < imageLinks.length; i++) {
+          let finalUrl = imageLinks[i];
           try {
-            const { getInsforgeUploadClient } = await import("@/lib/insforge-server");
-            const insforge = getInsforgeUploadClient();
-            const blob = new Blob([new Uint8Array(imageBuffer)], { type: "image/jpeg" });
-            const { data, error } = await insforge.storage.from("lemon").upload(storageKey, blob as any);
-            if (!error && data?.url) {
-              finalImageUrl = data.url;
+            const imgRes = await fetch(finalUrl, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Referer": "https://www.bing.com/images/create/",
+                "Cookie": `_U=${bingCookie}`
+              }
+            });
+            if (imgRes.ok) {
+              const arrayBuffer = await imgRes.arrayBuffer();
+              const blob = new Blob([new Uint8Array(arrayBuffer)], { type: "image/jpeg" });
+              
+              const { getInsforgeUploadClient } = await import("@/lib/insforge-server");
+              const insforge = getInsforgeUploadClient();
+              const storageKey = `creatives/${options.userId || "auto"}/${baseStorageKey}-${i}.jpg`;
+              
+              const { data, error } = await insforge.storage.from("lemon").upload(storageKey, blob as any);
+              if (!error && data?.url) {
+                finalUrl = data.url;
+              }
+            } else {
+               console.warn(`[Image Engine] Bing fetch failed for ${finalUrl}: ${imgRes.status}`);
             }
-          } catch (storageErr) {
-            console.warn("[Image Engine] Insforge upload notice:", storageErr);
+          } catch (uploadErr) {
+            console.warn("[Image Engine] Failed to upload Bing image to storage:", uploadErr);
           }
-
-          return {
-            success: true,
-            imageUrls: [finalImageUrl],
-            storageKey,
-            aspectRatio,
-            prompt: photorealisticPrompt,
-            provider: "CLOUDFLARE_WORKERS_AI",
-            latencyMs: Date.now() - startTime,
-          };
+          finalImageUrls.push(finalUrl);
         }
-      } else {
-        const errText = await cfRes.text().catch(() => "");
-        console.warn(`[Image Engine] Cloudflare FLUX-1 HTTP ${cfRes.status}:`, errText);
+
+        return {
+          success: true,
+          imageUrls: finalImageUrls,
+          storageKey: baseStorageKey,
+          aspectRatio,
+          prompt: dalle3Prompt,
+          provider: "BING_IMAGE_CREATOR",
+          latencyMs: Date.now() - startTime,
+        };
       }
-    } catch (cfErr) {
-      console.warn("[Image Engine] Cloudflare FLUX-1 attempt notice:", cfErr);
+    }
+  }
+  */
+
+  // ─── Priority 3.5: Hugging Face FLUX.1-schnell (via HF's own inference servers) ─────
+  const hfKey = process.env.HUGGINGFACE_API_KEY;
+  if (hfKey) {
+    const brandName = brandProfile?.business_name || "Premium Brand";
+    const hfPrompt = `${photorealisticPrompt}. The image MUST prominently feature the exact text "${brandName}" rendered perfectly in beautiful, legible typography. Ensure the style is a high-end commercial mix of photorealism and 3D digital art.`;
+    const storageKey = `creatives/${options.userId || "auto"}/${Date.now()}-hf.jpg`;
+
+    try {
+      const { InferenceClient } = await import("@huggingface/inference");
+      const hfClient = new InferenceClient(hfKey);
+      let imageBlob: any;
+      try {
+        imageBlob = await hfClient.textToImage({
+          model: "black-forest-labs/FLUX.1-schnell",
+          inputs: hfPrompt,
+          provider: "hf-inference",
+        });
+      } catch (fluxErr: any) {
+        console.warn("[Image Engine] HF FLUX.1-schnell notice, trying SD 3.5 Large on hf-inference:", fluxErr?.message || fluxErr);
+        imageBlob = await hfClient.textToImage({
+          model: "stabilityai/stable-diffusion-3.5-large",
+          inputs: hfPrompt,
+          provider: "hf-inference",
+        });
+      }
+      const arrayBuffer = await (imageBlob as unknown as Blob).arrayBuffer();
+      let finalImageUrl = `data:image/jpeg;base64,${Buffer.from(arrayBuffer).toString("base64")}`;
+      try {
+        const blob = new Blob([new Uint8Array(arrayBuffer)], { type: "image/jpeg" });
+        const { getInsforgeUploadClient } = await import("@/lib/insforge-server");
+        const insforge = getInsforgeUploadClient();
+        const { data, error } = await insforge.storage.from("lemon").upload(storageKey, blob as any);
+        if (!error && data?.url) finalImageUrl = data.url;
+      } catch (storageErr) {
+        console.warn("[Image Engine] Insforge upload notice:", storageErr);
+      }
+      return {
+        success: true,
+        imageUrls: [finalImageUrl],
+        storageKey,
+        aspectRatio,
+        prompt: hfPrompt,
+        provider: "HUGGING_FACE_SDXL",
+        latencyMs: Date.now() - startTime,
+      };
+    } catch (hfErr: any) {
+      console.warn("[Image Engine] HF SDK attempt notice:", hfErr?.message || hfErr);
     }
   }
 
-  // ─── Priority 3: Together.ai FLUX.1-schnell-Free ─────────────────────────
+  // ─── Priority 4: Together.ai FLUX.1-schnell-Free ─────────────────────────
   const togetherKey = process.env.TOGETHER_API_KEY;
   if (togetherKey) {
     try {
@@ -720,7 +834,7 @@ export async function generateAdCreativeImage(
     }
   }
 
-  // ─── Priority 4: Curated Commercial Photography Fallback ──────────────────
+  // ─── Priority 5: Curated Commercial Photography Fallback ──────────────────
   // Use profile category detection for a semantically-matched fallback photo
   const detectedCategory = detectProfileCategory(brandProfile, options.niche);
   const categoryFallbackKey = CATEGORY_VISUAL_STYLES[detectedCategory]?.fallbackCategory || "default";
@@ -750,7 +864,7 @@ export async function generateAdCreativeVideo(options: {
 }): Promise<GeneratedVideoResult> {
   const startTime = Date.now();
   const replicateToken = process.env.REPLICATE_API_TOKEN;
-  
+
   // Automatically fetch brand profile for user if not already provided
   let brandProfile = options.brandProfile;
   if (!brandProfile && options.userId) {

@@ -134,6 +134,7 @@ Strict Generation Rules:
 2. Every single post MUST have a completely UNIQUE, distinct topic, headline, and creative angle across all days (e.g. Day 1: Problem breakdown, Day 2: Case study/Results, Day 3: Step-by-step framework, Day 4: Overcoming mistakes, etc.). NEVER duplicate the same opening title or theme across days.
 3. VIRAL HASHTAG INTELLIGENCE: Every single post MUST end with 4 to 6 top trending viral hashtags analyzed for ${brandProfile?.business_name || "the brand"} and its ${brandProfile?.niche || "industry"} niche (e.g. #${cleanBrandTag} #${cleanNicheTag} #${cleanNicheTag}Tips #BusinessGrowth).
 4. Plain text only: zero emojis, zero icons, zero symbols. Do not use markdown headings (# Header) or bold asterisks (**bold**).
+5. CRITICAL: DO NOT include structural labels like 'Hook:', 'Story:', 'Tip:', or 'CTA:' in the text. Write a natural, continuous caption.
 
 Return ONLY a valid JSON object matching this schema without markdown formatting:
 {
@@ -499,6 +500,7 @@ DO NOT write generic motivational quotes, generic life advice, or vague platitud
             "Organic Community Strategy (Organic Social Mode):",
             "- Goal: Organic reach, high saves, shares, and comment engagement.",
             "- Copy Structure: Conversational hook, relatable storytelling, educational tip or insight, question to spark comments (e.g. 'What do you think? Drop a comment below!'), and 4-6 targeted niche hashtags.",
+            "- CRITICAL: DO NOT include structural labels like 'Hook:', 'Story:', 'Tip:', or 'CTA:' in the text. Write a natural, continuous, engaging caption that flows seamlessly.",
             "- If user requests a Reel/Video: include timestamps (0-3s Hook, 3-20s Value, 20-30s CTA) with 9:16 vertical visual cues.",
             "- Visual: Authentic, lifestyle and workplace documentary photography."
         );
