@@ -152,12 +152,19 @@ export async function fetchSceneImages(
               provider: "hf-inference",
             });
           } catch (hfErr1) {
-            // Fallback to SD 3.5 on Hugging Face native inference
-            imageBlob = await hfClient.textToImage({
-              model: "stabilityai/stable-diffusion-3.5-large",
-              inputs: fullPrompt,
-              provider: "hf-inference",
-            });
+            try {
+              imageBlob = await hfClient.textToImage({
+                model: "stabilityai/stable-diffusion-3.5-large",
+                inputs: fullPrompt,
+                provider: "hf-inference",
+              });
+            } catch (hfErr2) {
+              imageBlob = await hfClient.textToImage({
+                model: "stable-diffusion-v1-5/stable-diffusion-v1-5",
+                inputs: fullPrompt,
+                provider: "hf-inference",
+              });
+            }
           }
           const ab = await (imageBlob as unknown as Blob).arrayBuffer();
           return { sceneNumber: scene.sceneNumber, imageBuffer: Buffer.from(ab) };

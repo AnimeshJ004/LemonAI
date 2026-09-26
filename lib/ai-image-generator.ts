@@ -761,12 +761,21 @@ export async function generateAdCreativeImage(
           provider: "hf-inference",
         });
       } catch (fluxErr: any) {
-        console.warn("[Image Engine] HF FLUX.1-schnell notice, trying SD 3.5 Large on hf-inference:", fluxErr?.message || fluxErr);
-        imageBlob = await hfClient.textToImage({
-          model: "stabilityai/stable-diffusion-3.5-large",
-          inputs: hfPrompt,
-          provider: "hf-inference",
-        });
+        console.warn("[Image Engine] HF FLUX.1-schnell notice, trying SD 3.5 Large:", fluxErr?.message || fluxErr);
+        try {
+          imageBlob = await hfClient.textToImage({
+            model: "stabilityai/stable-diffusion-3.5-large",
+            inputs: hfPrompt,
+            provider: "hf-inference",
+          });
+        } catch (sd35Err: any) {
+          console.warn("[Image Engine] HF SD 3.5 notice, trying SD 1.5 (free/lightweight):", sd35Err?.message || sd35Err);
+          imageBlob = await hfClient.textToImage({
+            model: "stable-diffusion-v1-5/stable-diffusion-v1-5",
+            inputs: hfPrompt,
+            provider: "hf-inference",
+          });
+        }
       }
       const arrayBuffer = await (imageBlob as unknown as Blob).arrayBuffer();
       let finalImageUrl = `data:image/jpeg;base64,${Buffer.from(arrayBuffer).toString("base64")}`;
